@@ -1,0 +1,60 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import manip_utils.DeltaControl as DC
+from rl_util.identity_policy import IdentityLowLevelPolicy
+from rl_util import env_interaction
+import pickle
+import argparse
+
+def run_reps(skill):
+    # Initialize the environment
+    env = DC.DeltaRobotEnv('./config/env.yaml', skill)
+    # for i in range(env.scene.n_envs):
+    #     env.reset(i)
+    # Load the policy
+    if skill == "skill1":
+        policy = IdentityLowLevelPolicy(2)
+        mu = np.array([0, 0])
+        sigma = 0.33
+    elif skill == "skill2":
+        policy = IdentityLowLevelPolicy(6)
+        mu = np.array([0, 0, 0, 0, 0, 0])
+        sigma = 0.33
+    
+    max_num_reps_attempts = 5
+    max_reps_param_updates = 20
+
+    num_policy_rollouts_before_reps_update = 5 * policy.num_params()
+    env_convergence_criteria = {"env_solved": 0.9}
+
+    # Set default Mean and Variance for policy
+    policy_params_mean_init = np.zeros(policy.num_params()) + mu
+    policy_params_var_init = np.eye(policy.num_params()) * sigma
+
+    reps_converged, low_level_policy_params_mean, \
+        low_level_policy_params_var, solve_env_info = \
+                env_interaction.solve_env_using_reps(env,
+                                    policy,   # this is the pol variable above
+                                    policy_params_mean_init,
+                                    policy_params_var_init,
+                                    num_policy_rollouts_before_reps_update,
+                                    max_reps_param_updates,
+                                    env_convergence_criteria,
+                                    max_num_reps_attempts=max_num_reps_attempts,
+                                    debug_info=True,
+                                    verbose=True,
+                                    )
+
+    reps_policy = {'reps_converged': reps_converged,
+                'low_level_policy_params_mean': low_level_policy_params_mean,
+                'low_level_policy_params_var': low_level_policy_params_var,
+                'solve_env_info': solve_env_info}
+
+    with open(f'./data/{skill}_trained.pkl', 'wb') as f:
+        pickle.dump(reps_policy, f)
+    
+if __name__=="__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--skill', type=str, default='skill1')
+    args = parser.parse_args()
+    run_reps(args.skill)
