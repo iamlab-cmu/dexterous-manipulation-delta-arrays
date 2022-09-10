@@ -1,14 +1,18 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import manip_utils.DeltaControl as DC
+import manip_utils.SimDeltaControl as SDC
+import manip_utils.SimDeltaControl as RDC
 from rl_util.identity_policy import IdentityLowLevelPolicy
 from rl_util import env_interaction
 import pickle
 import argparse
 
-def run_reps(skill):
+def run_reps(skill, sim_or_real = "sim"):
     # Initialize the environment
-    env = DC.DeltaRobotEnv('./config/env.yaml', skill)
+    if sim_or_real == "sim":
+        env = SDC.DeltaRobotEnv('./config/env.yaml', skill)
+    elif sim_or_real == "real":
+        env = RDC.DeltaRobotEnv('./config/env.yaml', skill)
     # for i in range(env.scene.n_envs):
     #     env.reset(i)
     # Load the policy
