@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import glob
 import pickle
+import time
 
 # Load previously saved data
 mtx, dist, _, _ = pickle.load(open('./cam_utils/calibration.pkl', "rb"))
@@ -16,11 +17,23 @@ def draw(img, corners, imgpts):
     img = cv2.line(img, corner, tuple(imgpts[2].ravel()), (0,0,255), 5)
     return img
 
+def get_resized_img(img1, img2):
+    # Resize meme img1 to fit webcam img2
+    h1, w1 = img1.shape[:2]
+    h2, w2 = img2.shape[:2]
+    img1 = cv2.resize(img1, (int(w1*h2/h1), h2))
+    return img1
+
 criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 objp = np.zeros((7*4,3), np.float32)
 objp[:,:2] = np.mgrid[0:7,0:4].T.reshape(-1,2)
-
+# Length of axes -> 3 checkerboard squares
 axis = np.float32([[3,0,0], [0,3,0], [0,0,-3]]).reshape(-1,3)
+
+goal_rvec = np.array(([-0.5], [0], [0]))
+goal_tvec = np.array(([-6], [-0.15], [26.2]))
+
+thresh = np.array((0.1, 0.4))
 
 cam = cv2.VideoCapture(1)
 cv2.namedWindow("test")
@@ -39,10 +52,24 @@ while True:
         # Find the rotation and translation vectors.
         _, rvecs, tvecs, inliers = cv2.solvePnPRansac(objp, corners2, mtx, dist)
 
+        rot_error = np.linalg.norm(goal_rvec - rvecs)
+        pos_error = np.linalg.norm(goal_tvec - tvecs)
+        if rot_error < thresh[0] and pos_error < thresh[1]:
+            pad = cv2.imread('./cam_utils/memes/smile.jpg')
+            pad = get_resized_img(pad, frame) 
+        else:
+            pad = cv2.imread('./cam_utils/memes/cry_cat.png')
+            pad = get_resized_img(pad, frame) 
+        print(rot_error, pos_error)
+
+        pickle.dump((rvecs, tvecs), open('./cam_utils/pose.pkl', "wb"))
         # project 3D points to image plane
         imgpts, jac = cv2.projectPoints(axis, rvecs, tvecs, mtx, dist)
 
         frame = draw(frame,corners2,imgpts)
+        time.sleep(0.5)
+        
+        frame = np.hstack((frame, pad))
         cv2.imshow('img',frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break

@@ -31,7 +31,7 @@ class DeltaArrayAgent:
         self.done_moving = False
         self.current_joint_positions = [0.05]*12
 
-    # GENERATE RESET and STOP commands in protobuf
+    # Generate reset point for useless robots
     def reset(self):
         for j in range(20):
             ee_pts = [0,0,5.5]
@@ -41,6 +41,29 @@ class DeltaArrayAgent:
             # jts = []
             # _ = [[jts.append(pts[j]) for j in range(3)] for i in range4]
             _ = [self.delta_message.trajectory.append(pts[i%3]) for i in range(12)]
+        self.send_proto_cmd()
+
+    # Move useful robots
+    def move_useful(self, pos):
+        iks = [Delta.IK([0,0,5.5]) for i in range(20)]
+        zeros = np.clip(np.array(iks) * 0.01,self.min_joint_pos,self.max_joint_pos)
+        
+        # Shape of pos -> (20, 3)
+        iks = [Delta.IK(pos[i]) for i in range(20)]
+        non_zeros = np.clip(np.array(iks) * 0.01,self.min_joint_pos,self.max_joint_pos)
+        
+        if self.delta_message.id == 11:
+            jts = np.hstack([non_zeros, zeros, zeros, non_zeros])
+        elif self.delta_message.id == 10:
+            jts = np.hstack([non_zeros, zeros, zeros, zeros])
+        elif self.delta_message.id == 7:
+            jts = np.hstack([non_zeros, zeros, zeros, non_zeros])
+        elif self.delta_message.id == 6:
+            jts = np.hstack([non_zeros, zeros, zeros, zeros])
+        else: raise ValueError("Invalid robot ID")
+
+        for j in range(20):
+            _ = [self.delta_message.trajectory.append(jts[j][i]) for i in range(12)]
         self.send_proto_cmd()
 
     def stop(self):

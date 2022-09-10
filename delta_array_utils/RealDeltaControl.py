@@ -23,6 +23,7 @@ class DeltaRobotEnv():
         self.block_pose = np.array([0, 0, 0, 0, 0, 0])
         self.target_block_pose = np.array([0, 0, 0, 0, 0, 0])
         self.active_robots = [(2,2),(2,3),(2,4), (4,2),(4,3),(4,4)]
+        self.skill = skill
         
         """ Delta Robots Vars """
         self.NUM_MOTORS = 12
@@ -68,10 +69,71 @@ class DeltaRobotEnv():
         for i in self.useless_agents:
             i.reset()
 
+        # Move all useful robots to the bottom
+        for i in self.useful_agents.values():
+            pos = [[0,0,12] for i in range(20)]
+            i.move_useful(pos)
         return
 
-    def move_top_layer(self, position):
-        return
+    def step(self, action):
+        self.action = action
+        
+        return self.return_vars["observation"], self.return_vars["reward"], self.return_vars["done"], self.return_vars["info"]
+
+    def reset(self):
+        for i in self.useful_agents.values():
+            pos = [[0,0,12] for i in range(20)]
+            i.move_useful(pos)
+
+    def Bezier_Curve(self, t, p1, p2, p3, p4):
+        return (1-t)**3*p1 + 3*t*(1-t)**2*p2 + 3*t**2*(1-t)*p3 + t**3*p4
+
+    def DMP_trajectory(self, curve):
+        # Fill this function!!!!!!!!!!!!!!!!!
+        DMP = pydmps.dmp_discrete.DMPs_discrete(n_dmps=2, n_bfs=200, ay=np.ones(2) * 10.0)
+        y_track = []
+        dy_track = []
+        ddy_track = []
+
+        DMP.imitate_path(y_des=curve)
+        trajectory, _, _ = DMP.rollout(tau=1)
+        return trajectory
+
+    def generate_trajectory(self ):
+        if self.skill == "skill1":
+            y1, y2 = (self.action[0] + 1)/2*0.01 + 0, (self.action[1] + 1)/2*0.005 - 0.005
+
+            """ Generate linear trajectory using goal given by REPS for front and back grippers """ 
+            self.skill_traj = np.linspace([0, 0], [y1, 0], self.time_horizon - 1)
+            self.skill_hold_traj = np.linspace([0, 0], [y2, 0], self.time_horizon - 1)
+            pickle.dump([y1, y2], open("./data/real_skill1_vars.pkl", "wb"))
+        elif self.skill == "skill2":
+            x1, y1 = (self.action[0] + 1)/2*0.02 + 0, (self.action[1] + 1)/2*0.05 + 0
+            x2, y2 = (self.action[2] + 1)/2*0.02 + 0, (self.action[3] + 1)/2*0.05 + 0
+            x3, y3 = (self.action[4] + 1)/2*0.015 + 0.01, (self.action[5] + 1)/2*0.06 + 0.01
+            prev_y1, prev_y2 = pickle.load(open("./data/real_skill1_vars.pkl", "rb"))
+
+            """ Generate Bezier curve trajectory using REPS variables and smoothen trajectory using DMP """
+            points = np.array(((prev_y1, 0), (x1, y1), (x2, y2), (x3, y3)))
+            # print(points)
+            curve = np.array([self.Bezier_Curve(t, *points) for t in np.linspace(0, 1, self.time_horizon - 1)]).T
+            self.skill_traj = self.DMP_trajectory(curve)
+            self.skill_hold_traj = np.linspace([0, 0], [prev_y2, 0], self.time_horizon - 1)
+
+            # print(np.min(self.skill_traj[:,0]),np.max(self.skill_traj[:,0]),np.min(self.skill_traj[:,1]),np.max(self.skill_traj[:,1]))
+            plt.plot(curve[0], curve[1])
+            # plt.plot(self.skill_traj[:, 0], self.skill_traj[:, 1])
+            plt.scatter(points.T[0], points.T[1])
+            plt.savefig(f"./traj_imgs/{len(os.listdir('./real_traj_imgs'))}.png")
+            # plt.show()
+        else:
+            raise ValueError("Invalid skill Skill can be either skill1 or skill2")
+
+    """ Block Utils """
+    def get_block_pose(self):
+        """ Get the block pose """
+        rot, pos = pickle.load(open("./cam_utils/pose.pkl", "rb"))
+        return np.array(pos), np.array(rot)
 
 if __name__=="__main__":
     env = DeltaRobotEnv("skill1")
