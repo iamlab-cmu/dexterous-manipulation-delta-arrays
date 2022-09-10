@@ -262,8 +262,8 @@ class DeltaRobotEnv():
         else:
             self.reset_policy(env_idx, env_ptr)"""
 
-if __name__=="__main__":
-    env = DeltaRobotEnv('config/env.yaml')
-    env.step()
-    time.sleep(1)
-    env.scene.close()
+# if __name__=="__main__":
+#     env = DeltaRobotEnv('config/env.yaml')
+#     env.step()
+#     time.sleep(1)
+#     env.scene.close()
