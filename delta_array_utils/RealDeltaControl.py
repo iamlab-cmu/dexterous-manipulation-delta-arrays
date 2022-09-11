@@ -24,6 +24,7 @@ class DeltaRobotEnv():
         self.target_block_pose = np.array([0, 0, 0, 0, 0, 0])
         self.active_robots = [(2,2),(2,3),(2,4), (4,2),(4,3),(4,4)]
         self.skill = skill
+        self.rot_30 = np.pi/6
         
         """ Delta Robots Vars """
         self.NUM_MOTORS = 12
@@ -37,6 +38,7 @@ class DeltaRobotEnv():
         self.return_vars = {"observation": None, "reward": None, "done": None, "info": {"is_solved": False}}
         self.trajectories = []
         self.prev_action = None
+        self.skill_thresh = np.array((0.1, 0.4))
 
         """ Setup Delta Robot Agents """
         self.useless_agents = []
@@ -50,20 +52,27 @@ class DeltaRobotEnv():
     def store_trajectory(self):
         # Another random function of no significance. But don't remove it!! Needed for REPS
         self.trajectories.append(self.prev_action)
+        
+    def rotate(self, vector, angle, plot=False):
+        # Rotation from Delta Array axis to cartesian axis = 30 degrees. 
+        rot_matrix = np.array([[np.cos(angle), -np.sin(angle)],[np.sin(angle), np.cos(angle)]])
+        vector = vector@rot_matrix
+        return vector
 
     def setup_delta_agents(self):
         self.delta_agents = []
         # Obtain numbers of 2x2 grids
         robot_ids = set(self.RC.robo_dict_inv[i] for i in self.active_robots)
         for i in range(1, 17):
-            # Get IP Addr and socket of each grid and classify them as useful or useless
-            ip_addr = srm.inv_delta_comm_dict[i]
-            esp01 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            esp01.connect((ip_addr, 80))
-            if i not in robot_ids:
-                self.useless_agents.append(DeltaArrayAgent(esp01, i))
-            else:
-                self.useful_agents[i] = DeltaArrayAgent(esp01, i)
+            if i!=9:
+                # Get IP Addr and socket of each grid and classify them as useful or useless
+                ip_addr = srm.inv_delta_comm_dict[i]
+                esp01 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                esp01.connect((ip_addr, 80))
+                if i not in robot_ids:
+                    self.useless_agents.append(DeltaArrayAgent(esp01, i))
+                else:
+                    self.useful_agents[i] = DeltaArrayAgent(esp01, i)
         
         # Move all useless robots to the top 
         for i in self.useless_agents:
@@ -71,19 +80,37 @@ class DeltaRobotEnv():
 
         # Move all useful robots to the bottom
         for i in self.useful_agents.values():
-            pos = [[0,0,12] for i in range(20)]
+            pos = [[0,0,9] for i in range(20)]
             i.move_useful(pos)
+        time.sleep(2)
         return
 
     def step(self, action):
         self.action = action
-        
+        """ Make Robots Move Acc to Gen Trajectory """
+        self.generate_trajectory()
+        """ Write a more proper reset function """
+        """ Get Rewards and Plug Into REPS """
         return self.return_vars["observation"], self.return_vars["reward"], self.return_vars["done"], self.return_vars["info"]
 
     def reset(self):
+        """ Push the block towards the back a little and retract the fingers """
+        top_pos = np.zeros((20,3))
+        top_pos[:,:] = [0,0,12]
         for i in self.useful_agents.values():
-            pos = [[0,0,12] for i in range(20)]
-            i.move_useful(pos)
+            if i.delta_message.id not in [11, 10]:
+                pos = [[0,0,12] for i in range(20)]
+                i.move_useful(pos)
+            else:
+                i.move_useful(top_pos)
+        top_pos[:,:] = [*self.rotate(np.array((0,2)), self.rot_30), 10]
+        for i in self.useful_agents.values():
+            if i.delta_message.id in [11, 10]:
+                i.move_useful(top_pos)
+        top_pos[:,:] = [0,0,12]
+        for i in self.useful_agents.values():
+            if i.delta_message.id in [11, 10]:
+                i.move_useful(top_pos)
 
     def Bezier_Curve(self, t, p1, p2, p3, p4):
         return (1-t)**3*p1 + 3*t*(1-t)**2*p2 + 3*t**2*(1-t)*p3 + t**3*p4
@@ -99,7 +126,7 @@ class DeltaRobotEnv():
         trajectory, _, _ = DMP.rollout(tau=1)
         return trajectory
 
-    def generate_trajectory(self ):
+    def generate_trajectory(self):
         if self.skill == "skill1":
             y1, y2 = (self.action[0] + 1)/2*0.01 + 0, (self.action[1] + 1)/2*0.005 - 0.005
 
@@ -129,11 +156,24 @@ class DeltaRobotEnv():
         else:
             raise ValueError("Invalid skill Skill can be either skill1 or skill2")
 
+    def get_reward(self):
+        pos_error, rot_error, done_dict = self.get_block_pose()
+        if self.skill == "skill1":
+            if pos_error < self.thresh[0]:
+                done_dict["is_done"] = True
+                error = 100
+            else: error = pos_error * -10
+        elif self.skill == "skill2":
+            if done_dict["is_done"]:
+                error = 100
+            else: error = pos_error * -10 + rot_error * -40
+        return error, done_dict
+
     """ Block Utils """
     def get_block_pose(self):
         """ Get the block pose """
-        rot, pos = pickle.load(open("./cam_utils/pose.pkl", "rb"))
-        return np.array(pos), np.array(rot)
+        rot_error, pos_error, done_dict = pickle.load(open("./cam_utils/pose.pkl", "rb"))
+        return pos_error, rot_error, done_dict
 
 if __name__=="__main__":
     env = DeltaRobotEnv("skill1")

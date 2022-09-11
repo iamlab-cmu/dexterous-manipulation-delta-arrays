@@ -60,17 +60,17 @@ while True:
         else:
             pad = cv2.imread('./cam_utils/memes/cry_cat.png')
             pad = get_resized_img(pad, frame) 
-        print(rot_error, pos_error)
+        # print(rot_error, pos_error)
 
-        pickle.dump((rvecs, tvecs), open('./cam_utils/pose.pkl', "wb"))
+        pickle.dump((rot_error, pos_error, {"is_done": rot_error < thresh[0] and pos_error < thresh[1]}), open('./cam_utils/pose.pkl', "wb"))
         # project 3D points to image plane
         imgpts, jac = cv2.projectPoints(axis, rvecs, tvecs, mtx, dist)
 
         frame = draw(frame,corners2,imgpts)
-        time.sleep(0.5)
+        time.sleep(0.1)
         
         frame = np.hstack((frame, pad))
-        cv2.imshow('img',frame)
+        cv2.imshow('img', frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
     else:
