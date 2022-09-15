@@ -3,6 +3,7 @@ import numpy as np
 import glob
 import pickle
 import time
+from pose_error_file import pose_errors
 
 # Load previously saved data
 mtx, dist, _, _ = pickle.load(open('./cam_utils/calibration.pkl', "rb"))
@@ -30,10 +31,14 @@ objp[:,:2] = np.mgrid[0:7,0:4].T.reshape(-1,2)
 # Length of axes -> 3 checkerboard squares
 axis = np.float32([[3,0,0], [0,3,0], [0,0,-3]]).reshape(-1,3)
 
-goal_rvec = np.array(([-0.5], [0], [0]))
-goal_tvec = np.array(([-6], [-0.15], [26.2]))
+# goal_rvec = np.array(([-0.3], [0], [0]))
+goal_rvec = np.array(([0.03], [0.4], [-3.05]))
+# goal_tvec = np.array(([-5.0], [0.25], [25.2]))
+goal_tvec = np.array(([1.0], [1.9], [25.3]))  
 
-thresh = np.array((0.1, 0.4))
+thresh = np.array((0.10, 0.55))
+reset_thresh_low = np.array((0.32, 1.2))
+reset_thresh_high = np.array((0.4, 1.4))
 
 cam = cv2.VideoCapture(1)
 cv2.namedWindow("test")
@@ -52,22 +57,29 @@ while True:
         # Find the rotation and translation vectors.
         _, rvecs, tvecs, inliers = cv2.solvePnPRansac(objp, corners2, mtx, dist)
 
+        rvecs[2] = -abs(rvecs[2])
         rot_error = np.linalg.norm(goal_rvec - rvecs)
         pos_error = np.linalg.norm(goal_tvec - tvecs)
         if rot_error < thresh[0] and pos_error < thresh[1]:
             pad = cv2.imread('./cam_utils/memes/smile.jpg')
-            pad = get_resized_img(pad, frame) 
+            pad = get_resized_img(pad, frame)
+        elif (reset_thresh_low[0] < rot_error < reset_thresh_high[0]) and (reset_thresh_low[1] < pos_error < reset_thresh_high[1]):
+            pad = cv2.imread('./cam_utils/memes/thonk.png')
+            pad = get_resized_img(pad, frame)
         else:
             pad = cv2.imread('./cam_utils/memes/cry_cat.png')
             pad = get_resized_img(pad, frame) 
-        # print(rot_error, pos_error)
+        print(rvecs.T, tvecs.T, rot_error, pos_error)
 
+        # pose_errors["rot_error"] = rot_error
+        # pose_errors["pos_error"] = pos_error
+        # pose_errors['is_done'] =  rot_error < thresh[0] and pos_error < thresh[1]
         pickle.dump((rot_error, pos_error, {"is_done": rot_error < thresh[0] and pos_error < thresh[1]}), open('./cam_utils/pose.pkl', "wb"))
         # project 3D points to image plane
         imgpts, jac = cv2.projectPoints(axis, rvecs, tvecs, mtx, dist)
 
         frame = draw(frame,corners2,imgpts)
-        time.sleep(0.1)
+        time.sleep(0.05)
         
         frame = np.hstack((frame, pad))
         cv2.imshow('img', frame)

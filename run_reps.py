@@ -22,11 +22,11 @@ def run_reps(skill, sim_or_real):
     if skill == "skill1":
         policy = IdentityLowLevelPolicy(2)
         mu = np.array([0, 0])
-        sigma = 0.33
+        sigma = 0.44
     elif skill == "skill2":
         policy = IdentityLowLevelPolicy(6)
         mu = np.array([0, 0, 0, 0, 0, 0])
-        sigma = 0.33
+        sigma = 0.44
     
     max_num_reps_attempts = 5
     max_reps_param_updates = 20
@@ -57,7 +57,7 @@ def run_reps(skill, sim_or_real):
                 'low_level_policy_params_var': low_level_policy_params_var,
                 'solve_env_info': solve_env_info}
 
-    with open(f'./data/{skill}_trained.pkl', 'wb') as f:
+    with open(f'./data/{skill}_trained_1.pkl', 'wb') as f:
         pickle.dump(reps_policy, f)
     
 if __name__=="__main__":

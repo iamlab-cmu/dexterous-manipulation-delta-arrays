@@ -9,7 +9,7 @@ import delta_array_utils.get_coords
 
 NUM_MOTORS = 12
 NUM_AGENTS = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]
-BUFFER_SIZE = 1024
+BUFFER_SIZE = 20
 s_p = 1.5 #side length of the platform
 s_b = 4.3 #side length of the base
 l = 4.5 #length of leg attached to platform
@@ -42,6 +42,7 @@ class DeltaArrayAgent:
             # _ = [[jts.append(pts[j]) for j in range(3)] for i in range4]
             _ = [self.delta_message.trajectory.append(pts[i%3]) for i in range(12)]
         self.send_proto_cmd()
+        del self.delta_message.trajectory[:]
 
     # Move useful robots
     def move_useful(self, pos):
@@ -53,7 +54,9 @@ class DeltaArrayAgent:
         non_zeros = np.clip(np.array(iks) * 0.01,self.min_joint_pos,self.max_joint_pos)
         
         if self.delta_message.id == 11:
-            jts = np.hstack([non_zeros, zeros, zeros, non_zeros])
+            iks2 = [Delta.IK([pos[i][0] + 0.63,pos[i][1] - 0.4,pos[i][2]]) for i in range(20)]
+            non_zeros2 = np.clip(np.array(iks) * 0.01,self.min_joint_pos,self.max_joint_pos)
+            jts = np.hstack([non_zeros, zeros, zeros, non_zeros2])
         elif self.delta_message.id == 10:
             jts = np.hstack([non_zeros, zeros, zeros, zeros])
         elif self.delta_message.id == 7:
@@ -65,6 +68,9 @@ class DeltaArrayAgent:
         for j in range(20):
             _ = [self.delta_message.trajectory.append(jts[j][i]) for i in range(12)]
         self.send_proto_cmd()
+        # print(jts, jts.shape, np.min(jts), np.max(jts))
+        del self.delta_message.trajectory[:]
+        # time.sleep(1)
 
     def stop(self):
         self.esp01.send()
@@ -81,14 +87,9 @@ class DeltaArrayAgent:
         serialized = self.delta_message.SerializeToString()
         self.esp01.send(b'\xa6~~'+ serialized + b'\xa7~~\r\n')
         if ret_expected:
-            reachedPos = str(self.esp01.recv(BUFFER_SIZE))
-            # print(reachedPos.split(" "))
-            reachedPos = reachedPos.strip().split(" ")
-            if self.delta_message.id == int(reachedPos[0].split(':')[-1]):
-                return [float(x) for x in reachedPos[1:-1]]
-            else:
-                print("ERROR, incorrect robot ID requested.")
-                return [0.05]*12
+            done_moving = self.esp01.recv(BUFFER_SIZE)
+            print(done_moving, type(done_moving))
+            return done_moving
 
 
     def move_joint_trajectory(self, desired_trajectory):
@@ -96,12 +97,22 @@ class DeltaArrayAgent:
         # Add joint positions to delta_message protobuf
         for i in range(20):
             _ = [self.delta_message.trajectory.append(desired_trajectory[i, j]) for j in range(12)]
-        self.send_proto_cmd()
+        # self.send_proto_cmd()
         # print(self.delta_message)
         del self.delta_message.trajectory[:]
 
     def close(self):
         self.esp01.close()
+
+    def get_done_state(self):
+        _ = [[self.delta_message.trajectory.append(0) for j in 12] for i in range(20)]
+        self.delta_message.request_done_state = True
+        done_moving = self.send_proto_cmd(ret_expected = True)
+        del self.delta_message.trajectory[:]
+        self.delta_message.request_joint_pose = False
+        self.delta_message.request_done_state = False
+        self.delta_message.reset = False
+        return done_moving
 
     def get_joint_positions(self):
         _ = [self.delta_message.joint_pos.append(0.5) for i in range(12)]
