@@ -49,6 +49,7 @@ class DeltaRobotEnv():
         self.prev_action = None
         self.skill_thresh = np.array((0.2, 1.2))
         self.skill_traj = list(np.zeros((20,3)))
+        self.data_dict = {"Points": [], "Trajectory": [], "Reward": []}
 
         """ Setup Delta Robot Agents """
         self.useless_agents = []
@@ -183,7 +184,7 @@ class DeltaRobotEnv():
 
     def DMP_trajectory(self, curve):
         # Fill this function!!!!!!!!!!!!!!!!!
-        DMP = pydmps.dmp_discrete.DMPs_discrete(n_dmps=2, n_bfs=200, ay=np.ones(2) * 10.0)
+        DMP = pydmps.dmp_discrete.DMPs_discrete(n_dmps=2, n_bfs=20, ay=np.ones(2) * 10.0)
         DMP.imitate_path(y_des=curve)
         trajectory, _, _ = DMP.rollout(tau=1)
         trajectory = trajectory[::5]
@@ -213,6 +214,9 @@ class DeltaRobotEnv():
             skill_traj = self.DMP_trajectory(curve)
             # print(curve.shape, skill_traj.shape)
             assert len(skill_traj) == 20
+
+            self.data_dict['Points'].append(points)
+            self.data_dict['Trajectory'].append(curve)
             plt.plot(curve[0], curve[1])
             plt.scatter(points.T[0], points.T[1])
             plt.savefig(f"./traj_imgs/{len(os.listdir('./traj_imgs'))}.png")
@@ -240,8 +244,11 @@ class DeltaRobotEnv():
             else: error = pos_error * -1 + rot_error * -3
 
         print(rot_error, pos_error, done_dict["is_done"])
+        self.data_dict["Reward"].append(error)
         self.return_vars['reward'], self.return_vars['done'] = error, done_dict["is_done"]
         self.return_vars['info']["is_solved"] = self.return_vars['done']
+        
+        pickle.dump(self.data_dict, open("./data/traj_data.pkl", "wb"))
         return 
 
     """ Block Utils """
