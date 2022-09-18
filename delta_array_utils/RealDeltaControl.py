@@ -128,8 +128,8 @@ class DeltaRobotEnv():
         top_pos = np.zeros((20,3))
         top_pos[0:2, :] = [-1,0,self.low_z-2]
         top_pos[2:18, :] = [*self.rotate(np.array((1, 0)), self.rot_30), self.low_z]
-        top_pos[18:, :] = [0,0,self.low_z]
-        # top_pos[3:, :] = [0,0,self.low_z]
+        # top_pos[18:, :] = [0,0,self.low_z]
+        top_pos[18:, :] = [-1,0,self.low_z]
         for i in self.useful_agents.values():
             self.to_be_moved.append(i)
             # print("Moving useful agent", i.delta_message.id)
@@ -179,8 +179,18 @@ class DeltaRobotEnv():
         return 
 
 
-    def Bezier_Curve(self, t, p1, p2, p3, p4):
-        return (1-t)**3*p1 + 3*t*(1-t)**2*p2 + 3*t**2*(1-t)*p3 + t**3*p4
+    def Bezier_Curve(self, p1, p2, p3, p4):
+        points = np.array((p1, p2, p3, p4))
+        curve = np.array([(1-t)**3*p1 + 3*t*(1-t)**2*p2 + 3*t**2*(1-t)*p3 + t**3*p4 for t in np.linspace(0, 1, 20)]).T
+        skill_traj = self.DMP_trajectory(curve)
+        assert len(skill_traj) == 20
+
+        self.data_dict['Points'].append(points)
+        self.data_dict['Trajectory'].append(curve)
+        plt.plot(curve[0], curve[1])
+        plt.scatter(points[:, 0], points[:, 1])
+        plt.savefig(f"./traj_imgs/{len(os.listdir('./traj_imgs'))}.png")
+        return skill_traj
 
     def DMP_trajectory(self, curve):
         # Fill this function!!!!!!!!!!!!!!!!!
@@ -205,21 +215,10 @@ class DeltaRobotEnv():
             
             """ Uncomment or comment based on whether learning skill1 is required """
             # prev_x1, prev_y2 = pickle.load(open("./data/real_skill1_vars.pkl", "rb"))
-            prev_x1, prev_y1 = 0, 0
+            x0, y0 = 0, 0
 
             """ Generate Bezier curve trajectory using REPS variables and smoothen trajectory using DMP """
-            points = np.array(((prev_x1, 0), (x1, y1), (x2, y2), (x3, y3)))
-            print(points)
-            curve = np.array([self.Bezier_Curve(t, *points) for t in np.linspace(0, 1, 20)]).T
-            skill_traj = self.DMP_trajectory(curve)
-            # print(curve.shape, skill_traj.shape)
-            assert len(skill_traj) == 20
-
-            self.data_dict['Points'].append(points)
-            self.data_dict['Trajectory'].append(curve)
-            plt.plot(curve[0], curve[1])
-            plt.scatter(points.T[0], points.T[1])
-            plt.savefig(f"./traj_imgs/{len(os.listdir('./traj_imgs'))}.png")
+            skill_traj = self.Bezier_Curve((x1, y1), (x2, y2), (x3, y3), (x4, y4))
 
             skill_traj[:, 1][skill_traj[:, 1] < -0.1] = -0.1
             # skill_traj[:, 1][skill_traj[:, 1] > 5] = 5
@@ -228,6 +227,12 @@ class DeltaRobotEnv():
                 xy = self.rotate(np.array((0,0)) - np.array((skill_traj[i][0], self.rot_30)), 0)
                 self.skill_traj[i] = [*xy, self.low_z - skill_traj[i][1]]
             self.skill_hold_traj = np.linspace([0, 0], [prev_y1, 0], 20)
+
+        elif self.skill == "skill3":
+            x1, y1 = (self.action[0] + 1)/2*-1.5 + 0, (self.action[1] + 1)/2*1 + 0
+            x2, y2 = (self.action[2] + 1)/2*-2.3 + 0, (self.action[3] + 1)/2*1 + 0
+            x3, y3 = (self.action[4] + 1)/2*-2.2 - 0.25, (self.action[5] + 1)/2*4 + 0.5
+
         else:
             raise ValueError("Invalid skill Skill can be either skill1 or skill2")
 
