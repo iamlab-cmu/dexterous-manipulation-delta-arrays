@@ -4,6 +4,7 @@ import glob
 import pickle
 import time
 from pose_error_file import pose_errors
+import argparse
 
 # Load previously saved data
 mtx, dist, _, _ = pickle.load(open('./cam_utils/calibration.pkl', "rb"))
@@ -31,67 +32,77 @@ objp[:,:2] = np.mgrid[0:7,0:4].T.reshape(-1,2)
 # Length of axes -> 3 checkerboard squares
 axis = np.float32([[3,0,0], [0,3,0], [0,0,-3]]).reshape(-1,3)
 
-# goal_rvec = np.array(([-0.3], [0], [0]))
-goal_rvec = {"skill2": np.array(([0.03], [0.4], [-3.05])),
-             "skill3": np.array(([0.04], [0.139], [-3.07])),}
-goal_tvec = {"skill2": np.array(([1.0], [1.9], [25.3])),
-             "skill3": np.array(([-0.7264], [0.0], [0.0])),}
 
-# goal_rvec = np.array(([0.03], [0.4], [-3.05]))
-# goal_rvec_skill3 = np.array(([0.03], [-0.04], [-3.05]))
-# goal_tvec = np.array(([-5.0], [0.25], [25.2]))
-# goal_tvec = np.array(([1.0], [1.9], [25.3]))  
 
-thresh = np.array((0.10, 0.55))
-reset_thresh_low = np.array((0.32, 1.2))
-reset_thresh_high = np.array((0.4, 1.4))
+if __name__=="__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--skill', type=str, default='skill1')
+    args = parser.parse_args()
+    skill = args.skill
+    # goal_rvec = np.array(([-0.3], [0], [0]))
+    goal_rvec = {"skill2": np.array(([0.03], [0.4], [-3.05])),
+                "skill3": np.array(([-0.006], [-0.05], [-0.05])),
+                }
+    goal_tvec = {"skill2": np.array(([1.0], [1.9], [25.3])),
+                "skill3": np.array(([-5.24], [2.78], [26.2])),
+                }
 
-cam = cv2.VideoCapture(1)
-cv2.namedWindow("test")
-while True:
-    ret, frame = cam.read()
-    if not ret:
-        print("Failed to Get WebCam img")
-        break
+    # goal_rvec = np.array(([0.03], [0.4], [-3.05]))
+    # goal_rvec_skill3 = np.array(([0.03], [-0.04], [-3.05]))
+    # goal_tvec = np.array(([-5.0], [0.25], [25.2]))
+    # goal_tvec = np.array(([1.0], [1.9], [25.3]))  
 
-    gray = cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
-    ret, corners = cv2.findChessboardCorners(gray, (7,4),None)
+    thresh = np.array((0.10, 0.5))
+    reset_thresh_low = np.array((0.32, 1.2))
+    reset_thresh_high = np.array((0.4, 1.4))
 
-    if ret == True:
-        corners2 = cv2.cornerSubPix(gray,corners,(11,11),(-1,-1),criteria)
-
-        # Find the rotation and translation vectors.
-        _, rvecs, tvecs, inliers = cv2.solvePnPRansac(objp, corners2, mtx, dist)
-
-        rvecs[2] = -abs(rvecs[2])
-        rot_error = np.linalg.norm(goal_rvec - rvecs)
-        pos_error = np.linalg.norm(goal_tvec - tvecs)
-        if rot_error < thresh[0] and pos_error < thresh[1]:
-            pad = cv2.imread('./cam_utils/memes/smile.jpg')
-            pad = get_resized_img(pad, frame)
-        elif (reset_thresh_low[0] < rot_error < reset_thresh_high[0]) and (reset_thresh_low[1] < pos_error < reset_thresh_high[1]):
-            pad = cv2.imread('./cam_utils/memes/thonk.png')
-            pad = get_resized_img(pad, frame)
-        else:
-            pad = cv2.imread('./cam_utils/memes/cry_cat.png')
-            pad = get_resized_img(pad, frame) 
-        print(rvecs.T, tvecs.T, rot_error, pos_error)
-
-        # pose_errors["rot_error"] = rot_error
-        # pose_errors["pos_error"] = pos_error
-        # pose_errors['is_done'] =  rot_error < thresh[0] and pos_error < thresh[1]
-        pickle.dump((rot_error, pos_error, {"is_done": rot_error < thresh[0] and pos_error < thresh[1]}), open('./cam_utils/pose.pkl', "wb"))
-        # project 3D points to image plane
-        imgpts, jac = cv2.projectPoints(axis, rvecs, tvecs, mtx, dist)
-
-        frame = draw(frame,corners2,imgpts)
-        time.sleep(0.05)
-        
-        frame = np.hstack((frame, pad))
-        cv2.imshow('img', frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+    cam = cv2.VideoCapture(1)
+    cv2.namedWindow("test")
+    while True:
+        ret, frame = cam.read()
+        if not ret:
+            print("Failed to Get WebCam img")
             break
-    else:
-        print("MATATA")
 
-cv2.destroyAllWindows()
+        gray = cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
+        ret, corners = cv2.findChessboardCorners(gray, (7,4),None)
+
+        if ret == True:
+            corners2 = cv2.cornerSubPix(gray,corners,(11,11),(-1,-1),criteria)
+
+            # Find the rotation and translation vectors.
+            _, rvecs, tvecs, inliers = cv2.solvePnPRansac(objp, corners2, mtx, dist)
+
+            rvecs[2] = -abs(rvecs[2])
+            rot_error = np.linalg.norm(goal_rvec[skill] - rvecs)
+            pos_error = np.linalg.norm(goal_tvec[skill] - tvecs)
+            if rot_error < thresh[0] and pos_error < thresh[1]:
+                pad = cv2.imread('./cam_utils/memes/smile.jpg')
+                pad = get_resized_img(pad, frame)
+            elif (reset_thresh_low[0] < rot_error < reset_thresh_high[0]) and (reset_thresh_low[1] < pos_error < reset_thresh_high[1]):
+                pad = cv2.imread('./cam_utils/memes/thonk.png')
+                pad = get_resized_img(pad, frame)
+            else:
+                pad = cv2.imread('./cam_utils/memes/cry_cat.png')
+                pad = get_resized_img(pad, frame) 
+            print(rvecs.T, tvecs.T, rot_error, pos_error)
+            # print(rot_error, pos_error)
+
+            # pose_errors["rot_error"] = rot_error
+            # pose_errors["pos_error"] = pos_error
+            # pose_errors['is_done'] =  rot_error < thresh[0] and pos_error < thresh[1]
+            pickle.dump((rot_error, pos_error, {"is_done": rot_error < thresh[0] and pos_error < thresh[1]}), open('./cam_utils/pose.pkl', "wb"))
+            # project 3D points to image plane
+            imgpts, jac = cv2.projectPoints(axis, rvecs, tvecs, mtx, dist)
+
+            frame = draw(frame,corners2,imgpts)
+            time.sleep(0.05)
+            
+            frame = np.hstack((frame, pad))
+            cv2.imshow('img', frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+        else:
+            print("MATATA")
+
+    cv2.destroyAllWindows()

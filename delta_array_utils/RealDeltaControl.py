@@ -27,10 +27,12 @@ class DeltaRobotEnv():
         self.robot_positions = np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]])
         self.block_pose = np.array([0, 0, 0, 0, 0, 0])
         self.target_block_pose = np.array([0, 0, 0, 0, 0, 0])
-        self.active_robots = [(2,2),(2,3),(2,4), (4,2),(4,3),(4,4)]
+        self.active_robots = [(1,2),(1,3),(1,4), (3,2),(3,3),(3,4)]
+        # self.robot_ids = set(self.RC.robo_dict_inv[i] for i in self.active_robots)
+        self.robot_ids = set([10, 11, 14, 15])
         self.skill = skill
-        # self.rot_30 = np.pi/6
-        self.rot_30 = 0
+        self.rot_30 = np.pi/6
+        # self.rot_30 = 0
         self.low_z = 12.2
         self.high_z = 5.5
         
@@ -49,7 +51,20 @@ class DeltaRobotEnv():
         self.prev_action = None
         self.skill_thresh = np.array((0.2, 1.2))
         self.skill_traj = list(np.zeros((20,3)))
+        self.skill_hold_traj = list(np.zeros((20,3)))
         self.data_dict = {"Points": [], "Trajectory": [], "Reward": []}
+        self.left_top_pos = np.zeros((20,3))
+        self.left_top_pos[0:2, :] = [-1.3,0,self.low_z-2]
+        self.left_top_pos[2:18, :] = [*self.rotate(np.array((0.6, 0)), 0), self.low_z]
+        self.left_top_pos[18:, :] = [-1.3,0,self.low_z]
+
+        if self.skill != "skill3":
+            self.right_top_pos = [[0,0,self.low_z] for i in range(20)]
+        else:
+            self.right_top_pos = np.zeros((20,3))
+            self.right_top_pos[0:2, :] = [1.3,0,self.low_z-2]
+            self.right_top_pos[2:18, :] = [*self.rotate(np.array((-0.6, 0)), 0), self.low_z]
+            self.right_top_pos[18:, :] = [1.3,0,self.low_z]
 
         """ Setup Delta Robot Agents """
         self.useless_agents = []
@@ -73,7 +88,6 @@ class DeltaRobotEnv():
     def setup_delta_agents(self):
         self.delta_agents = []
         # Obtain numbers of 2x2 grids
-        robot_ids = set(self.RC.robo_dict_inv[i] for i in self.active_robots)
         for i in range(1, 17):
             if i!=9:
                 # Get IP Addr and socket of each grid and classify them as useful or useless
@@ -81,7 +95,7 @@ class DeltaRobotEnv():
                 esp01 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 esp01.connect((ip_addr, 80))
                 esp01.settimeout(0.1)
-                if i not in robot_ids:
+                if i not in self.robot_ids:
                     self.useless_agents.append(DeltaArrayAgent(esp01, i))
                 else:
                     self.useful_agents[i] = DeltaArrayAgent(esp01, i)
@@ -113,10 +127,8 @@ class DeltaRobotEnv():
 
     def move_top_and_bottom_agents(self):
         for i in self.useful_agents.values():
-            if i.delta_message.id not in [10, 11]:
-                # pos = [[0,0,self.low_z] for i in range(20)]
-                # i.move_useful(self.trajectory)
-                pass
+            if i.delta_message.id not in [14, 15]:
+                i.move_useful(self.skill_hold_traj)
             else:
                 i.move_useful(self.skill_traj)
                 self.to_be_moved.append(i)
@@ -125,19 +137,12 @@ class DeltaRobotEnv():
     def reset(self):
         """ Push the block towards the back a little and retract the fingers """
         print("Resetting Delta Robots...")
-        top_pos = np.zeros((20,3))
-        top_pos[0:2, :] = [-1,0,self.low_z-2]
-        top_pos[2:18, :] = [*self.rotate(np.array((1, 0)), self.rot_30), self.low_z]
-        # top_pos[18:, :] = [0,0,self.low_z]
-        top_pos[18:, :] = [-1,0,self.low_z]
         for i in self.useful_agents.values():
             self.to_be_moved.append(i)
-            # print("Moving useful agent", i.delta_message.id)
-            if i.delta_message.id not in [10, 11]:
-                pos = [[0,0,self.low_z] for i in range(20)]
-                i.move_useful(pos)
+            if i.delta_message.id not in [14, 15]:
+                i.move_useful(self.right_top_pos)
             else:
-                i.move_useful(top_pos)
+                i.move_useful(self.left_top_pos)
         self.wait_until_done()
     # def reset(self):
     #     """ Push the block towards the back a little and retract the fingers """
@@ -161,17 +166,19 @@ class DeltaRobotEnv():
     def wait_until_done(self, topandbottom=False):
         done_moving = False
         while not done_moving:
+            # print(self.to_be_moved)
             for i in self.to_be_moved:
                 try:
                     received = i.esp01.recv(BUFFER_SIZE)
                     ret = received.decode().strip()
                     if ret == "A": 
                         i.done_moving = True
+                        time.sleep(0.5)
                 except Exception as e: 
                     # print(e)
                     pass
             done_moving = all([i.done_moving for i in self.to_be_moved])
-        
+        time.sleep(0.5)
         for i in self.useful_agents.values():
             i.done_moving = False
         del self.to_be_moved[:]
@@ -218,20 +225,38 @@ class DeltaRobotEnv():
             x0, y0 = 0, 0
 
             """ Generate Bezier curve trajectory using REPS variables and smoothen trajectory using DMP """
-            skill_traj = self.Bezier_Curve((x1, y1), (x2, y2), (x3, y3), (x4, y4))
-
-            skill_traj[:, 1][skill_traj[:, 1] < -0.1] = -0.1
-            # skill_traj[:, 1][skill_traj[:, 1] > 5] = 5
-            skill_traj[:, 0][skill_traj[:, 0] < -2.5] = -2.5
+            skill_traj = self.Bezier_Curve(np.array([x0, y0]), np.array([x1, y1]), np.array([x2, y2]), np.array([x3, y3]))
+            skill_traj[:, 1] = np.clip(skill_traj[:, 1], -0.1, 6)
+            skill_traj[:, 0] = np.clip(skill_traj[:, 0], -2.5, 2.5)
             for i in range(20):
                 xy = self.rotate(np.array((0,0)) - np.array((skill_traj[i][0], self.rot_30)), 0)
                 self.skill_traj[i] = [*xy, self.low_z - skill_traj[i][1]]
             self.skill_hold_traj = np.linspace([0, 0], [prev_y1, 0], 20)
 
         elif self.skill == "skill3":
-            x1, y1 = (self.action[0] + 1)/2*-1.5 + 0, (self.action[1] + 1)/2*1 + 0
-            x2, y2 = (self.action[2] + 1)/2*-2.3 + 0, (self.action[3] + 1)/2*1 + 0
-            x3, y3 = (self.action[4] + 1)/2*-2.2 - 0.25, (self.action[5] + 1)/2*4 + 0.5
+            # Left grippers
+            x1, y1 = (self.action[0] + 1)/2*-0.6 + 0, (self.action[1] + 1)/2*0.0 + 0
+            x2, y2 = (self.action[2] + 1)/2*-1.2 + 0, (self.action[3] + 1)/2*0.0 + 0
+            x3, y3 = (self.action[4] + 1)/2*-1.3 - 0.25, (self.action[5] + 1)/2*2 + 0.5
+            x0, y0 = 0.0, 0.0
+            left_skill_traj = self.Bezier_Curve(np.array([x0, y0]), np.array([x1, y1]), np.array([x2, y2]), np.array([x3, y3]))
+            left_skill_traj[:, 1] = np.clip(left_skill_traj[:, 1], -0.1, 6)
+            left_skill_traj[:, 0] = np.clip(left_skill_traj[:, 0], -2.5, 2.5)
+            # Right grippers
+            x1, y1 = (self.action[0] + 1)/2*0.6 + 0, (self.action[1] + 1)/2*0.5 + 0
+            x2, y2 = (self.action[2] + 1)/2*1.2 + 0, (self.action[3] + 1)/2*0.5 + 0
+            x3, y3 = (self.action[4] + 1)/2*1.3 + 0.25, (self.action[5] + 1)/2*3 + 0.5
+            x0, y0 = 0.0, 0.0
+            right_skill_traj = self.Bezier_Curve(np.array([x0, y0]), np.array([x1, y1]), np.array([x2, y2]), np.array([x3, y3]))
+            right_skill_traj[:, 1] = np.clip(right_skill_traj[:, 1], -0.2, 6)
+            right_skill_traj[:, 0] = np.clip(right_skill_traj[:, 0], -2.5, 2.5)
+
+            for i in range(20):
+                xy = self.rotate(np.array((0,0)) - np.array((left_skill_traj[i][0], self.rot_30)), 0)
+                self.skill_traj[i] = [*xy, self.low_z - left_skill_traj[i][1]]
+
+                xy = self.rotate(np.array((0,0)) - np.array((right_skill_traj[i][0], self.rot_30)), 0)
+                self.skill_hold_traj[i] = [*xy, self.low_z - right_skill_traj[i][1]]
 
         else:
             raise ValueError("Invalid skill Skill can be either skill1 or skill2")
@@ -247,6 +272,10 @@ class DeltaRobotEnv():
             if done_dict["is_done"]:
                 error = 10
             else: error = pos_error * -1 + rot_error * -3
+        elif self.skill == "skill3":
+            if done_dict["is_done"]:
+                error = 10
+            else: error = pos_error * -2 + rot_error * -2
 
         print(rot_error, pos_error, done_dict["is_done"])
         self.data_dict["Reward"].append(error)
