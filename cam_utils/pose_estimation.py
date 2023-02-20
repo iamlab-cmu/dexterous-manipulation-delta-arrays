@@ -56,7 +56,7 @@ if __name__=="__main__":
     reset_thresh_low = np.array((0.32, 1.2))
     reset_thresh_high = np.array((0.4, 1.4))
 
-    cam = cv2.VideoCapture(1)
+    cam = cv2.VideoCapture(0)
     cv2.namedWindow("test")
     while True:
         ret, frame = cam.read()

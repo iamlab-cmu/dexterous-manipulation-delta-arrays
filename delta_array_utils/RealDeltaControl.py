@@ -171,7 +171,7 @@ class DeltaRobotEnv():
                 try:
                     received = i.esp01.recv(BUFFER_SIZE)
                     ret = received.decode().strip()
-                    if ret == "A": 
+                    if ret == "A":
                         i.done_moving = True
                         time.sleep(0.5)
                 except Exception as e: 
