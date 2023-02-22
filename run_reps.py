@@ -1,17 +1,17 @@
 import numpy as np
 import matplotlib.pyplot as plt
-# import manip_utils.SimDeltaControl as SDC
-import delta_array_utils.RealDeltaControl as RDC
+import manip_utils.SimDeltaControl as SDC
+# import delta_array_utils.RealDeltaControl as RDC
 from rl_util.identity_policy import IdentityLowLevelPolicy
 from rl_util import env_interaction
 import pickle
 import argparse
+import os
 
 def run_reps(skill, sim_or_real):
     # Initialize the environment
     if sim_or_real == "sim":
-        pass
-        # env = SDC.DeltaRobotEnv('./config/env.yaml', skill)
+        env = SDC.DeltaRobotEnv('./config/env.yaml', skill)
     elif sim_or_real == "real":
         env = RDC.DeltaRobotEnv(skill)
     else:
@@ -61,11 +61,14 @@ def run_reps(skill, sim_or_real):
                 'low_level_policy_params_var': low_level_policy_params_var,
                 'solve_env_info': solve_env_info}
 
-    with open(f'./data/{skill}_trained_1.pkl', 'wb') as f:
+    os.makedirs(f'./data/{sim_or_real}/{skill}/')
+    num_skills = len(os.listdir(f"./data/{sim_or_real}/{skill}/"))
+    with open(f'./data/{sim_or_real}/{skill}/{num_skills+1}.pkl', 'wb') as f:
         pickle.dump(reps_policy, f)
     
 if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--skill', type=str, default='skill1')
+    parser.add_argument('--simorreal', type=str, default='sim')
     args = parser.parse_args()
-    run_reps(args.skill, "real")
+    run_reps(args.skill, args.simorreal)
