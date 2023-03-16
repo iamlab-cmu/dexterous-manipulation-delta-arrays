@@ -1,3 +1,7 @@
-traj_imgs/
-backup_imgs/
+RL_with_DMPs/traj_imgs/
+RL_with_DMPs/backup_imgs/
 *.mp4
+*.gif
+HiDex_Planner/MCTS
+HiDex_Planner/qhull
+
