@@ -50,26 +50,27 @@ class DeltaArrayAgent:
         zeros = np.clip(np.array(iks) * 0.01,self.min_joint_pos,self.max_joint_pos)
         
         # Shape of pos -> (20, 3)
-        iks = [Delta.IK(pos[i]) for i in range(20)]
+        # print(pos)
+        iks = [Delta.IK([*pos[i]]) for i in range(20)]
         non_zeros = np.clip(np.array(iks) * 0.01,self.min_joint_pos,self.max_joint_pos)
         
         if self.delta_message.id == 11:
-            iks2 = [Delta.IK([pos[i][0] + 0.63,pos[i][1] - 0.4,pos[i][2]]) for i in range(20)]
+            iks2 = [Delta.IK([*pos[i]]) for i in range(20)]
             non_zeros2 = np.clip(np.array(iks) * 0.01,self.min_joint_pos,self.max_joint_pos)
             # jts = np.hstack([non_zeros, zeros, zeros, non_zeros2])
             jts = np.hstack([zeros, non_zeros, non_zeros2, zeros])
         elif self.delta_message.id == 10:
-            iks2 = [Delta.IK([pos[i][0] - 0.866,pos[i][1] + 0.5,pos[i][2]+0.2]) for i in range(20)]
-            non_zeros2 = np.clip(np.array(iks) * 0.01,self.min_joint_pos,self.max_joint_pos)
+            iks2 = [Delta.IK([pos[i][0]-0.6,pos[i][1],pos[i][2]]) for i in range(20)]
+            non_zeros2 = np.clip(np.array(iks2) * 0.01,self.min_joint_pos,self.max_joint_pos)
             # jts = np.hstack([non_zeros, zeros, zeros, zeros])
-            jts = np.hstack([zeros, non_zeros2, non_zeros, zeros])
+            jts = np.hstack([zeros, non_zeros2, zeros, zeros])
         elif self.delta_message.id == 15:
             # jts = np.hstack([non_zeros, zeros, zeros, non_zeros])
             jts = np.hstack([zeros, non_zeros, non_zeros, zeros])
         elif self.delta_message.id == 14:
-            iks2 = [Delta.IK([pos[i][0] + 1.125,pos[i][1] - 0.65,pos[i][2]+0.2]) for i in range(20)]
+            iks2 = [Delta.IK([*pos[i]]) for i in range(20)]
             non_zeros2 = np.clip(np.array(iks2) * 0.01,self.min_joint_pos,self.max_joint_pos)
-            jts = np.hstack([zeros, non_zeros2, non_zeros, zeros])
+            jts = np.hstack([zeros, non_zeros2, zeros, zeros])
             # jts = np.hstack([non_zeros, zeros, zeros, zeros])
         else: raise ValueError("Invalid robot ID")
 

@@ -6,16 +6,15 @@ import pickle
 import matplotlib.pyplot as plt
 import socket
 
-import pydmps
-import pydmps.dmp_discrete
-
 from delta_array_utils.Prismatic_Delta import Prismatic_Delta
 from delta_array_utils.get_coords import RoboCoords
 import delta_array_utils.get_coords
 from delta_array_utils.DeltaRobotAgent import DeltaArrayAgent
 import delta_array_utils.serial_robot_mapping as srm
+from delta_array_utils.dynamic_motion_primitives import DMP
 # from cam_utils.pose_estimation import goal_tvec
 
+plt.ion()
 
 # goal_tvec = np.array(([1.0], [1.9], [25.3]))  
 
@@ -23,7 +22,7 @@ import delta_array_utils.serial_robot_mapping as srm
 BUFFER_SIZE = 20
 
 class DeltaRobotEnv():
-    def __init__(self, skill):
+    def __init__(self, skill, n_bfs = 5):
         self.robot_positions = np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]])
         self.block_pose = np.array([0, 0, 0, 0, 0, 0])
         self.target_block_pose = np.array([0, 0, 0, 0, 0, 0])
@@ -33,8 +32,16 @@ class DeltaRobotEnv():
         self.skill = skill
         self.rot_30 = np.pi/6
         # self.rot_30 = 0
-        self.low_z = 12.2
+        self.low_z = 12
         self.high_z = 5.5
+        self.n_bfs = n_bfs
+        self.start = [0, 0]
+        self.goal = [0.015, 0.02]
+        self.dmp_x = DMP(n_bfs)
+        self.dmp_y = DMP(n_bfs)
+        self.dmp_x.set_task_params(self.start[0], self.goal[0], 5, 0.01)
+        self.dmp_y.set_task_params(self.start[1], self.goal[1], 5, 0.01)
+
         
         """ Delta Robots Vars """
         self.NUM_MOTORS = 12
@@ -49,7 +56,6 @@ class DeltaRobotEnv():
         self.return_vars = {"observation": None, "reward": None, "done": None, "info": {"is_solved": False}}
         self.trajectories = []
         self.prev_action = None
-        self.skill_thresh = np.array((0.2, 1.2))
         self.skill_traj = list(np.zeros((20,3)))
         self.skill_hold_traj = list(np.zeros((20,3)))
         self.data_dict = {"Points": [], "Trajectory": [], "Reward": []}
@@ -58,7 +64,7 @@ class DeltaRobotEnv():
         self.left_top_pos[2:18, :] = [*self.rotate(np.array((0.6, 0)), 0), self.low_z]
         self.left_top_pos[18:, :] = [-1.3,0,self.low_z]
 
-        if self.skill != "skill3":
+        if self.skill != "lift":
             self.right_top_pos = [[0,0,self.low_z] for i in range(20)]
         else:
             self.right_top_pos = np.zeros((20,3))
@@ -89,16 +95,15 @@ class DeltaRobotEnv():
         self.delta_agents = []
         # Obtain numbers of 2x2 grids
         for i in range(1, 17):
-            if i!=9:
-                # Get IP Addr and socket of each grid and classify them as useful or useless
-                ip_addr = srm.inv_delta_comm_dict[i]
-                esp01 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                esp01.connect((ip_addr, 80))
-                esp01.settimeout(0.1)
-                if i not in self.robot_ids:
-                    self.useless_agents.append(DeltaArrayAgent(esp01, i))
-                else:
-                    self.useful_agents[i] = DeltaArrayAgent(esp01, i)
+            # Get IP Addr and socket of each grid and classify them as useful or useless
+            ip_addr = srm.inv_delta_comm_dict[i]
+            esp01 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            esp01.connect((ip_addr, 80))
+            esp01.settimeout(0.1)
+            if i not in self.robot_ids:
+                self.useless_agents.append(DeltaArrayAgent(esp01, i))
+            else:
+                self.useful_agents[i] = DeltaArrayAgent(esp01, i)
         
         # Move all useless robots to the top 
         for i in self.useless_agents:
@@ -137,6 +142,8 @@ class DeltaRobotEnv():
     def reset(self):
         """ Push the block towards the back a little and retract the fingers """
         print("Resetting Delta Robots...")
+        self.dmp_x.set_task_params(self.start[0], self.goal[0], 5, 0.01)
+        self.dmp_y.set_task_params(self.start[1], self.goal[1], 5, 0.01)
         for i in self.useful_agents.values():
             self.to_be_moved.append(i)
             if i.delta_message.id not in [14, 15]:
@@ -185,28 +192,6 @@ class DeltaRobotEnv():
         # print("Done!")
         return 
 
-
-    def Bezier_Curve(self, p1, p2, p3, p4):
-        points = np.array((p1, p2, p3, p4))
-        curve = np.array([(1-t)**3*p1 + 3*t*(1-t)**2*p2 + 3*t**2*(1-t)*p3 + t**3*p4 for t in np.linspace(0, 1, 20)]).T
-        skill_traj = self.DMP_trajectory(curve)
-        assert len(skill_traj) == 20
-
-        self.data_dict['Points'].append(points)
-        self.data_dict['Trajectory'].append(curve)
-        plt.plot(curve[0], curve[1])
-        plt.scatter(points[:, 0], points[:, 1])
-        plt.savefig(f"./traj_imgs/{len(os.listdir('./traj_imgs'))}.png")
-        return skill_traj
-
-    def DMP_trajectory(self, curve):
-        # Fill this function!!!!!!!!!!!!!!!!!
-        DMP = pydmps.dmp_discrete.DMPs_discrete(n_dmps=2, n_bfs=20, ay=np.ones(2) * 10.0)
-        DMP.imitate_path(y_des=curve)
-        trajectory, _, _ = DMP.rollout(tau=1)
-        trajectory = trajectory[::5]
-        return trajectory
-
     def generate_trajectory(self):
         if self.skill == "skill1":
             y1, y2 = (self.action[0] + 1)/2*0.01 + 0, (self.action[1] + 1)/2*0.005 - 0.005
@@ -215,25 +200,28 @@ class DeltaRobotEnv():
             self.skill_traj = np.linspace([0, 0], [y1, 0], 20)
             self.skill_hold_traj = np.linspace([0, 0], [y2, 0], 20)
             pickle.dump([y1, y2], open("./data/real_skill1_vars.pkl", "wb"))
-        elif self.skill == "skill2":
-            x1, y1 = (self.action[0] + 1)/2*-1.5 + 0, (self.action[1] + 1)/2*1 + 0
-            x2, y2 = (self.action[2] + 1)/2*-2.3 + 0, (self.action[3] + 1)/2*1 + 0
-            x3, y3 = (self.action[4] + 1)/2*-2.2 - 0.25, (self.action[5] + 1)/2*4 + 0.5
+        elif self.skill == "tilt":
+            pos_x = self.dmp_x.fwd_simulate(500, 150*np.array(self.action[:self.n_bfs]))
+            pos_y = self.dmp_y.fwd_simulate(500, 150*np.array(self.action[self.n_bfs:]))
             
-            """ Uncomment or comment based on whether learning skill1 is required """
-            # prev_x1, prev_y2 = pickle.load(open("./data/real_skill1_vars.pkl", "rb"))
-            x0, y0 = 0, 0
+            pos_x2 = pos_x[::len(pos_x)//20]
+            pos_y2 = pos_y[::len(pos_y)//20]
+            # plt.plot(pos_x2, pos_y2)
+            skill_traj = np.vstack([pos_x2, pos_y2]).T
+            
+            skill_traj[:, 0] = np.clip(skill_traj[:, 0], -0.005, 0.025)
+            skill_traj[:, 1] = np.clip(skill_traj[:, 1], -0.005, 0.05)
 
-            """ Generate Bezier curve trajectory using REPS variables and smoothen trajectory using DMP """
-            skill_traj = self.Bezier_Curve(np.array([x0, y0]), np.array([x1, y1]), np.array([x2, y2]), np.array([x3, y3]))
-            skill_traj[:, 1] = np.clip(skill_traj[:, 1], -0.1, 6)
-            skill_traj[:, 0] = np.clip(skill_traj[:, 0], -2.5, 2.5)
+            plt.plot(100*skill_traj[:, 0], 100*skill_traj[:, 1],color='purple', alpha=0.1)
+            plt.savefig("traj.png")
+            # print(f"Start: {skill_traj[0]}, Goal: {skill_traj[-1]}, Weights: {self.action}")
+            self.data_dict["Trajectory"].append(skill_traj)
             for i in range(20):
-                xy = self.rotate(np.array((0,0)) - np.array((skill_traj[i][0], self.rot_30)), 0)
-                self.skill_traj[i] = [*xy, self.low_z - skill_traj[i][1]]
-            self.skill_hold_traj = np.linspace([0, 0], [prev_y1, 0], 20)
+                # xy = self.rotate(np.array((0,0)) - np.array((skill_traj[i][0], self.rot_30)), 0)
+                self.skill_traj[i] = [100*skill_traj[i, 0], 0, self.low_z - 100*skill_traj[i][1]]
+            self.skill_hold_traj = np.linspace([-0.3, 0, self.low_z], [-0.3, 0, self.low_z], 20)
 
-        elif self.skill == "skill3":
+        elif self.skill == "lift":
             # Left grippers
             x1, y1 = (self.action[0] + 1)/2*-0.6 + 0, (self.action[1] + 1)/2*0.0 + 0
             x2, y2 = (self.action[2] + 1)/2*-1.2 + 0, (self.action[3] + 1)/2*0.0 + 0
@@ -268,11 +256,11 @@ class DeltaRobotEnv():
                 done_dict["is_done"] = True
                 error = 5
             else: error = pos_error
-        elif self.skill == "skill2":
+        elif self.skill == "tilt":
             if done_dict["is_done"]:
                 error = 10
             else: error = pos_error * -1 + rot_error * -3
-        elif self.skill == "skill3":
+        elif self.skill == "lift":
             if done_dict["is_done"]:
                 error = 10
             else: error = pos_error * -2 + rot_error * -2

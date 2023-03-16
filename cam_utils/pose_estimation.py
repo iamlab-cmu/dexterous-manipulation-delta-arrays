@@ -40,10 +40,10 @@ if __name__=="__main__":
     args = parser.parse_args()
     skill = args.skill
     # goal_rvec = np.array(([-0.3], [0], [0]))
-    goal_rvec = {"skill2": np.array(([0.03], [0.4], [-3.05])),
+    goal_rvec = {"skill2": np.array(([-0.5], [0.0015], [-0.10])),
                 "skill3": np.array(([-0.006], [-0.05], [-0.05])),
                 }
-    goal_tvec = {"skill2": np.array(([1.0], [1.9], [25.3])),
+    goal_tvec = {"skill2": np.array(([-0.59], [-5.20], [31.3])),
                 "skill3": np.array(([-5.24], [2.78], [26.2])),
                 }
 
@@ -52,7 +52,7 @@ if __name__=="__main__":
     # goal_tvec = np.array(([-5.0], [0.25], [25.2]))
     # goal_tvec = np.array(([1.0], [1.9], [25.3]))  
 
-    thresh = np.array((0.10, 0.5))
+    thresh = np.array((0.10, 0.7))
     reset_thresh_low = np.array((0.32, 1.2))
     reset_thresh_high = np.array((0.4, 1.4))
 

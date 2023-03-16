@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import manip_utils.SimDeltaControl as SDC
-# import delta_array_utils.RealDeltaControl as RDC
+# import manip_utils.SimDeltaControl as SDC
+import delta_array_utils.RealDeltaControl as RDC
 from rl_util.identity_policy import IdentityLowLevelPolicy
 from rl_util import env_interaction
 import pickle
@@ -9,6 +9,7 @@ import argparse
 import os
 
 def run_reps(skill, sim_or_real):
+    n_bfs = 5
     # Initialize the environment
     if sim_or_real == "sim":
         env = SDC.DeltaRobotEnv('./config/env.yaml', skill)
@@ -22,15 +23,15 @@ def run_reps(skill, sim_or_real):
     if skill == "skill1":
         policy = IdentityLowLevelPolicy(2)
         mu = np.array([0, 0])
-        sigma = 0.44
-    elif skill == "skill2":
-        policy = IdentityLowLevelPolicy(6)
-        mu = np.array([0, 0, 0, 0, 0, 0])
-        sigma = 0.44
-    elif skill == "skill3":
-        policy = IdentityLowLevelPolicy(6)
-        mu = np.array([0, 0, 0, 0, 0, 0])
-        sigma = 0.44
+        sigma = 0.50
+    elif skill == "tilt":
+        policy = IdentityLowLevelPolicy(n_bfs*2)
+        mu = np.zeros(n_bfs*2)
+        sigma = 0.7
+    elif skill == "lift":
+        policy = IdentityLowLevelPolicy(n_bfs*2)
+        mu = np.zeros(n_bfs*2)
+        sigma = 0.5
     
     max_num_reps_attempts = 5
     max_reps_param_updates = 20

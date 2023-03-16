@@ -247,8 +247,9 @@ class RoboCoords:
 
 if __name__ == "__main__":
     RC = RoboCoords()
-    vec = RC.get_dist_vec((162.378, 131.25), norm=True,plot=True)
-    # vec = RC.get_dist_vec((9999999999999999, 131.25), norm=True,plot=True)
-    RC.rotate(vec, np.pi, plot=True)
+    print(RC.robot_positions)
+    # vec = RC.get_dist_vec((162.378, 131.25), norm=True,plot=True)
+    # # vec = RC.get_dist_vec((9999999999999999, 131.25), norm=True,plot=True)
+    # RC.rotate(vec, np.pi, plot=True)
     # RC.get_rot_vec((162.378,131.25), np.pi/4, norm=True,plot=True)
     # RC.fill_pattern(RC.get_dist_vec((131.25, 162.378)))
