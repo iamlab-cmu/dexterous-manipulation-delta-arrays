@@ -4,4 +4,6 @@ RL_with_DMPs/backup_imgs/
 *.gif
 HiDex_Planner/MCTS
 HiDex_Planner/qhull
-
+.vscode/
+.ipynb_checkpoints/
+__pycache__/

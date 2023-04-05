@@ -17,11 +17,11 @@ class RoboCoords:
 
         for i in range(8):
             for j in range(8):
-                if i%2==0:
-                    self.robot_positions[i,j] = (i*43.301, -21.65 + j*-37.5)
+                if j%2==0:
+                    robot_positions[i,j] = (j*37.5, -21.65 + i*-43.301)
                 else:
-                    self.robot_positions[i,j] = (i*43.301, j*-37.5)
-                print(f'{i}, {j}, {self.robot_positions[i,j]}')
+                    robot_positions[i,j] = (j*37.5, i*-43.301)
+                # print(f'{i}, {j}, {self.robot_positions[i,j]}')
 
         self.robo_dict_inv = {
             **dict.fromkeys([(0,0),(1,0),(0,1),(1,1)], 16), 

@@ -39,7 +39,7 @@ class DeltaArrayAgent:
     def reset(self):
         for j in range(20):
             # ee_pts = [0,0,5.5]
-            ee_pts = [0,0,13.5]
+            ee_pts = [0,0,12]
             pts = Delta.IK(ee_pts)
             pts = np.array(pts) * 0.01
             pts = np.clip(pts,0.005,0.095)
