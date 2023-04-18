@@ -19,7 +19,7 @@ import delta_array_utils.serial_robot_mapping as srm
 
 # plt.ion()
 BUFFER_SIZE = 20
-
+13
 low_z = 11.5
 high_z = low_z - 2.5
 
