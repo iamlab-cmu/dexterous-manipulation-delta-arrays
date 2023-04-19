@@ -15,11 +15,12 @@ from isaacgym_utils.assets import GymBoxAsset, GymCapsuleAsset
 from isaacgym_utils.math_utils import RigidTransform_to_transform
 from isaacgym_utils.draw import draw_transforms, draw_contacts, draw_camera
 
+import torch
 import networkx as nx
 device = torch.device("cuda:0")
 
 class DeltaArraySim:
-    def __init__(self, scene, cfg, obj, obj_name, num_tips = [8,8]):
+    def __init__(self, scene, cfg, obj, obj_name, num_tips = [8,8], run_no = 0):
         """ Main Vars """
         self.scene = scene
         self.cfg = cfg
@@ -43,6 +44,12 @@ class DeltaArraySim:
                     rb_props=cfg['capsule']['rb_props'],
                     asset_options=cfg['capsule']['asset_options']
                 ))
+        """ Data Collection Vars """
+        self.actions = {}
+        self.pre_imgs = {}
+        self.post_imgs = {}
+        self.envs_done = 0
+        self.init_box_pose = {}
         
         """ Fingertip Vars """
         self.finger_positions = np.zeros((8,8)).tolist()
@@ -59,6 +66,7 @@ class DeltaArraySim:
         self.contact_fingers = [set() for _ in range(self.scene.n_envs)]
         self.attraction_error = np.zeros((8,8))
         self.goal = np.zeros((8,8))
+        self.finga_q = gymapi.Quat(0, 0.707, 0, 0.707)
 
         """ Sim Util Vars """
         self.attractor_handles = {}
@@ -84,6 +92,7 @@ class DeltaArraySim:
                 scene.add_asset(f'fingertip_{i}_{j}', self.fingertips[i][j], gymapi.Transform())
 
     def set_finger_pose(self, env_idx):
+        self.actions[env_idx] = np.zeros((8,8,2))
         for i in range(self.num_tips[0]):
             for j in range(self.num_tips[1]):
                 self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j], r=self.finga_q)])
@@ -91,13 +100,32 @@ class DeltaArraySim:
     def set_block_pose(self, scene):
         block_p = gymapi.Vec3(np.random.uniform(0,0.313407), np.random.uniform(0,0.2803), self.cfg[self.obj_name]['dims']['sz'] / 2 + 0.002)
         self.object.set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p)])
-        
+
 
     def reset_finger_pose(self, env_idx):
         self.actions[env_idx] = np.zeros((8,8,2))
         for i in range(self.num_tips[0]):
             for j in range(self.num_tips[1]):
                 self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0.3), r=self.finga_q)])
+
+    def view_cam_img(self, env_idx, pre = 'pre'):
+        self.scene.render_cameras()
+            # get images of cameras in first env 
+        color_list, depth_list, seg_list, normal_list = [], [], [], []
+        frames = self.cam.frames(env_idx, self.cam_name)
+        color_list.append(frames['color'])
+        # depth_list.append(frames['depth'])
+        seg_map = frames['seg']
+        normal_list.append(frames['normal'])
+
+        self.vis_cam_images(color_list)
+        # self.vis_cam_images(depth_list)
+        if pre == 'pre':
+            self.init_box_pose[env_idx] = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
+            self.pre_imgs[env_idx] = seg_map
+        else:
+            self.post_imgs[env_idx] = seg_map
+        # self.vis_cam_images(normal_list)
 
     def vis_cam_images(self, image_list):
         for i in range(0, len(image_list)):
@@ -107,7 +135,7 @@ class DeltaArraySim:
             if im.min() < 0:
                 im = im / 2 + 0.5
             plt.imshow(im)
-        plt.draw()
+        # plt.draw()
         plt.pause(0.001)
     
     def get_nearest_fingertips(self, env_idx, name = 'rope'):
@@ -134,5 +162,33 @@ class DeltaArraySim:
         return self.attraction_error
 
     def data_collection(self, scene, env_idx, t_step, _):
-
-        return
+        t_step = t_step % self.time_horizon
+        env_ptr = self.scene.env_ptrs[env_idx]
+        if t_step == 0:
+            self.set_finger_pose(env_idx)
+            self.view_cam_img(env_idx)
+        elif t_step == 5:
+            self.neighborhood_fingers[env_idx] = self.get_nearest_fingertips(env_idx, name = self.obj_name)
+            self.set_finger_pose(env_idx)
+        elif t_step == 6:
+            for i in range(self.num_tips[0]):
+                for j in range(self.num_tips[1]):
+                    if (i,j) in self.neighborhood_fingers[env_idx]:
+                        x_move, y_move = self.actions[env_idx][i,j]
+                        # self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + self.circles[t_step], r=self.finga_q)) 
+                        self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(x_move, y_move, 0.05), r=self.finga_q)) 
+                    else:
+                        self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0.3), r=self.finga_q)) 
+        elif 6 <= t_step < self.time_horizon - 3:
+            # self.detect_contacts(env_idx)
+            pass
+        elif t_step == self.time_horizon - 3:
+            self.reset_finger_pose(env_idx)
+        elif t_step == self.time_horizon - 1:
+            self.view_cam_img(env_idx, pre='post')
+            # self.save_cam_images(env_idx)
+            # if env_idx == self.scene.n_envs-1:
+            #     self.image_id += 1
+            #     self.seed += 1
+        else:
+            pass

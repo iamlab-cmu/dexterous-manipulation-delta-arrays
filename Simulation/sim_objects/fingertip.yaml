@@ -1,0 +1,96 @@
+scene:
+  n_envs: 1
+  es: 1
+  gui: 0 
+  cam:
+    cam_pos: [1.2, 0, 1.2]
+    look_at: [0.5, 0, 1]
+  gym:
+    dt: 0.01
+    substeps: 2
+    up_axis: z
+
+  # type: physx
+  # use_gpu_pipeline: True
+  # physx:
+  #   solver_type: 1
+  #   num_position_iterations: 8
+  #   num_velocity_iterations: 1
+  #   rest_offset: 0.0
+  #   contact_offset: 0.001
+  #   friction_offset_threshold: 0.001
+  #   friction_correlation_distance: 0.0005
+  #   use_gpu: True
+  use_gpu_pipeline: True
+  flex:
+    solver_type: 5
+    num_outer_iterations: 4
+    num_inner_iterations: 30
+    relaxation: 0.75
+    # warm_start: 0.8
+    shape_collision_margin: 1e-5
+    contact_regularization: 1e-7
+    deterministic_mode: True
+    friction_mode: 2
+  device:
+    compute: 0
+    graphics: 0
+
+rope:
+  dims:
+    sx: 0.07
+    sy: 0.07
+    sz: 0.001
+  asset_options:
+    fix_base_link: False
+  attractor_props:
+    stiffness: 1e3
+    damping: 2.5e2
+  shape_props:
+    thickness: 1e-4
+
+
+block:
+  dims:
+    sx: 0.07
+    sy: 0.07
+    sz: 0.035
+  # dims:
+  #   sx: 0.03
+  #   sy: 0.03
+  #   sz: 0.03
+  shape_props:
+    friction: 0.2
+    rolling_friction: 0.01
+    torsion_friction: 0.00001
+    thickness: 1e-4
+  rb_props: 
+    flags: none
+    color: [0.2, 0.7, 0.2]
+    mass: 0.113
+  asset_options:
+    density: 1000
+
+capsule:
+  dims:
+    radius: 0.0075
+    width: 0.020
+  shape_props:
+    friction: 0.8
+    rolling_friction: 0.01
+    torsion_friction: 0.1
+    thickness: 1e-4
+  rb_props: 
+    flags: none
+    color: [0.2, 0.7, 0.2]
+    mass: 0.4
+  asset_options:
+    density: 1000
+  attractor_props:
+    stiffness: 1e3
+    damping: 2.5e2
+
+
+camera:
+  width: 320
+  height: 240

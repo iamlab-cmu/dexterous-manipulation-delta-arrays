@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<robot name="rope">
+    <material name="white">
+        <color rgba="1 1 1 1" />
+    </material>
+    <link name="world">
+        <!-- <visual>
+            <origin xyz="0.1742, 0.15765 0" rpy="0 0 0" />
+            <geometry>
+                <box size="1 1 0.02" />
+            </geometry>
+        </visual>
+        <collision>
+            <origin xyz="0.1742, 0.15765 0" rpy="0 0 0" />
+            <geometry>
+                <box size="1 1 0.02" />
+            </geometry>
+        </collision> -->
+    </link>
+    <link name="base_link">
+        <fem>
+            <origin xyz="0.2 0.1 0.03" rpy="0.0 0.0 0.0"/>
+            <density value="1500"/>
+            <youngs value="1e7"/>
+            <poissons value="0.45"/>
+            <damping value="0.1"/>
+            <attachDistance value="0.0"/>
+            <tetmesh filename="../tets/normie_rope.tet"/>
+        </fem>
+    </link>
+</robot>
