@@ -1,0 +1,138 @@
+import numpy as np
+import time
+import pickle as pkl
+from scipy import spatial
+from matplotlib import cm
+import matplotlib.pyplot as plt
+import cv2
+
+from autolab_core import YamlConfig, RigidTransform, PointCloud
+from visualization.visualizer3d import Visualizer3D as vis3d
+
+from isaacgym import gymapi
+from isaacgym_utils.scene import GymScene
+from isaacgym_utils.assets import GymBoxAsset, GymCapsuleAsset
+from isaacgym_utils.math_utils import RigidTransform_to_transform
+from isaacgym_utils.draw import draw_transforms, draw_contacts, draw_camera
+
+import networkx as nx
+device = torch.device("cuda:0")
+
+class DeltaArraySim:
+    def __init__(self, scene, cfg, obj, obj_name, num_tips = [8,8]):
+        """ Main Vars """
+        self.scene = scene
+        self.cfg = cfg
+        self.run_no = run_no
+        self.num_tips = num_tips
+        self.fingertips = np.zeros((8,8)).tolist()
+        self.cam = 0
+        self.seed = 0
+        self.image_id  = 0
+        self.object = obj
+        self.obj_name = obj_name
+        
+        plt.ion()
+        plt.show()
+
+        # Introduce delta robot EE in the env
+        for i in range(self.num_tips[0]):
+            for j in range(self.num_tips[1]):
+                self.fingertips[i][j] = (GymCapsuleAsset(scene, **cfg['capsule']['dims'],
+                    shape_props=cfg['capsule']['shape_props'],
+                    rb_props=cfg['capsule']['rb_props'],
+                    asset_options=cfg['capsule']['asset_options']
+                ))
+        
+        """ Fingertip Vars """
+        self.finger_positions = np.zeros((8,8)).tolist()
+        self.kdtree_positions = np.zeros((64, 2))
+        for i in range(self.num_tips[0]):
+            for j in range(self.num_tips[1]):
+                if j%2==0:
+                    self.finger_positions[i][j] = gymapi.Vec3(i*0.043301 + 0.02, j*0.0375 + 0.02, 0)
+                    self.kdtree_positions[i*8 + j, :] = (i*0.043301 + 0.02, j*0.0375 + 0.02)
+                else:
+                    self.finger_positions[i][j] = gymapi.Vec3(0.02165 + 0.02 + i*0.043301, j*0.0375 + 0.02, 0)
+                    self.kdtree_positions[i*8 + j, :] = (0.02165 + 0.02 + i*0.043301, j*0.0375 + 0.02)
+        self.neighborhood_fingers = [[] for _ in range(self.scene.n_envs)]
+        self.contact_fingers = [set() for _ in range(self.scene.n_envs)]
+        self.attraction_error = np.zeros((8,8))
+        self.goal = np.zeros((8,8))
+
+        """ Sim Util Vars """
+        self.attractor_handles = {}
+        self.time_horizon = 107
+
+    def set_attractor_handles(self, env_idx):
+        """ Creates an attractor handle for each fingertip """
+        env_ptr = self.scene.env_ptrs[env_idx]
+        self.attractor_handles[env_ptr] = np.zeros((8,8)).tolist()
+        for i in range(self.num_tips[0]):
+            for j in range(self.num_tips[1]):
+                attractor_props = gymapi.AttractorProperties()
+                attractor_props.stiffness = self.cfg['capsule']['attractor_props']['stiffness']
+                attractor_props.damping = self.cfg['capsule']['attractor_props']['damping']
+                attractor_props.axes = gymapi.AXIS_ALL
+
+                attractor_props.rigid_handle = self.scene.gym.get_rigid_handle(env_ptr, f'fingertip_{i}_{j}', 'capsule')
+                self.attractor_handles[env_ptr][i][j] = self.scene.gym.create_rigid_body_attractor(env_ptr, attractor_props)
+
+    def add_asset(self, scene):
+        for i in range(self.num_tips[0]):
+            for j in range(self.num_tips[1]):
+                scene.add_asset(f'fingertip_{i}_{j}', self.fingertips[i][j], gymapi.Transform())
+
+    def set_finger_pose(self, env_idx):
+        for i in range(self.num_tips[0]):
+            for j in range(self.num_tips[1]):
+                self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j], r=self.finga_q)])
+
+    def set_block_pose(self, scene):
+        block_p = gymapi.Vec3(np.random.uniform(0,0.313407), np.random.uniform(0,0.2803), self.cfg[self.obj_name]['dims']['sz'] / 2 + 0.002)
+        self.object.set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p)])
+        
+
+    def reset_finger_pose(self, env_idx):
+        self.actions[env_idx] = np.zeros((8,8,2))
+        for i in range(self.num_tips[0]):
+            for j in range(self.num_tips[1]):
+                self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0.3), r=self.finga_q)])
+
+    def vis_cam_images(self, image_list):
+        for i in range(0, len(image_list)):
+            plt.figure()
+            im = image_list[i].data
+            # for showing normal map
+            if im.min() < 0:
+                im = im / 2 + 0.5
+            plt.imshow(im)
+        plt.draw()
+        plt.pause(0.001)
+    
+    def get_nearest_fingertips(self, env_idx, name = 'rope'):
+        # if env_idx == 0:
+        box_coords = self.object.get_rb_poses_as_np_array(env_idx, name)
+        x, y, z = box_coords[0][:3]
+        xs, ys = np.linspace(x - 0.045, x + 0.045, 50), np.linspace(y - 0.045, y + 0.045, 50)
+        idxs = set()
+        for i in xs:
+            for j in ys:
+                idx = spatial.KDTree(self.kdtree_positions).query((i,j))[1]
+                # if env_idx==0:
+                #     print(self.finger_positions[idx//8][idx%8].x - x, self.finger_positions[idx//8][idx%8].y - y)
+                diff_x, diff_y = self.finger_positions[idx//8][idx%8].x - x, self.finger_positions[idx//8][idx%8].y - y
+                # if abs(diff_x) > 0.0425 or abs(diff_y) > 0.0425:
+                if abs(diff_x) > 0.04 or abs(diff_y) > 0.04:
+                    idxs.add((idx//8, idx%8))
+        return idxs
+
+    def get_attraction_error(self, idxs):
+        for i,j in enumerate(idxs):
+            final_trans = self.object.get_rb_transforms(env_idx, f'fingertip_{i}_{j}')[0]
+            self.attraction_error[i,j] = np.linalg.norm(np.array((final_trans.p.x, final_trans.p.y, final_trans.p.z)) - goal[i,j])
+        return self.attraction_error
+
+    def data_collection(self, scene, env_idx, t_step, _):
+
+        return
