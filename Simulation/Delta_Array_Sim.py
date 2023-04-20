@@ -121,11 +121,14 @@ class DeltaArraySim:
         self.vis_cam_images(color_list)
         # self.vis_cam_images(depth_list)
         if pre == 'pre':
-            self.init_box_pose[env_idx] = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
+            # self.init_box_pose[env_idx] = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
             self.pre_imgs[env_idx] = seg_map
         else:
             self.post_imgs[env_idx] = seg_map
-        # self.vis_cam_images(normal_list)
+            
+    def save_cam_images(self, env_idx):
+        plt.imsave(f'./data/pre_manip_data/image_{self.image_id}_{self.run_no}.png', self.pre_imgs[env_idx].data, cmap = 'gray')
+        plt.imsave(f'./data/post_manip_data/image_{self.image_id}_{self.run_no}.png', self.post_imgs[env_idx].data, cmap = 'gray')
 
     def vis_cam_images(self, image_list):
         for i in range(0, len(image_list)):
@@ -186,7 +189,7 @@ class DeltaArraySim:
             self.reset_finger_pose(env_idx)
         elif t_step == self.time_horizon - 1:
             self.view_cam_img(env_idx, pre='post')
-            # self.save_cam_images(env_idx)
+            self.save_cam_images(env_idx)
             # if env_idx == self.scene.n_envs-1:
             #     self.image_id += 1
             #     self.seed += 1
