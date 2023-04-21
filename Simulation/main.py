@@ -15,7 +15,7 @@ class DeltaArrayEnvironment():
     def __init__(self, yaml_path, run_no):
         gym = gymapi.acquire_gym()
         self.run_no = run_no
-        self.cfg = YamlConfig('./sim_objects/fingertip.yaml')
+        self.cfg = YamlConfig(yaml_path)
         self.scene = GymScene(self.cfg['scene'])
         if not os.path.exists('./data/manip_data'):   
             os.makedirs('./data/manip_data')
@@ -39,9 +39,12 @@ class DeltaArrayEnvironment():
         self.fingers = Delta_Array_Sim.DeltaArraySim(self.scene, self.cfg, obj = self.object, obj_name = self.obj_name, num_tips = [8,8], run_no=self.run_no)
 
         self.cam = GymCamera(self.scene, cam_props = self.cfg['camera'])
+        # print(RigidTransform.x_axis_rotation(np.deg2rad(180)))
+        rot = RigidTransform.x_axis_rotation(np.deg2rad(180)) #@RigidTransform.z_axis_rotation(np.deg2rad(90))
+        # print(rot)
         self.cam_offset_transform = RigidTransform_to_transform(RigidTransform(
-            rotation=RigidTransform.x_axis_rotation(np.deg2rad(180)),
-            translation = np.array([0.1742, 0.15765, 0.35])
+            rotation=rot,
+            translation = np.array([0.132, -0.179, 0.35])
         ))
         self.cam_name = 'hand_cam0'
 
@@ -69,10 +72,10 @@ class DeltaArrayEnvironment():
             self.fingers.set_attractor_handles(i)
 
         # object_p = gymapi.Vec3(np.random.uniform(0,0.348407), np.random.uniform(0,0.3153), self.cfg[self.obj_name]['dims']['sz'] / 2 + 0.1)
-        object_p = gymapi.Vec3(0.348407/2, 0.3153/2, self.cfg[self.obj_name]['dims']['sz'] / 2 + 0.1)
+        object_p = gymapi.Vec3(0.132, -0.179, self.cfg[self.obj_name]['dims']['sz'] / 2 + 0.002)
         print("BOX_POS = ", object_p)
         object_transforms = [gymapi.Transform(p=object_p) for _ in range(self.scene.n_envs)]
-        print("Hakuna!", object_transforms[0].p)
+        # print("Hakuna!", object_transforms[0].p)
         for env_idx in self.scene.env_idxs:
             if self.obj_name == 'block':
                 self.object.set_rb_transforms(env_idx, self.obj_name, [object_transforms[env_idx]])
@@ -81,7 +84,7 @@ class DeltaArrayEnvironment():
             self.fingers.set_finger_pose(env_idx)
 
 if __name__ == "__main__":
-    yaml_path = './sim_objects/fingertip.yaml'
+    yaml_path = './config/env.yaml'
     run_no = 0
     env = DeltaArrayEnvironment(yaml_path, run_no)
     env.run()
