@@ -70,11 +70,45 @@ class NNHelper:
         # neg_neighbors = robot_positions[neg_idxs[:,0], neg_idxs[:,1]]
         return idxs, neg_idxs, DG, pos
 
-    def draw_graph(self, graph, pos, scale=1, fig_size=7):
+    def get_ott_robots(self, boundary_pts, num_clusters=16):
+        kmeans = KMeans(n_clusters=16, random_state=0).fit(boundary_pts)
+        self.cluster_centers = np.flip(np.sort(kmeans.cluster_centers_))
+        hull = ConvexHull(self.cluster_centers)
+        A, b = hull.equations[:, :-1], hull.equations[:, -1:]
+        idxs = set()
+        eps = np.finfo(np.float32).eps
+
+        # Store idx of all robots within convex hull
+        for n, i in enumerate(self.kdtree_positions):
+            if (np.all(i @ A.T + b.T < eps, axis=1)):
+                idxs.add((n//8, n%8))
+        return idxs
+
+    def draw_graph(self, graph, pos=None, scale=1, fig_size=7):
         plt.figure(figsize=(fig_size*scale,fig_size*scale))
+        if pos == None:
+            pos = nx.spring_layout(graph)
         nx.draw(graph, pos, with_labels=True, node_color='orange', 
                 node_size=750*scale,font_weight='bold', font_size=int(11*scale), 
                 arrowsize=int(10*scale), edge_cmap=mpl.colormaps['jet'])
         edges = nx.draw_networkx_edge_labels(graph, pos, nx.get_edge_attributes(graph,'label'),
         font_color='red',font_weight='bold', font_size=int(10*scale))
+        plt.show()
+
+    def draw_plain_graph(self, graph,scale=1, fig_size=7):
+        plt.figure(figsize=(fig_size*scale,fig_size*scale))
+        pos = nx.circular_layout(graph)
+        edges = graph.edges()
+        colors = [graph[u][v]['color'] for u, v in edges]
+        nx.draw(graph, pos, with_labels=True, node_color='orange', 
+                node_size=750*scale,font_weight='bold', font_size=int(11*scale), 
+                width=int(3*scale),arrowsize=int(20*scale), edge_color=colors,arrowstyle='-|>')
+        # arrows = nx.draw_networkx_edges(
+        #     graph,
+        #     pos=pos,
+        #     arrows=True,
+        #     width=int(5*scale),
+        #     edge_color=colors,
+        #       # I personally think this style scales better
+        # )
         plt.show()

@@ -5,6 +5,7 @@ from scipy import spatial
 from matplotlib import cm
 import matplotlib.pyplot as plt
 import cv2
+import pandas as pd
 
 from autolab_core import YamlConfig, RigidTransform, PointCloud
 from visualization.visualizer3d import Visualizer3D as vis3d
@@ -48,10 +49,11 @@ class DeltaArraySim:
         self.pre_imgs = {}
         self.post_imgs = {}
         self.envs_done = 0
-        self.init_box_pose = {}
+        self.block_com = np.array(((0.0,0.0),(0.0,0.0)))
         self.plane_size = 1000*np.array([(0.132-0.025, -0.179-0.055),(0.132+0.025, -0.179+0.055)])
-        cols = ['com_x', 'com_y'] + [f'robotx_{i}' for i in range(64)] + [f'roboty_{i}' for i in range(64)]
+        cols = ['com_x1', 'com_y1', 'com_x2', 'com_y2'] + [f'robotx_{i}' for i in range(64)] + [f'roboty_{i}' for i in range(64)]
         self.df = pd.DataFrame(columns=cols)
+        self.save_iters = 0
         
         """ Fingertip Vars """
         self.finger_positions = np.zeros((8,8)).tolist()
@@ -93,17 +95,27 @@ class DeltaArraySim:
             for j in range(self.num_tips[1]):
                 scene.add_asset(f'fingertip_{i}_{j}', self.fingertips[i][j], gymapi.Transform())
 
-    def set_finger_pose(self, env_idx, pos = "high"):
-        self.actions[env_idx] = np.zeros((8,8,2))
+    def set_finger_pose(self, env_idx, pos = "high", all_or_one = "all"):
+        if pos == "high":
+            self.actions[env_idx] = np.zeros((8,8,2))
+        elif all_or_one == "all":
+            self.actions[env_idx] = np.random.uniform(-0.025, 0.025, (8,8,2))
+        else:
+            self.actions[env_idx] = np.zeros((8,8,2))
+
         for i in range(self.num_tips[0]):
             for j in range(self.num_tips[1]):
-                if ((i,j) in self.neighborhood_fingers[env_idx]) and (pos=="low"):
+                if pos=="high":
+                    self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j], r=self.finga_q)])
+                elif (i,j) in self.neighborhood_fingers[env_idx][1]:
                     self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.45), r=self.finga_q)])
                 else:
-                    self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j], r=self.finga_q)])
+                    self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.47), r=self.finga_q)])
+                
 
     def set_block_pose(self, env_idx):
         # block_p = gymapi.Vec3(np.random.uniform(0,0.313407), np.random.uniform(0,0.2803), self.cfg[self.obj_name]['dims']['sz'] / 2 + 0.002)
+        self.block_com[0] = (0.132, -0.179)
         block_p = gymapi.Vec3(0.132, -0.179, self.cfg[self.obj_name]['dims']['sz'] / 2 + 0.002)
         self.object.set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p)])
 
@@ -126,7 +138,13 @@ class DeltaArraySim:
             
     def save_cam_images(self, env_idx):
         # plt.imsave(f'./data/pre_manip_data/image_{self.image_id}_{self.run_no}.png', self.pre_imgs[env_idx].data, cmap = 'gray')
-        plt.imsave(f'./data/post_manip_data/image_{self.image_id}_{self.run_no}.png', self.pre_imgs[env_idx], cmap = 'gray')
+        final_trans = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
+        self.block_com[1] = (final_trans.p.x, final_trans.p.y)
+        robot_actions = list(self.actions[env_idx][:,:,0].flatten()) + list(self.actions[env_idx][:,:,1].flatten())
+        # print(list(self.block_com.flatten()))
+        # print(robot_actions)
+        self.df.loc[len(self.df)] = list(self.block_com.flatten()) + robot_actions
+        # plt.imsave(f'./data/post_manip_data/image_{self.image_id}_{self.run_no}.png', self.pre_imgs[env_idx], cmap = 'gray')
 
     def vis_cam_images(self, image_list):
         for i in range(0, len(image_list)):
@@ -144,18 +162,22 @@ class DeltaArraySim:
         img = self.pre_imgs[env_idx]
         
         boundary_pts = np.array(np.where(img==255)).T
+        # self.block_com[0] = np.mean(boundary_pts, axis=0)
+        
         min_x, min_y = np.min(boundary_pts, axis=0)
         max_x, max_y = np.max(boundary_pts, axis=0)
 
         boundary_pts[:,0] = (boundary_pts[:,0] - min_x)/(max_x-min_x)*(self.plane_size[1][0]-self.plane_size[0][0])+self.plane_size[0][0]
         boundary_pts[:,1] = (boundary_pts[:,1] - min_y)/(max_y-min_y)*(self.plane_size[1][1]-self.plane_size[0][1])+self.plane_size[0][1]
-        idxs, neg_idxs, DG, pos = self.nn_helper.get_nn_robots(boundary_pts, 16)
-        idxs2 = np.array(list(idxs))
-        plt.scatter(*self.nn_helper.cluster_centers.T)
-        plt.scatter(*self.nn_helper.robot_positions[idxs2[:,0], idxs2[:,1]].T)
+        # idxs, neg_idxs, DG, pos = self.nn_helper.get_nn_robots(boundary_pts, 16)
+        # idxs2 = np.array(list(idxs))
+        # plt.scatter(*self.nn_helper.cluster_centers.T)
+        # plt.scatter(*self.nn_helper.robot_positions[idxs2[:,0], idxs2[:,1]].T)
         # plt.scatter(*self.nn_helper.robot_positions[neg_idxs[:,0], neg_idxs[:,1]].T, color='red')
-        plt.savefig(f'./data/post_manip_data/nn_{self.image_id}_{self.run_no}.png')
-        return idxs
+        # plt.savefig(f'./data/post_manip_data/nn_{self.image_id}_{self.run_no}.png')
+
+        neg_idxs = self.nn_helper.get_ott_robots(boundary_pts)
+        return None, neg_idxs
 
     def get_attraction_error(self, idxs):
         for i,j in enumerate(idxs):
@@ -163,7 +185,9 @@ class DeltaArraySim:
             self.attraction_error[i,j] = np.linalg.norm(np.array((final_trans.p.x, final_trans.p.y, final_trans.p.z)) - goal[i,j])
         return self.attraction_error
 
-    def data_collection(self, scene, env_idx, t_step, _):
+    def data_collection_expt1(self, scene, env_idx, t_step, _):
+        # try:
+        
         t_step = t_step % self.time_horizon
         env_ptr = self.scene.env_ptrs[env_idx]
         if t_step == 0:
@@ -176,22 +200,72 @@ class DeltaArraySim:
         elif t_step == 6:
             for i in range(self.num_tips[0]):
                 for j in range(self.num_tips[1]):
-                    if (i,j) in self.neighborhood_fingers[env_idx]:
-                        x_move, y_move = self.actions[env_idx][i,j]
-                        # self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + self.circles[t_step], r=self.finga_q)) 
-                        self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(x_move, y_move, - 0.49), r=self.finga_q)) 
+                    # Robots above the object shouldn't go all the way down. 
+                    x_move, y_move = self.actions[env_idx][i,j]
+                    if (i,j) in self.neighborhood_fingers[env_idx][1]:
+                        self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(x_move, y_move, - 0.45), r=self.finga_q)) 
                     else:
-                        self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j], r=self.finga_q)) 
+                        self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(x_move, y_move, - 0.47), r=self.finga_q)) 
         elif 6 <= t_step < self.time_horizon - 3:
             # self.detect_contacts(env_idx)
             pass
         elif t_step == self.time_horizon - 3:
-            self.reset_finger_pose(env_idx)
+            pass
         elif t_step == self.time_horizon - 1:
             self.view_cam_img(env_idx)
             self.save_cam_images(env_idx)
+            
+            if self.save_iters%10 == 0:
+                print("HAKUNA")
+                self.df.to_csv(f'./data/post_manip_data/data_{self.image_id}_{self.run_no}.csv', index=False)
+            self.save_iters += 1
+            self.reset_finger_pose(env_idx)
             # if env_idx == self.scene.n_envs-1:
             #     self.image_id += 1
             #     self.seed += 1
         else:
             pass
+
+    def data_collection_expt2(self, scene, env_idx, t_step, _):
+        # try:
+        if self.save_iters < 64*50:
+            data_coll_idx = self.save_iters//50
+            dci_i, dci_j = data_coll_idx//8, data_coll_idx%8
+            t_step = t_step % self.time_horizon
+            env_ptr = self.scene.env_ptrs[env_idx]
+            if t_step == 0:
+                self.set_finger_pose(env_idx, "high", all_or_one="one")
+                self.set_block_pose(env_idx)
+                self.view_cam_img(env_idx)
+            elif t_step == 5:
+                self.neighborhood_fingers[env_idx] = self.get_nearest_fingertips(env_idx, name = self.obj_name)
+                self.set_finger_pose(env_idx, "low", all_or_one="one")
+            elif t_step == 6:
+                for i in range(self.num_tips[0]):
+                    for j in range(self.num_tips[1]):
+                        # Robots above the object shouldn't go all the way down. 
+                        if (i,j) in self.neighborhood_fingers[env_idx][1]:
+                            self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, - 0.45), r=self.finga_q)) 
+                        else:
+                            if (i==dci_i) and (j==dci_j):
+                                # print(self.actions[env_idx])
+                                self.actions[env_idx][i][j] = np.random.uniform(-0.025, 0.025, 2)
+                                x_move, y_move = self.actions[env_idx][i][j]
+                                self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(x_move, y_move, - 0.47), r=self.finga_q))
+                            else:
+                                self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, - 0.45), r=self.finga_q)) 
+            elif 6 <= t_step < self.time_horizon - 3:
+                pass
+            elif t_step == self.time_horizon - 3:
+                pass
+            elif t_step == self.time_horizon - 1:
+                self.view_cam_img(env_idx)
+                self.save_cam_images(env_idx)
+                self.save_iters += 1
+                if self.save_iters%10 == 0:
+                    print("HAKUNA")
+                    self.df.to_csv(f'./data/post_manip_data/data_{self.image_id}_{self.run_no}.csv', index=False)
+                
+                self.reset_finger_pose(env_idx)
+            else:
+                pass
