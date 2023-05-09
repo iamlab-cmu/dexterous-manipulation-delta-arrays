@@ -1,7 +1,6 @@
 import numpy as np
 import os
 import time
-import pandas as pd
 from autolab_core import YamlConfig, RigidTransform
 import Delta_Array_Sim
 from isaacgym import gymapi
@@ -12,7 +11,7 @@ from isaacgym_utils.math_utils import RigidTransform_to_transform
 from isaacgym_utils.draw import draw_transforms, draw_contacts, draw_camera
 import torch
 
-class DeltaArrayEnvironment:
+class DeltaArrayEnvironment():
     def __init__(self, yaml_path, run_no):
         gym = gymapi.acquire_gym()
         self.run_no = run_no
@@ -57,7 +56,7 @@ class DeltaArrayEnvironment:
         self.setup_objects()
 
     def run(self):
-        self.scene.run(policy=self.fingers.data_collection)
+        self.scene.run(policy=self.fingers.data_collection_expt2)
         # self.scene.run(policy=self.fingers.generate_trajectory)
         # self.scene.run(policy=self.fingers.execute_trajectory)
 
