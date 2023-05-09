@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import delta_array_utils.DeltaArrayControl as DAC
 from camera_utils.obj_tracking import do_stuff, get_neighbors, icp
+import cv2
 
 sensitivity = 20
 l_b=np.array([45, 10, 10])# lower hsv bound for red
@@ -28,11 +29,11 @@ class VisualServoingBaseline:
         self.delta_env = DAC.DeltaArrayEnv(active_robots=active_robots)
         self.delta_env.setup_delta_agents()
 
-def capture_image(cam):
+def capture_image(cam, goal):
     ret,frame = cam.read()
     if not ret:
         print("Failed to Get WebCam img")
-        break
+        return None, None
     a, max_contour = do_stuff(frame)
     idxs, neighbors_cm, neighbors_pix = get_neighbors(a)
 
@@ -48,18 +49,31 @@ def capture_image(cam):
     neighbors_pix = np.flip(neighbors_pix)
     pt2 = (TF_Matrix[:, :2]@pt1.T).T + TF_Matrix[:, -1]
     robot_actions_pix = (TF_Matrix[:, :2]@neighbors_pix.T).T + TF_Matrix[:, -1]
+    T = TF_Matrix[:, -1]
+    T[1] = T[1]/img_size[1]*(plane_size[1][0]-plane_size[0][0])+plane_size[0][0]
+    T[0] = T[0]/img_size[0]*(plane_size[1][1]-plane_size[0][1])+plane_size[0][1]
     robot_actions_cm = (TF_Matrix[:, :2]@neighbors_cm.T).T + TF_Matrix[:, -1]
-    
+
     frame = cv2.resize(frame, (frame.shape[1]//3, frame.shape[0]//3))
-    idxs = np.random.choice(a.shape[0], size=20, replace=False)
-    for idx in idxs:
+    idxs2 = np.random.choice(a.shape[0], size=20, replace=False)
+    for idx in idxs2:
         cv2.arrowedLine(frame, pt1[idx]//3, pt2[idx][:2].astype(int)//3, color=(0, 255, 0))
     for i in range(len(neighbors_pix)):
         cv2.arrowedLine(frame, neighbors_pix[i].astype(int)//3, robot_actions_pix[i][:2].astype(int)//3, color=(0, 0, 255))
 
+    cv2.drawContours(frame, max_contour//3, -1, (0,255,0), 5)
+    cv2.imwrite("./camera_utils/live_data/frame.jpg",frame)
+
+    error_r = 1000*np.mean((np.eye(3) - TF_Matrix)[:2,:2])
+    error_t = np.mean(TF_Matrix[:2, -1])
+    print(f"rot_error: {error_r}, trans_error: {error_t}")
+    tracking_error = error_r + error_t
+
     pt2[:,1] = pt2[:,1]/img_size[1]*(plane_size[1][0]-plane_size[0][0])+plane_size[0][0]
     pt2[:,0] = pt2[:,0]/img_size[0]*(plane_size[1][1]-plane_size[0][1])+plane_size[0][1]
-    return idxs, robot_actions_cm
+    # print(robot_actions_cm[:2])
+    robot_actions_cm[:,:2] -= robot_positions[idxs[:,0], idxs[:,1]]
+    return idxs, robot_actions_cm/100, tracking_error
 
 def run_baseline():
     cam = cv2.VideoCapture(1)
@@ -72,14 +86,17 @@ def run_baseline():
 
     prev_traj = None
     env = DAC.DeltaArrayEnv()
+    env.setup_delta_agents()
     while tracking_error > 20:
-        idxs, robot_actions_cm = capture_image(cam)
-
-        traj = np.linspace((robot_positions),(robot_actions_cm),20)
-        print(idxs, robot_actions_cm)
-        env.update_active_robots(idxs)
-        env.setup_delta_agents()
-        env.move_delta_robots(traj)
+        idxs, robot_actions, cost = capture_image(cam, goal)
+        if idxs is not None:
+            # print(robot_actions[:,:2].shape, robot_positions[idxs[:,0], idxs[:,1]].shape)
+            # print(traj.shape, traj[:,0])
+            env.update_active_robots(idxs)
+            env.move_delta_robots(robot_actions)
+        else:
+            print("Check camera settings")
+            break
         
 
 

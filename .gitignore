@@ -7,3 +7,6 @@ HiDex_Planner/qhull
 .vscode/
 .ipynb_checkpoints/
 __pycache__/
+RL_with_DMPs/vis_utils/temp/
+RL_with_DMPs/vis_utils/temp2
+*.avi

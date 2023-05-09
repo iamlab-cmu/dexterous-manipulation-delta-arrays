@@ -18,8 +18,10 @@ def gamma_function(channel, gamma):
     channel = cv2.LUT(channel, table)
     return channel
 
-cam = cv2.VideoCapture(0)
-cv2.namedWindow("test")
+cam = cv2.VideoCapture(1)
+cam.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+# cv2.namedWindow("test")
 objpoints = [] # 3d point in real world space
 imgpoints = [] # 2d points in image plane.
 

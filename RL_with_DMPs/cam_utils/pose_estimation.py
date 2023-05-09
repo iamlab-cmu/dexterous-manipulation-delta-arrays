@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import glob
 import pickle
+import socket
 import time
 from pose_error_file import pose_errors
 import argparse
@@ -32,6 +33,14 @@ objp[:,:2] = np.mgrid[0:7,0:4].T.reshape(-1,2)
 # Length of axes -> 3 checkerboard squares
 axis = np.float32([[3,0,0], [0,3,0], [0,0,-3]]).reshape(-1,3)
 
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.bind(('localhost', 50000))
+sock.listen(1)
+
+# Wait for a connection from a client
+print('Waiting for a client to connect...')
+conn, addr = sock.accept()
+print('Client connected:', addr)
 
 
 if __name__=="__main__":
@@ -41,10 +50,10 @@ if __name__=="__main__":
     skill = args.skill
     # goal_rvec = np.array(([-0.3], [0], [0]))
     goal_rvec = {"skill2": np.array(([-0.5], [0.0015], [-0.10])),
-                "skill3": np.array(([-0.006], [-0.05], [-0.05])),
+                "skill3": np.array(([-0.022], [-0.0685], [-3.006])),
                 }
     goal_tvec = {"skill2": np.array(([-0.59], [-5.20], [31.3])),
-                "skill3": np.array(([-5.24], [2.78], [26.2])),
+                "skill3": np.array(([6.01], [-4.02], [31.43])),
                 }
 
     # goal_rvec = np.array(([0.03], [0.4], [-3.05]))
@@ -52,11 +61,13 @@ if __name__=="__main__":
     # goal_tvec = np.array(([-5.0], [0.25], [25.2]))
     # goal_tvec = np.array(([1.0], [1.9], [25.3]))  
 
-    thresh = np.array((0.10, 0.7))
+    thresh = np.array((0.3, 1.0))
     reset_thresh_low = np.array((0.32, 1.2))
     reset_thresh_high = np.array((0.4, 1.4))
 
-    cam = cv2.VideoCapture(0)
+    cam = cv2.VideoCapture(1)
+    cam.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+    cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
     cv2.namedWindow("test")
     while True:
         ret, frame = cam.read()
@@ -65,6 +76,7 @@ if __name__=="__main__":
             break
 
         gray = cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
+        frame = cv2.resize(frame, (int(1920/2), int(1080/2)))
         ret, corners = cv2.findChessboardCorners(gray, (7,4),None)
 
         if ret == True:
@@ -91,11 +103,15 @@ if __name__=="__main__":
             # pose_errors["rot_error"] = rot_error
             # pose_errors["pos_error"] = pos_error
             # pose_errors['is_done'] =  rot_error < thresh[0] and pos_error < thresh[1]
-            pickle.dump((rot_error, pos_error, {"is_done": rot_error < thresh[0] and pos_error < thresh[1]}), open('./cam_utils/pose.pkl', "wb"))
+
+            sending_string = bytes(str(rot_error) + "?" + str(pos_error) + "?" + str(rot_error < thresh[0] and pos_error < thresh[1]), encoding='utf8')
+            conn.send(sending_string)
+
+            # pickle.dump((rot_error, pos_error, {"is_done": rot_error < thresh[0] and pos_error < thresh[1]}), open('./cam_utils/pose.pkl', "wb"))
             # project 3D points to image plane
             imgpts, jac = cv2.projectPoints(axis, rvecs, tvecs, mtx, dist)
 
-            frame = draw(frame,corners2,imgpts)
+            frame = draw(frame,corners2//2,imgpts//2)
             time.sleep(0.05)
             
             frame = np.hstack((frame, pad))
@@ -105,4 +121,6 @@ if __name__=="__main__":
         else:
             print("MATATA")
 
+    conn.close()
+    sock.close()
     cv2.destroyAllWindows()

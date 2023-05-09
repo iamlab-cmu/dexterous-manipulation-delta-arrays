@@ -24,7 +24,7 @@ low_z = 11.5
 high_z = low_z - 2.5
 
 class DeltaArrayEnv():
-    def __init__(self, active_robots):
+    def __init__(self):
         self.rot_30 = np.pi/6
         self.low_z = low_z
         self.high_z = high_z
@@ -37,14 +37,14 @@ class DeltaArrayEnv():
         l = 4.5 #length of leg attached to platform
         self.Delta = Prismatic_Delta(s_p, s_b, l)
         self.RC = RoboCoords()
-        self.active_robots = active_robots
 
-        self.active_IDs = set([self.RC.robo_dict_inv[i] for i in self.active_robots])
-        print(self.active_IDs)
-        mean_pos = np.zeros((2))
-        for i in self.active_robots:
-            mean_pos += self.RC.robot_positions[i]/10
-        self.centroid = mean_pos/len(self.active_robots)
+        # self.active_robots = active_robots
+        # self.active_IDs = set([self.RC.robo_dict_inv[i] for i in self.active_robots])
+        # print(self.active_IDs)
+        # mean_pos = np.zeros((2))
+        # for i in self.active_robots:
+        #     mean_pos += self.RC.robot_positions[i]/10
+        # self.centroid = mean_pos/len(self.active_robots)
 
         """ Setup Delta Robot Agents """
         self.delta_agents = {}
@@ -55,37 +55,58 @@ class DeltaArrayEnv():
         for i in range(1, 17):
             # Get IP Addr and socket of each grid and classify them as useful or useless
             # if i!= 10:
+            # print(i)
             try:
                 ip_addr = srm.inv_delta_comm_dict[i]
                 esp01 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 esp01.connect((ip_addr, 80))
                 esp01.settimeout(0.1)
-                self.delta_agents[i-1] = DeltaArrayAgent(esp01, i)
+                self.delta_agents[i] = DeltaArrayAgent(esp01, i)
             except Exception as e:
                 print("Error at robot ID: ", i)
                 raise e
 
         # Move all useful robots to the bottom
-        for robot in self.active_robots:
-            # Compute all vectors from active robots to obj_pos, move opposite till end
-            if obj_pos is None:
-                vec = self.RC.get_dist_vec(self.centroid, self.RC.robot_positions[robot]/10)    # Output of this function is a unit vector in direction of the centroid wrt robot_pos
-            else:
-                vec = self.RC.get_dist_vec(obj_pos, self.RC.robot_positions[robot]/10)    # Output of this function is a unit vector in direction of the point wrt robot_pos             
-            vec = vec * -2    # Reverse the direction of the unit vector and amplify amplitude by a scalar
-            traj = [[0,0, self.low_z]]
-            self.delta_agents[self.RC.robo_dict_inv[robot] - 1].save_joint_positions(robot, traj)
+        # for robot in self.active_robots:
+        #     # Compute all vectors from active robots to obj_pos, move opposite till end
+        #     if obj_pos is None:
+        #         vec = self.RC.get_dist_vec(self.centroid, self.RC.robot_positions[robot]/10)    # Output of this function is a unit vector in direction of the centroid wrt robot_pos
+        #     else:
+        #         vec = self.RC.get_dist_vec(obj_pos, self.RC.robot_positions[robot]/10)    # Output of this function is a unit vector in direction of the point wrt robot_pos             
+        #     vec = vec * -2    # Reverse the direction of the unit vector and amplify amplitude by a scalar
+        #     traj = [[0,0, self.low_z]]
+        #     self.delta_agents[self.RC.robo_dict_inv[robot]].save_joint_positions(robot, traj)
 
-        for i in self.active_IDs:
-            self.delta_agents[i - 1].reset()
-            self.to_be_moved.append(self.delta_agents[i - 1])
+        for i in set(self.RC.robo_dict_inv.values()):
+            self.delta_agents[i].reset()
+            self.to_be_moved.append(self.delta_agents[i])
 
         print("Initializing Delta Robots...")
         self.wait_until_done()
         print("Done!")
         return
 
-
+    def update_active_robots(self, active_robots):
+        self.active_robots = tuple(map(tuple, active_robots))
+        print(f"Active Robots: {self.active_robots}")
+        self.active_IDs = set([self.RC.robo_dict_inv[i] for i in self.active_robots])
+        return
+    
+    def move_delta_robots(self, robot_actions):
+        """ Move the delta robots """
+        # print(traj)
+        actions_2d = robot_actions[:,:2]
+        for n, robot in enumerate(self.active_robots):
+            traj = np.linspace((0,0),(actions_2d[n]),20)
+            traj = np.hstack([traj, np.ones((20,1))*self.low_z]).tolist()
+            self.delta_agents[self.RC.robo_dict_inv[robot]].save_joint_positions(robot, traj)
+            
+        for i in self.active_IDs:
+            self.delta_agents[i].move_useful()
+            self.to_be_moved.append(self.delta_agents[i])
+        self.wait_until_done()
+        print("Done!")
+        return
 
     def wait_until_done(self, topandbottom=False):
         done_moving = False
@@ -95,6 +116,7 @@ class DeltaArrayEnv():
                 try:
                     received = i.esp01.recv(BUFFER_SIZE)
                     ret = received.decode().strip()
+                    # print(ret)
                     if ret == "A":
                         i.done_moving = True
                         time.sleep(0.1)
@@ -106,7 +128,6 @@ class DeltaArrayEnv():
             done_moving = all(bool_dones)
         time.sleep(0.1)
         for i in self.delta_agents:
-
             self.delta_agents[i].done_moving = False
         del self.to_be_moved[:]
         # print("Done!")

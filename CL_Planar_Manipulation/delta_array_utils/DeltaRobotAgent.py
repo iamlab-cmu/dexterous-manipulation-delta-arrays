@@ -38,11 +38,11 @@ class DeltaArrayAgent:
     # Generate reset point for useless robots
     def reset(self):
         for j in range(20):
-            # ee_pts = [0,0,5.5]
-            ee_pts = [0,0,12]
+            ee_pts = [0,0,5.0]
+            # ee_pts = [0,0,12]
             pts = Delta.IK(ee_pts)
             pts = np.array(pts) * 0.01
-            pts = np.clip(pts,0.005,0.095)
+            pts = np.clip(pts,0.001,0.095)
             _ = [self.delta_message.trajectory.append(pts[i%3]) for i in range(12)]
         self.send_proto_cmd()
         del self.delta_message.trajectory[:]

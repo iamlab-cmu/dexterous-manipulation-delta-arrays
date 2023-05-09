@@ -140,10 +140,10 @@ class DeltaArraySim:
         plt.pause(0.001)
     
     def get_nearest_fingertips(self, env_idx, name = 'rope'):
-        # if env_idx == 0:
         img = self.pre_imgs[env_idx]
         
         boundary_pts = np.array(np.where(img==255)).T
+        com = np.mean(boundary_pts, axis=0)
         min_x, min_y = np.min(boundary_pts, axis=0)
         max_x, max_y = np.max(boundary_pts, axis=0)
 
@@ -151,8 +151,9 @@ class DeltaArraySim:
         boundary_pts[:,1] = (boundary_pts[:,1] - min_y)/(max_y-min_y)*(self.plane_size[1][1]-self.plane_size[0][1])+self.plane_size[0][1]
         idxs, neg_idxs, DG, pos = self.nn_helper.get_nn_robots(boundary_pts, 16)
         idxs2 = np.array(list(idxs))
-        plt.scatter(*self.nn_helper.cluster_centers.T)
-        plt.scatter(*self.nn_helper.robot_positions[idxs2[:,0], idxs2[:,1]].T)
+        plt.scatter(*self.nn_helper.cluster_centers.T, color='blue')
+        plt.scatter(*self.nn_helper.robot_positions[idxs2[:,0], idxs2[:,1]].T, color='orange')
+        plt.scatter(com[0], com[1], color='red')
         # plt.scatter(*self.nn_helper.robot_positions[neg_idxs[:,0], neg_idxs[:,1]].T, color='red')
         plt.savefig(f'./data/post_manip_data/nn_{self.image_id}_{self.run_no}.png')
         return idxs
