@@ -74,9 +74,11 @@ def get_neighbors(contour):
     
     idxs = np.array(list(idxs))
     neighbors_cm = robot_positions[idxs[:,0], idxs[:,1]]
+    # print(neighbors_cm[:2])
     neighbors_pix = neighbors_cm.copy()
     neighbors_pix[:,1] = -1*neighbors_pix[:,1]*img_size[1]/(plane_size[1][0]-plane_size[0][0])
     neighbors_pix[:,0] = -1*neighbors_pix[:,0]*img_size[0]/(plane_size[1][1]-plane_size[0][1])
+    # print(neighbors_cm[:2])
     return idxs, neighbors_cm, neighbors_pix
 
     

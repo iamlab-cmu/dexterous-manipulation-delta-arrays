@@ -31,12 +31,12 @@ def run_reps(skill, sim_or_real):
     elif skill == "lift":
         policy = IdentityLowLevelPolicy(n_bfs*2)
         mu = np.zeros(n_bfs*2)
-        sigma = 0.5
+        sigma = 0.7
     
     max_num_reps_attempts = 5
     max_reps_param_updates = 20
 
-    num_policy_rollouts_before_reps_update = 5 * policy.num_params()
+    num_policy_rollouts_before_reps_update = 2 * policy.num_params()
     env_convergence_criteria = {"env_solved": 0.9}
 
     # Set default Mean and Variance for policy

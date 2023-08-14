@@ -4,6 +4,8 @@ import time
 from scipy.spatial.transform import Rotation as R
 import pickle
 import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Agg')
 import socket
 
 from delta_array_utils.Prismatic_Delta import Prismatic_Delta
@@ -72,10 +74,15 @@ class DeltaRobotEnv():
             self.right_top_pos[2:18, :] = [*self.rotate(np.array((-0.6, 0)), 0), self.low_z]
             self.right_top_pos[18:, :] = [1.3,0,self.low_z]
 
+        """ Camera Vars """
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.connect(('localhost', 50000))
+
         """ Setup Delta Robot Agents """
         self.useless_agents = []
         self.useful_agents = {}
         self.setup_delta_agents()
+        plt.figure(figsize=(12,9))
 
     def context(self):
         # Some random function of no significance. But don't remove it!! Needed for REPS
@@ -134,6 +141,7 @@ class DeltaRobotEnv():
         for i in self.useful_agents.values():
             if i.delta_message.id not in [14, 15]:
                 i.move_useful(self.skill_hold_traj)
+                self.to_be_moved.append(i)
             else:
                 i.move_useful(self.skill_traj)
                 self.to_be_moved.append(i)
@@ -151,6 +159,7 @@ class DeltaRobotEnv():
             else:
                 i.move_useful(self.left_top_pos)
         self.wait_until_done()
+        print("Done")
     # def reset(self):
     #     """ Push the block towards the back a little and retract the fingers """
     #     print("Reset HAKUNA MATATA")
@@ -174,18 +183,20 @@ class DeltaRobotEnv():
         done_moving = False
         while not done_moving:
             # print(self.to_be_moved)
+            # print(self.to_be_moved)
             for i in self.to_be_moved:
                 try:
                     received = i.esp01.recv(BUFFER_SIZE)
                     ret = received.decode().strip()
+                    # print(ret)
                     if ret == "A":
                         i.done_moving = True
-                        time.sleep(0.5)
+                        time.sleep(0.1)
                 except Exception as e: 
                     # print(e)
                     pass
             done_moving = all([i.done_moving for i in self.to_be_moved])
-        time.sleep(0.5)
+        time.sleep(0.1)
         for i in self.useful_agents.values():
             i.done_moving = False
         del self.to_be_moved[:]
@@ -222,29 +233,57 @@ class DeltaRobotEnv():
             self.skill_hold_traj = np.linspace([-0.3, 0, self.low_z], [-0.3, 0, self.low_z], 20)
 
         elif self.skill == "lift":
-            # Left grippers
-            x1, y1 = (self.action[0] + 1)/2*-0.6 + 0, (self.action[1] + 1)/2*0.0 + 0
-            x2, y2 = (self.action[2] + 1)/2*-1.2 + 0, (self.action[3] + 1)/2*0.0 + 0
-            x3, y3 = (self.action[4] + 1)/2*-1.3 - 0.25, (self.action[5] + 1)/2*2 + 0.5
-            x0, y0 = 0.0, 0.0
-            left_skill_traj = self.Bezier_Curve(np.array([x0, y0]), np.array([x1, y1]), np.array([x2, y2]), np.array([x3, y3]))
-            left_skill_traj[:, 1] = np.clip(left_skill_traj[:, 1], -0.1, 6)
-            left_skill_traj[:, 0] = np.clip(left_skill_traj[:, 0], -2.5, 2.5)
-            # Right grippers
-            x1, y1 = (self.action[0] + 1)/2*0.6 + 0, (self.action[1] + 1)/2*0.5 + 0
-            x2, y2 = (self.action[2] + 1)/2*1.2 + 0, (self.action[3] + 1)/2*0.5 + 0
-            x3, y3 = (self.action[4] + 1)/2*1.3 + 0.25, (self.action[5] + 1)/2*3 + 0.5
-            x0, y0 = 0.0, 0.0
-            right_skill_traj = self.Bezier_Curve(np.array([x0, y0]), np.array([x1, y1]), np.array([x2, y2]), np.array([x3, y3]))
-            right_skill_traj[:, 1] = np.clip(right_skill_traj[:, 1], -0.2, 6)
-            right_skill_traj[:, 0] = np.clip(right_skill_traj[:, 0], -2.5, 2.5)
+            pos_x = self.dmp_x.fwd_simulate(500, 150*np.array(self.action[:self.n_bfs]))
+            pos_y = self.dmp_y.fwd_simulate(500, 150*np.array(self.action[self.n_bfs:]))
+            
+            pos_x2 = pos_x[::len(pos_x)//20]
+            pos_y2 = pos_y[::len(pos_y)//20]
+            # plt.plot(pos_x2, pos_y2)
+            left_skill_traj = np.vstack([pos_x2, pos_y2]).T
+            right_skill_traj = np.vstack([-1*pos_x2, pos_y2]).T
 
+            plt.plot(100*left_skill_traj[:, 0], 100*left_skill_traj[:, 1],color='purple', alpha=0.02)
+            plt.plot(100*right_skill_traj[:, 0], 100*right_skill_traj[:, 1],color='purple', alpha=0.02)
+            plt.xlim(-3, 3)
+            plt.savefig("traj.png")
+            self.data_dict["Trajectory"].append(left_skill_traj)
+            left_skill_traj[:, 0] = np.clip(left_skill_traj[:, 0], -0.005, 0.015)
+            left_skill_traj[:, 1] = np.clip(left_skill_traj[:, 1], -0.005, 0.037)
+
+            right_skill_traj[:, 0] = np.clip(right_skill_traj[:, 0], -0.015, 0.005)
+            right_skill_traj[:, 1] = np.clip(right_skill_traj[:, 1], -0.005, 0.037)
+            # self.data_dict["Trajectory"].append(right_skill_traj)
             for i in range(20):
-                xy = self.rotate(np.array((0,0)) - np.array((left_skill_traj[i][0], self.rot_30)), 0)
-                self.skill_traj[i] = [*xy, self.low_z - left_skill_traj[i][1]]
+                # xy = self.rotate(np.array((0,0)) - np.array((skill_traj[i][0], self.rot_30)), 0)
+                self.skill_traj[i] = [100*left_skill_traj[i, 0], 0, self.low_z - 100*left_skill_traj[i][1]]
+                
+                self.skill_hold_traj[i] = [100*right_skill_traj[i, 0], 0, self.low_z - 100*right_skill_traj[i][1]]
 
-                xy = self.rotate(np.array((0,0)) - np.array((right_skill_traj[i][0], self.rot_30)), 0)
-                self.skill_hold_traj[i] = [*xy, self.low_z - right_skill_traj[i][1]]
+            # self.skill_hold_traj = np.linspace([-0.3, 0, self.low_z], [-0.3, 0, self.low_z], 20)
+
+            # # Left grippers
+            # x1, y1 = (self.action[0] + 1)/2*-0.6 + 0, (self.action[1] + 1)/2*0.0 + 0
+            # x2, y2 = (self.action[2] + 1)/2*-1.2 + 0, (self.action[3] + 1)/2*0.0 + 0
+            # x3, y3 = (self.action[4] + 1)/2*-1.3 - 0.25, (self.action[5] + 1)/2*2 + 0.5
+            # x0, y0 = 0.0, 0.0
+            # left_skill_traj = self.Bezier_Curve(np.array([x0, y0]), np.array([x1, y1]), np.array([x2, y2]), np.array([x3, y3]))
+            # left_skill_traj[:, 1] = np.clip(left_skill_traj[:, 1], -0.1, 6)
+            # left_skill_traj[:, 0] = np.clip(left_skill_traj[:, 0], -2.5, 2.5)
+            # # Right grippers
+            # x1, y1 = (self.action[0] + 1)/2*0.6 + 0, (self.action[1] + 1)/2*0.5 + 0
+            # x2, y2 = (self.action[2] + 1)/2*1.2 + 0, (self.action[3] + 1)/2*0.5 + 0
+            # x3, y3 = (self.action[4] + 1)/2*1.3 + 0.25, (self.action[5] + 1)/2*3 + 0.5
+            # x0, y0 = 0.0, 0.0
+            # right_skill_traj = self.Bezier_Curve(np.array([x0, y0]), np.array([x1, y1]), np.array([x2, y2]), np.array([x3, y3]))
+            # right_skill_traj[:, 1] = np.clip(right_skill_traj[:, 1], -0.2, 6)
+            # right_skill_traj[:, 0] = np.clip(right_skill_traj[:, 0], -2.5, 2.5)
+
+            # for i in range(20):
+            #     xy = self.rotate(np.array((0,0)) - np.array((left_skill_traj[i][0], self.rot_30)), 0)
+            #     self.skill_traj[i] = [*xy, self.low_z - left_skill_traj[i][1]]
+
+            #     xy = self.rotate(np.array((0,0)) - np.array((right_skill_traj[i][0], self.rot_30)), 0)
+            #     self.skill_hold_traj[i] = [*xy, self.low_z - right_skill_traj[i][1]]
 
         else:
             raise ValueError("Invalid skill Skill can be either skill1 or skill2")
@@ -279,7 +318,14 @@ class DeltaRobotEnv():
         boolvar = True
         while boolvar == True:
             try:
-                rot_error, pos_error, done_dict = pickle.load(open("./cam_utils/pose.pkl", "rb"))
+                # rot_error, pos_error, done_dict = pickle.load(open("./cam_utils/pose.pkl", "rb"))
+                data = self.sock.recv(1024)
+                # print(data)
+                rot_error, pos_error, is_done = data.decode().split("?")[-3:]
+                rot_error = float(rot_error)
+                pos_error = float(pos_error)
+                is_done = is_done == "True"
+                done_dict = {"is_done": is_done}
                 boolvar = False
             except: pass
         return pos_error, rot_error, done_dict
