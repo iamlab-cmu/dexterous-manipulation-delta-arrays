@@ -56,7 +56,7 @@ class DeltaArrayEnvironment():
         self.setup_objects()
 
     def run(self):
-        self.scene.run(policy=self.fingers.data_collection_expt2)
+        self.scene.run(policy=self.fingers.data_collection_expt1)
         # self.scene.run(policy=self.fingers.generate_trajectory)
         # self.scene.run(policy=self.fingers.execute_trajectory)
 

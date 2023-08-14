@@ -54,6 +54,7 @@ class DeltaArraySim:
         cols = ['com_x1', 'com_y1', 'com_x2', 'com_y2'] + [f'robotx_{i}' for i in range(64)] + [f'roboty_{i}' for i in range(64)]
         self.df = pd.DataFrame(columns=cols)
         self.save_iters = 0
+        self.num_samples = 100
         
         """ Fingertip Vars """
         self.finger_positions = np.zeros((8,8)).tolist()
@@ -121,7 +122,6 @@ class DeltaArraySim:
 
 
     def reset_finger_pose(self, env_idx):
-        self.actions[env_idx] = np.zeros((8,8,2))
         for i in range(self.num_tips[0]):
             for j in range(self.num_tips[1]):
                 self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j], r=self.finga_q)])
@@ -144,7 +144,7 @@ class DeltaArraySim:
         # print(list(self.block_com.flatten()))
         # print(robot_actions)
         self.df.loc[len(self.df)] = list(self.block_com.flatten()) + robot_actions
-        # plt.imsave(f'./data/post_manip_data/image_{self.image_id}_{self.run_no}.png', self.pre_imgs[env_idx], cmap = 'gray')
+        plt.imsave(f'./data/post_manip_data/image_{self.image_id}_{self.run_no}.png', self.pre_imgs[env_idx], cmap = 'gray')
 
     def vis_cam_images(self, image_list):
         for i in range(0, len(image_list)):
@@ -191,12 +191,12 @@ class DeltaArraySim:
         t_step = t_step % self.time_horizon
         env_ptr = self.scene.env_ptrs[env_idx]
         if t_step == 0:
-            self.set_finger_pose(env_idx, "high")
-            self.set_block_pose(env_idx)
             self.view_cam_img(env_idx)
+            self.set_finger_pose(env_idx, "high", all_or_one="all")
+            self.set_block_pose(env_idx)
         elif t_step == 5:
             self.neighborhood_fingers[env_idx] = self.get_nearest_fingertips(env_idx, name = self.obj_name)
-            self.set_finger_pose(env_idx, "low")
+            self.set_finger_pose(env_idx, "low", all_or_one="all")
         elif t_step == 6:
             for i in range(self.num_tips[0]):
                 for j in range(self.num_tips[1]):
@@ -212,14 +212,15 @@ class DeltaArraySim:
         elif t_step == self.time_horizon - 3:
             pass
         elif t_step == self.time_horizon - 1:
+            self.reset_finger_pose(env_idx)
             self.view_cam_img(env_idx)
             self.save_cam_images(env_idx)
+            self.actions[env_idx] = np.zeros((8,8,2))
             
             if self.save_iters%10 == 0:
                 print("HAKUNA")
                 self.df.to_csv(f'./data/post_manip_data/data_{self.image_id}_{self.run_no}.csv', index=False)
             self.save_iters += 1
-            self.reset_finger_pose(env_idx)
             # if env_idx == self.scene.n_envs-1:
             #     self.image_id += 1
             #     self.seed += 1
@@ -228,15 +229,15 @@ class DeltaArraySim:
 
     def data_collection_expt2(self, scene, env_idx, t_step, _):
         # try:
-        if self.save_iters < 64*50:
-            data_coll_idx = self.save_iters//50
+        if self.save_iters < 64*self.num_samples:
+            data_coll_idx = self.save_iters//self.num_samples
             dci_i, dci_j = data_coll_idx//8, data_coll_idx%8
             t_step = t_step % self.time_horizon
             env_ptr = self.scene.env_ptrs[env_idx]
             if t_step == 0:
+                self.view_cam_img(env_idx)
                 self.set_finger_pose(env_idx, "high", all_or_one="one")
                 self.set_block_pose(env_idx)
-                self.view_cam_img(env_idx)
             elif t_step == 5:
                 self.neighborhood_fingers[env_idx] = self.get_nearest_fingertips(env_idx, name = self.obj_name)
                 self.set_finger_pose(env_idx, "low", all_or_one="one")
@@ -259,6 +260,7 @@ class DeltaArraySim:
             elif t_step == self.time_horizon - 3:
                 pass
             elif t_step == self.time_horizon - 1:
+                self.reset_finger_pose(env_idx)
                 self.view_cam_img(env_idx)
                 self.save_cam_images(env_idx)
                 self.save_iters += 1
@@ -266,6 +268,5 @@ class DeltaArraySim:
                     print("HAKUNA")
                     self.df.to_csv(f'./data/post_manip_data/data_{self.image_id}_{self.run_no}.csv', index=False)
                 
-                self.reset_finger_pose(env_idx)
             else:
                 pass
