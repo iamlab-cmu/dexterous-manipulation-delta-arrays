@@ -6,6 +6,13 @@ from matplotlib import cm
 import matplotlib.pyplot as plt
 import cv2
 import pandas as pd
+import networkx as nx
+from PIL import Image
+
+import torch
+import torchvision.transforms as transforms
+from torchvision.models import resnet18
+from scipy.spatial.distance import cosine
 
 from autolab_core import YamlConfig, RigidTransform, PointCloud
 from visualization.visualizer3d import Visualizer3D as vis3d
@@ -16,9 +23,8 @@ from isaacgym_utils.assets import GymBoxAsset, GymCapsuleAsset
 from isaacgym_utils.math_utils import RigidTransform_to_transform
 from isaacgym_utils.draw import draw_transforms, draw_contacts, draw_camera
 
-import torch
-import networkx as nx
 import utils.nn_helper as helper
+import utils.SAC.sac as sac
 device = torch.device("cuda:0")
 
 class DeltaArraySim:
@@ -54,9 +60,6 @@ class DeltaArraySim:
         cols = ['com_x1', 'com_y1', 'com_x2', 'com_y2'] + [f'robotx_{i}' for i in range(64)] + [f'roboty_{i}' for i in range(64)]
         self.df = pd.DataFrame(columns=cols)
         
-        self.time_horizon = 150
-        self.max_vs_steps = 100
-        self.current_vs_steps = 0
         # self.save_iters = 0
         # self.num_samples = 100
         
@@ -79,10 +82,38 @@ class DeltaArraySim:
 
         """ Sim Util Vars """
         self.attractor_handles = {}
-        self.time_horizon = 107
+        self.time_horizon = 150 # This acts as max_steps from Gym envs
+        # Max episodes to train policy for
+        self.max_episodes = 1000
+        self.current_episode = 0
 
-        """ Visual Servoing Vars """
+        """ Visual Servoing and RL Vars """
         self.current_scene_frame = None
+        self.batch_size = 32
+        self.model = resnet18(pretrained=True)
+        self.model = torch.nn.Sequential(*list(self.model.children())[:-1])
+        self.model.eval()
+        self.model = self.model.to(device)
+        self.transform = transforms.Compose([
+            transforms.Resize(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
+
+        env_dict = {'action_space': {'low': -3.0, 'high': 3.0, 'dim': 2},
+                    'observation_space': {'dim': 512}}
+        self.agent = sac.SACAgent(env_dict=env_dict, 
+            gamma=0.99, 
+            tau=0.01, 
+            alpha=0.2, 
+            q_lr=3e-4, 
+            policy_lr=3e-4,
+            a_lr=3e-4, 
+            buffer_maxlen=1000000
+        )
+        self.ep_rewards = []
+        self.ep_reward = 0
+
 
     def set_attractor_handles(self, env_idx):
         """ Creates an attractor handle for each fingertip """
@@ -148,30 +179,31 @@ class DeltaArraySim:
         self.df.loc[len(self.df)] = list(self.block_com.flatten()) + robot_actions
         plt.imsave(f'./data/post_manip_data/image_{self.image_id}_{self.run_no}.png', self.pre_imgs[env_idx], cmap = 'gray')
     
-    def get_nearest_fingertips(self, env_idx, name = 'rope'):
-        # if env_idx == 0:
-        img = self.current_scene_frame['color'].data.astype(np.uint8)
-        plt.imshow(img)
-        plt.show()
+    def get_nearest_robot_and_crop(self, env_idx):
         seg_map = self.current_scene_frame['seg'].data.astype(np.uint8)
-        boundary = cv2.Canny(seg_map,40,200)
-        
-        boundary_pts = np.array(np.where(img==255)).T
-        # self.block_com[0] = np.mean(boundary_pts, axis=0)
-        # plt.scatter(boundary_pts[:,1], boundary_pts[:,0])
-        # plt.show()
+        boundary = cv2.Canny(seg_map,100,200)
+        boundary_pts = np.array(np.where(boundary==255)).T
+        boundary_pts2 = np.array(np.where(boundary==255))
         min_x, min_y = np.min(boundary_pts, axis=0)
         max_x, max_y = np.max(boundary_pts, axis=0)
-        print(min_x, min_y, max_x, max_y)
 
         boundary_pts[:,0] = (boundary_pts[:,0] - min_x)/(max_x-min_x)*(self.plane_size[1][0]-self.plane_size[0][0])+self.plane_size[0][0]
         boundary_pts[:,1] = (boundary_pts[:,1] - min_y)/(max_y-min_y)*(self.plane_size[1][1]-self.plane_size[0][1])+self.plane_size[0][1]
 
         idxs, neg_idxs, DG, pos = self.nn_helper.get_nn_robots(boundary_pts, num_clusters=40)
-        for idx in idxs:
-            pass
+        idxs = np.array(list(idxs))
+        min_idx = tuple(idxs[np.lexsort((idxs[:, 0], idxs[:, 1]))][0])
 
-        return None, neg_idxs
+        finger_pos = self.nn_helper.robot_positions[min_idx].copy()
+        finger_pos[0] = (finger_pos[0] - self.plane_size[0][0])/(self.plane_size[1][0]-self.plane_size[0][0])*(max_x-min_x)+min_x
+        finger_pos[1] = (finger_pos[1] - self.plane_size[0][1])/(self.plane_size[1][1]-self.plane_size[0][1])*(max_y-min_y)+min_y
+        finger_pos = finger_pos.astype(np.int32)
+
+        crop = seg_map[finger_pos[0]-112:finger_pos[0]+112, finger_pos[1]-112:finger_pos[1]+112]
+        cols = np.random.rand(3)
+        crop = np.dstack((crop, crop, crop))*cols
+        crop = Image.fromarray(np.uint8(crop*255))
+        return min_idx, crop
 
     def get_attraction_error(self, idxs):
         for i,j in enumerate(idxs):
@@ -183,13 +215,28 @@ class DeltaArraySim:
         t_step = t_step % self.time_horizon
         env_ptr = self.scene.env_ptrs[env_idx]
         if t_step == 0:
-            self.current_vs_steps += 1
-            # Set all fingers up 
+            self.set_block_pose(env_idx)
             self.get_scene_image(env_idx)
-            self.set_finger_pose(env_idx, "high", all_or_one="all")
-            # Get current image of obj
+            self.set_finger_pose(env_idx, pos="high")
             self.get_nearest_fingertips(env_idx)
-            # Update nn dict
+            self.ep_reward = 0
+            for i in range(self.num_tips[0]):
+                for j in range(self.num_tips[1]):
+                    self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
+        elif t_step == 1:
+            idx, img = get_nearest_robot_and_crop(env_idx)
+            img = transform(img).unsqueeze(0)
+            state = model(img)
+            action = self.agent.select_action(state)
+            self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][idx], gymapi.Transform(p=self.finger_positions[idx] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
+        elif t_step < 150:
+            # Compute Reward 
+            pass
+        elif t_step == 150:
+            # Terminate, add to replay buffer
+            pass
+        else:
+            # Reset
             pass
 
 

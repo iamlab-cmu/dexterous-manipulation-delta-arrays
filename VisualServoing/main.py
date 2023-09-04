@@ -57,6 +57,8 @@ class DeltaArrayEnvironment():
         # Add either rigid body or soft body as an asset to the scene
         scene.add_asset(self.obj_name, self.object, gymapi.Transform()) 
         scene.add_standalone_camera(self.cam_name, self.cam, self.cam_offset_transform)
+        print(scene.sim, type(gymapi.Vec3(1, 1, 1)))
+        scene.gym.set_light_parameters(scene.sim, 0, gymapi.Vec3(1, 1, 1),gymapi.Vec3(1, 1, 1),gymapi.Vec3(0, -1, -1))
 
     def setup_objects(self):
         for i in self.scene.env_idxs:
