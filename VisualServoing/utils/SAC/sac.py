@@ -135,8 +135,10 @@ def train(env, agent, max_episodes, max_steps, batch_size):
             if terminate or truncate or (step==max_steps-1):
                 ep_rewards.append(ep_reward)
                 print("Episode: {}, Reward: {}".format(ep, ep_reward))
+                print(step)
                 break
             obs = next_obs
+        print(step)
     return ep_rewards
 
 

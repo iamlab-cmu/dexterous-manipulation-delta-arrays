@@ -178,7 +178,7 @@ class DeltaArraySim:
         # print(robot_actions)
         self.df.loc[len(self.df)] = list(self.block_com.flatten()) + robot_actions
         plt.imsave(f'./data/post_manip_data/image_{self.image_id}_{self.run_no}.png', self.pre_imgs[env_idx], cmap = 'gray')
-    
+
     def get_nearest_robot_and_crop(self, env_idx):
         seg_map = self.current_scene_frame['seg'].data.astype(np.uint8)
         boundary = cv2.Canny(seg_map,100,200)
@@ -218,23 +218,30 @@ class DeltaArraySim:
             self.set_block_pose(env_idx)
             self.get_scene_image(env_idx)
             self.set_finger_pose(env_idx, pos="high")
-            self.get_nearest_fingertips(env_idx)
+            self.get_nearest_robot_and_crop(env_idx)
             self.ep_reward = 0
             for i in range(self.num_tips[0]):
                 for j in range(self.num_tips[1]):
                     self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
         elif t_step == 1:
-            idx, img = get_nearest_robot_and_crop(env_idx)
+            idxs, img = get_nearest_robot_and_crop(env_idx)
             img = transform(img).unsqueeze(0)
-            state = model(img)
-            action = self.agent.select_action(state)
+            with torch.no_grad():
+                state = model(img)
+            action = self.agent.get_action(state)
             self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][idx], gymapi.Transform(p=self.finger_positions[idx] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
         elif t_step < 150:
             # Compute Reward 
-            pass
+            self.ep_reward -= 1
         elif t_step == 150:
-            # Terminate, add to replay buffer
-            pass
+            idxs, img = get_nearest_robot_and_crop(env_idx)
+            img = transform(img).unsqueeze(0)
+            with torch.no_grad():
+                state = model(img)
+        elif t_step == 151:
+            # Terminate
+
+            self.agent.replay_buffer.push(obs, action, reward, next_obs, False)
         else:
             # Reset
             pass
