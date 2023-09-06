@@ -113,6 +113,9 @@ class DeltaArraySim:
         )
         self.ep_rewards = []
         self.ep_reward = 0
+        self.alpha_reward = -1
+        self.psi_reward = 100
+        self.beta_reward = -100
 
 
     def set_attractor_handles(self, env_idx):
@@ -154,7 +157,7 @@ class DeltaArraySim:
 
     def set_block_pose(self, env_idx):
         # block_p = gymapi.Vec3(np.random.uniform(0,0.313407), np.random.uniform(0,0.2803), self.cfg[self.obj_name]['dims']['sz'] / 2 + 0.002)
-        self.block_com[0] = (0.132, -0.179)
+        self.block_com[0] = np.array((0.132, -0.179))
         block_p = gymapi.Vec3(0.132, -0.179, self.cfg[self.obj_name]['dims']['sz'] / 2 + 0.002)
         self.object.set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p)])
 
@@ -169,15 +172,15 @@ class DeltaArraySim:
         frames = self.cam.frames(env_idx, self.cam_name)
         self.current_scene_frame = frames
             
-    def save_cam_images(self, env_idx):
-        # plt.imsave(f'./data/pre_manip_data/image_{self.image_id}_{self.run_no}.png', self.pre_imgs[env_idx].data, cmap = 'gray')
-        final_trans = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
-        self.block_com[1] = (final_trans.p.x, final_trans.p.y)
-        robot_actions = list(self.actions[env_idx][:,:,0].flatten()) + list(self.actions[env_idx][:,:,1].flatten())
-        # print(list(self.block_com.flatten()))
-        # print(robot_actions)
-        self.df.loc[len(self.df)] = list(self.block_com.flatten()) + robot_actions
-        plt.imsave(f'./data/post_manip_data/image_{self.image_id}_{self.run_no}.png', self.pre_imgs[env_idx], cmap = 'gray')
+    # def save_cam_images(self, env_idx):
+    #     # plt.imsave(f'./data/pre_manip_data/image_{self.image_id}_{self.run_no}.png', self.pre_imgs[env_idx].data, cmap = 'gray')
+    #     final_trans = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
+    #     self.block_com[1] = (final_trans.p.x, final_trans.p.y)
+    #     robot_actions = list(self.actions[env_idx][:,:,0].flatten()) + list(self.actions[env_idx][:,:,1].flatten())
+    #     # print(list(self.block_com.flatten()))
+    #     # print(robot_actions)
+    #     self.df.loc[len(self.df)] = list(self.block_com.flatten()) + robot_actions
+    #     plt.imsave(f'./data/post_manip_data/image_{self.image_id}_{self.run_no}.png', self.pre_imgs[env_idx], cmap = 'gray')
 
     def get_nearest_robot_and_crop(self, env_idx):
         seg_map = self.current_scene_frame['seg'].data.astype(np.uint8)
@@ -203,13 +206,20 @@ class DeltaArraySim:
         cols = np.random.rand(3)
         crop = np.dstack((crop, crop, crop))*cols
         crop = Image.fromarray(np.uint8(crop*255))
-        return min_idx, crop
+        crop = self.transform(crop).unsqueeze(0).to(device)
+        with torch.no_grad():
+            state = self.model(crop)
+        return min_idx, state
 
-    def get_attraction_error(self, idxs):
-        for i,j in enumerate(idxs):
-            final_trans = self.object.get_rb_transforms(env_idx, f'fingertip_{i}_{j}')[0]
-            self.attraction_error[i,j] = np.linalg.norm(np.array((final_trans.p.x, final_trans.p.y, final_trans.p.z)) - goal[i,j])
-        return self.attraction_error
+    def compute_reward(self):
+        final_trans = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
+        self.block_com[1] = np.array((final_trans.p.x, final_trans.p.y))
+        
+        block_delta = np.linalg.norm(self.block_com[1] - self.block_com[0])
+        if block_delta < 0.005:
+            self.ep_reward += self.psi_reward
+        else:
+            self.ep_reward -= self.beta_reward * block_delta
 
     def visual_servoing(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
@@ -224,24 +234,23 @@ class DeltaArraySim:
                 for j in range(self.num_tips[1]):
                     self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
         elif t_step == 1:
-            idxs, img = get_nearest_robot_and_crop(env_idx)
-            img = transform(img).unsqueeze(0)
-            with torch.no_grad():
-                state = model(img)
-            action = self.agent.get_action(state)
+            idxs, self.init_state = get_nearest_robot_and_crop(env_idx)
+            self.action = self.agent.get_action(state)
             self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][idx], gymapi.Transform(p=self.finger_positions[idx] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
         elif t_step < 150:
             # Compute Reward 
-            self.ep_reward -= 1
+            self.ep_reward += self.alpha_reward
         elif t_step == 150:
-            idxs, img = get_nearest_robot_and_crop(env_idx)
-            img = transform(img).unsqueeze(0)
-            with torch.no_grad():
-                state = model(img)
+            # Set the robots in idxs to default positions.
+            self.set_finger_pose(env_idx, pos="high")
         elif t_step == 151:
             # Terminate
-
-            self.agent.replay_buffer.push(obs, action, reward, next_obs, False)
+            idxs, final_state = get_nearest_robot_and_crop(env_idx)
+            self.compute_reward()
+            self.agent.replay_buffer.push(self.init_state, self.action, self.ep_reward, final_state, True)
+            self.ep_rewards.append(self.ep_reward)
+            print(self.ep_reward)
+            self.ep_reward = 0
         else:
             # Reset
             pass
