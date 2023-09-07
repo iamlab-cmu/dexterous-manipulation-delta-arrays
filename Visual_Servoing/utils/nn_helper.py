@@ -14,11 +14,11 @@ class NNHelper:
         self.kdtree_positions = np.zeros((64, 2))
         for i in range(8):
             for j in range(8):
-                if j%2==0:
-                    self.robot_positions[i,j] = (j*37.5, -21.65 + i*-43.301)
+                if i%2==0:
+                    self.robot_positions[i,j] = (i*37.5, -j*43.301 - 21.65)
                     self.kdtree_positions[i*8 + j, :] = self.robot_positions[i,j]
                 else:
-                    self.robot_positions[i,j] = (j*37.5, i*-43.301)
+                    self.robot_positions[i,j] = (i*37.5, -j*43.301)
                     self.kdtree_positions[i*8 + j, :] = self.robot_positions[i,j]
 
         self.cluster_centers = None

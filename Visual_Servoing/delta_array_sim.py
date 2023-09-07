@@ -68,12 +68,12 @@ class DeltaArraySim:
         self.kdtree_positions = np.zeros((64, 2))
         for i in range(self.num_tips[0]):
             for j in range(self.num_tips[1]):
-                if j%2==0:
-                    self.finger_positions[i][j] = gymapi.Vec3(j*0.0375, -i*0.043301 - 0.02165, 0.5)
-                    self.kdtree_positions[i*8 + j, :] = (j*0.0375, -i*0.043301 - 0.02165)
+                if i%2==0:
+                    self.finger_positions[i][j] = gymapi.Vec3(i*0.0375, -j*0.043301 - 0.02165, 0.5)
+                    self.kdtree_positions[i*8 + j, :] = (i*0.0375, -j*0.043301 - 0.02165)
                 else:
-                    self.finger_positions[i][j] = gymapi.Vec3(j*0.0375, -i*0.043301, 0.5)
-                    self.kdtree_positions[i*8 + j, :] = (j*0.0375, -i*0.043301)
+                    self.finger_positions[i][j] = gymapi.Vec3(i*0.0375, -j*0.043301, 0.5)
+                    self.kdtree_positions[i*8 + j, :] = (i*0.0375, -j*0.043301)
         self.neighborhood_fingers = [[] for _ in range(self.scene.n_envs)]
         self.contact_fingers = [set() for _ in range(self.scene.n_envs)]
         self.attraction_error = np.zeros((8,8))
@@ -177,7 +177,8 @@ class DeltaArraySim:
         boundary_pts2 = np.array(np.where(boundary==255))
         min_x, min_y = np.min(boundary_pts, axis=0)
         max_x, max_y = np.max(boundary_pts, axis=0)
-
+        # print(min_x, min_y, max_x, max_y)
+        # print((max_x-min_x)*(self.plane_size[1][0]-self.plane_size[0][0]))
         boundary_pts[:,0] = (boundary_pts[:,0] - min_x)/(max_x-min_x)*(self.plane_size[1][0]-self.plane_size[0][0])+self.plane_size[0][0]
         boundary_pts[:,1] = (boundary_pts[:,1] - min_y)/(max_y-min_y)*(self.plane_size[1][1]-self.plane_size[0][1])+self.plane_size[0][1]
 
@@ -189,12 +190,14 @@ class DeltaArraySim:
         # transposed_points = boundary_pts.T
         # rotated_points = np.array([-transposed_points[1], transposed_points[0]]).T
 
-        idxs, neg_idxs, DG, pos = self.nn_helper.get_nn_robots(rotated_points, num_clusters=40)
+        idxs, neg_idxs, DG, pos = self.nn_helper.get_nn_robots(boundary_pts, num_clusters=40)
         idxs = np.array(list(idxs))
         min_idx = tuple(idxs[np.lexsort((idxs[:, 1], idxs[:, 0]))][0])
         
         """ Single Robot Experiment. Change this to include entire neighborhood """
-        self.active_idxs.append(min_idx)
+        self.active_idxs.append((0,0))
+        self.active_idxs.append((1,0))
+        # self.active_idxs = [tuple(idx) for idx in idxs]
 
         finger_pos = self.nn_helper.robot_positions[min_idx].copy()
         finger_pos[0] = (finger_pos[0] - self.plane_size[0][0])/(self.plane_size[1][0]-self.plane_size[0][0])*(max_x-min_x)+min_x
