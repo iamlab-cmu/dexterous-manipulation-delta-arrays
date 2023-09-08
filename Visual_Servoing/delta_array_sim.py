@@ -56,24 +56,22 @@ class DeltaArraySim:
         self.post_imgs = {}
         self.envs_done = 0
         self.block_com = np.array(((0.0,0.0),(0.0,0.0)))
-        self.plane_size = 1000*np.array([(0.132-0.025, -0.179-0.055),(0.132+0.025, -0.179+0.055)])
         cols = ['com_x1', 'com_y1', 'com_x2', 'com_y2'] + [f'robotx_{i}' for i in range(64)] + [f'roboty_{i}' for i in range(64)]
         self.df = pd.DataFrame(columns=cols)
-        
+
+        self.plane_size = 1000*np.array([(-0.065, -0.2085), (0.2625 + 0.065, 0.303107 + 0.187)]) # 1000*np.array([(0.13125-0.025, 0.1407285-0.055),(0.13125+0.025, 0.1407285+0.055)])
+        self.min_max_xy = [0,0,0,0] # This is obtained from calibration 
         # self.save_iters = 0
         # self.num_samples = 100
         
         """ Fingertip Vars """
         self.finger_positions = np.zeros((8,8)).tolist()
-        self.kdtree_positions = np.zeros((64, 2))
         for i in range(self.num_tips[0]):
             for j in range(self.num_tips[1]):
-                if i%2==0:
-                    self.finger_positions[i][j] = gymapi.Vec3(i*0.0375, -j*0.043301 - 0.02165, 0.5)
-                    self.kdtree_positions[i*8 + j, :] = (i*0.0375, -j*0.043301 - 0.02165)
+                if i%2!=0:
+                    self.finger_positions[i][j] = gymapi.Vec3(i*0.0375, j*0.043301 - 0.02165, 0.5)
                 else:
-                    self.finger_positions[i][j] = gymapi.Vec3(i*0.0375, -j*0.043301, 0.5)
-                    self.kdtree_positions[i*8 + j, :] = (i*0.0375, -j*0.043301)
+                    self.finger_positions[i][j] = gymapi.Vec3(i*0.0375, j*0.043301, 0.5)
         self.neighborhood_fingers = [[] for _ in range(self.scene.n_envs)]
         self.contact_fingers = [set() for _ in range(self.scene.n_envs)]
         self.attraction_error = np.zeros((8,8))
@@ -118,7 +116,6 @@ class DeltaArraySim:
         self.psi_reward = 100
         self.beta_reward = -100
 
-
     def set_attractor_handles(self, env_idx):
         """ Creates an attractor handle for each fingertip """
         env_ptr = self.scene.env_ptrs[env_idx]
@@ -149,7 +146,10 @@ class DeltaArraySim:
         for i in range(self.num_tips[0]):
             for j in range(self.num_tips[1]):
                 if pos_high:
-                    self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j], r=self.finga_q)])
+                    if (i==0) and (j==0):
+                        self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0.05, 0, 0), r=self.finga_q)])
+                    else:
+                        self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j], r=self.finga_q)])
                 elif (i,j) in self.neighborhood_fingers[env_idx][1]:
                     self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.45), r=self.finga_q)])
                 else:
@@ -161,8 +161,8 @@ class DeltaArraySim:
 
     def set_block_pose(self, env_idx):
         # block_p = gymapi.Vec3(np.random.uniform(0,0.313407), np.random.uniform(0,0.2803), self.cfg[self.obj_name]['dims']['sz'] / 2 + 0.002)
-        self.block_com[0] = np.array((0.132, -0.179))
-        block_p = gymapi.Vec3(0.132, -0.179, self.cfg[self.obj_name]['dims']['sz'] / 2 + 0.002)
+        self.block_com[0] = np.array((0.13125, 0.1407285))
+        block_p = gymapi.Vec3(0.13125, 0.1407285, self.cfg[self.obj_name]['dims']['sz'] / 2 + 0.002)
         self.object.set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p)])
 
     def get_scene_image(self, env_idx):
@@ -172,43 +172,57 @@ class DeltaArraySim:
 
     def get_nearest_robot_and_crop(self, env_idx):
         seg_map = self.current_scene_frame['seg'].data.astype(np.uint8)
+        # cv2.imwrite('./data/testing/boundary.png', seg_map)
+        contours,_= cv2.findContours(seg_map,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+
+        max_contour = contours[0]
+        for contour in contours:
+            if cv2.contourArea(contour)>cv2.contourArea(max_contour):
+                max_contour=contour
+        max_contour.resize(max_contour.shape[0], max_contour.shape[-1])
+        x_min, y_min = np.min(max_contour, axis=0)
+        x_max, y_max = np.max(max_contour, axis=0)
+        mask = np.zeros(seg_map.shape[:2],np.uint8)
+        mask[y_min:y_max,x_min:x_max] = 255
+        seg_map = cv2.bitwise_and(seg_map,seg_map,mask = mask)
         boundary = cv2.Canny(seg_map,100,200)
         boundary_pts = np.array(np.where(boundary==255)).T
-        boundary_pts2 = np.array(np.where(boundary==255))
-        min_x, min_y = np.min(boundary_pts, axis=0)
-        max_x, max_y = np.max(boundary_pts, axis=0)
-        # print(min_x, min_y, max_x, max_y)
-        # print((max_x-min_x)*(self.plane_size[1][0]-self.plane_size[0][0]))
-        boundary_pts[:,0] = (boundary_pts[:,0] - min_x)/(max_x-min_x)*(self.plane_size[1][0]-self.plane_size[0][0])+self.plane_size[0][0]
-        boundary_pts[:,1] = (boundary_pts[:,1] - min_y)/(max_y-min_y)*(self.plane_size[1][1]-self.plane_size[0][1])+self.plane_size[0][1]
-
-        ###################################@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@######################################
-        """
-        Debug The Weird Idx selection ISSUE
-        """
-
-        # transposed_points = boundary_pts.T
-        # rotated_points = np.array([-transposed_points[1], transposed_points[0]]).T
+        
+        boundary_pts[:,0] = boundary_pts[:,0]/1080*(self.plane_size[1][0]-self.plane_size[0][0])+self.plane_size[0][0]
+        boundary_pts[:,1] = boundary_pts[:,1]/1920*(self.plane_size[1][1]-self.plane_size[0][1])+self.plane_size[0][1]
+        
+        com = np.mean(boundary_pts, axis=0)
+        # plt.scatter(*com, c='r')
+        # plt.scatter(boundary_pts[:,0], boundary_pts[:,1], c='b')
+        # plt.scatter(self.nn_helper.kdtree_positions[:,0], self.nn_helper.kdtree_positions[:,1], c='r')
+        # plt.show()
 
         idxs, neg_idxs, DG, pos = self.nn_helper.get_nn_robots(boundary_pts, num_clusters=40)
         idxs = np.array(list(idxs))
         min_idx = tuple(idxs[np.lexsort((idxs[:, 1], idxs[:, 0]))][0])
         
         """ Single Robot Experiment. Change this to include entire neighborhood """
-        self.active_idxs.append((0,0))
-        self.active_idxs.append((1,0))
-        # self.active_idxs = [tuple(idx) for idx in idxs]
+        # self.active_idxs.append(min_idx)
+        # self.active_idxs.append((7,0))
+        self.active_idxs = [tuple(idx) for idx in idxs]
 
+        idxs = np.array(list(idxs))
+        neighbors = self.nn_helper.robot_positions[idxs[:,0], idxs[:,1]]
+        plt.scatter(boundary_pts[:,0], boundary_pts[:,1], c='b')
+        plt.scatter(neighbors[:,1],neighbors[:,0], c='r')
+        plt.show()
+ 
         finger_pos = self.nn_helper.robot_positions[min_idx].copy()
-        finger_pos[0] = (finger_pos[0] - self.plane_size[0][0])/(self.plane_size[1][0]-self.plane_size[0][0])*(max_x-min_x)+min_x
-        finger_pos[1] = (finger_pos[1] - self.plane_size[0][1])/(self.plane_size[1][1]-self.plane_size[0][1])*(max_y-min_y)+min_y
+        finger_pos[0] = (finger_pos[0] - self.plane_size[0][0])/(self.plane_size[1][0]-self.plane_size[0][0])*(self.min_max_xy[2]-self.min_max_xy[0])+self.min_max_xy[0]
+        finger_pos[1] = (finger_pos[1] - self.plane_size[0][1])/(self.plane_size[1][1]-self.plane_size[0][1])*(self.min_max_xy[3]-self.min_max_xy[1])+self.min_max_xy[1]
         finger_pos = finger_pos.astype(np.int32)
 
-        # plt.imshow(seg_map)
-        # plt.scatter(finger_pos[1], finger_pos[0], c='r')
-        # plt.show()
+        plt.imshow(seg_map)
+        plt.scatter(finger_pos[1], finger_pos[0], c='r')
+        plt.show()
 
-        crop = seg_map[finger_pos[0]-112:finger_pos[0]+112, finger_pos[1]-112:finger_pos[1]+112]
+        crop = seg_map[min_x:max_x, min_y:max_y]
+        # crop = seg_map[finger_pos[0]-112:finger_pos[0]+112, finger_pos[1]-112:finger_pos[1]+112]
         cols = np.random.rand(3)
         crop = np.dstack((crop, crop, crop))*cols
         crop = Image.fromarray(np.uint8(crop*255))
@@ -268,6 +282,7 @@ class DeltaArraySim:
     def visual_servoing(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
         env_ptr = self.scene.env_ptrs[env_idx]
+        
         if t_step in {0, 1, self.time_horizon-2}:
             self.reset(env_idx, t_step, env_ptr)
         elif t_step < self.time_horizon-2:

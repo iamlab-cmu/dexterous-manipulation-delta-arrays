@@ -25,17 +25,27 @@ class DeltaArrayEnvironment():
         self.object = GymBoxAsset(self.scene, **self.cfg['block']['dims'], 
                             shape_props=self.cfg['block']['shape_props'], 
                             rb_props=self.cfg['block']['rb_props'],
-                            asset_options=self.cfg['block']['asset_options']
-                            )
+                            asset_options=self.cfg['block']['asset_options'])
+        # # Left Top fiducial marker
+        # self.fiducial_lt = GymBoxAsset(self.scene, **self.cfg['fiducial']['dims'], 
+        #                     shape_props=self.cfg['fiducial']['shape_props'], 
+        #                     rb_props=self.cfg['fiducial']['rb_props'],
+        #                     asset_options=self.cfg['fiducial']['asset_options'])
+        # # Right Bottom fiducial marker
+        # # self.cfg['fiducial']['rb_props']['color'] = [0,0,1]
+        # self.fiducial_rb = GymBoxAsset(self.scene, **self.cfg['fiducial']['dims'], 
+        #                     shape_props=self.cfg['fiducial']['shape_props'], 
+        #                     rb_props=self.cfg['fiducial']['rb_props'],
+        #                     asset_options=self.cfg['fiducial']['asset_options'])
         self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, obj = self.object, obj_name = self.obj_name, num_tips = [8,8], run_no=self.run_no)
 
         self.cam = GymCamera(self.scene, cam_props = self.cfg['camera'])
         # print(RigidTransform.x_axis_rotation(np.deg2rad(180)))
-        rot = RigidTransform.x_axis_rotation(np.deg2rad(180)) #@RigidTransform.z_axis_rotation(np.deg2rad(90))
+        rot = RigidTransform.x_axis_rotation(np.deg2rad(180))@RigidTransform.z_axis_rotation(np.deg2rad(-90))
         # print(rot)
         self.cam_offset_transform = RigidTransform_to_transform(RigidTransform(
             rotation=rot,
-            translation = np.array([0.132, -0.179, 0.35])
+            translation = np.array([0.13125, 0.1407285, 0.35])
         ))
         self.cam_name = 'hand_cam0'
 
@@ -51,25 +61,27 @@ class DeltaArrayEnvironment():
         self.fingers.add_asset(scene)
         # Add either rigid body or soft body as an asset to the scene
         scene.add_asset(self.obj_name, self.object, gymapi.Transform()) 
+        # scene.add_asset("fiducial_lt", self.fiducial_lt, gymapi.Transform()) 
+        # scene.add_asset("fiducial_rb", self.fiducial_rb, gymapi.Transform()) 
         scene.add_standalone_camera(self.cam_name, self.cam, self.cam_offset_transform)
-        print(scene.sim, type(gymapi.Vec3(1, 1, 1)))
         scene.gym.set_light_parameters(scene.sim, 0, gymapi.Vec3(1, 1, 1),gymapi.Vec3(1, 1, 1),gymapi.Vec3(0, -1, -1))
 
     def setup_objects(self):
         for i in self.scene.env_idxs:
             self.fingers.set_attractor_handles(i)
 
-        # object_p = gymapi.Vec3(np.random.uniform(0,0.348407), np.random.uniform(0,0.3153), self.cfg[self.obj_name]['dims']['sz'] / 2 + 0.1)
-        object_p = gymapi.Vec3(0.132, -0.179, self.cfg[self.obj_name]['dims']['sz'] / 2 + 0.002)
-        # print("BOX_POS = ", object_p)
+        object_p = gymapi.Vec3(0.13125, 0.1407285, self.cfg[self.obj_name]['dims']['sz'] / 2 + 0.002)
         object_transforms = [gymapi.Transform(p=object_p) for _ in range(self.scene.n_envs)]
-        # print("Hakuna!", object_transforms[0].p)
+        # fiducial_rb = [gymapi.Transform(p=gymapi.Vec3(-0.06, -0.2035, 0.00002)) for _ in range(self.scene.n_envs)]
+        # fiducial_lt = [gymapi.Transform(p=gymapi.Vec3(0.2625 + 0.06, 0.303107 + 0.182, 0.00002)) for _ in range(self.scene.n_envs)]
         for env_idx in self.scene.env_idxs:
             if self.obj_name == 'block':
                 self.object.set_rb_transforms(env_idx, self.obj_name, [object_transforms[env_idx]])
             elif self.obj_name == 'rope':
                 self.object.set_rb_transforms(env_idx, self.obj_name, [object_transforms[env_idx]])
             self.fingers.set_all_fingers_pose(env_idx)
+            # self.fiducial_lt.set_rb_transforms(env_idx, "fiducial_lt", [fiducial_lt[env_idx]])
+            # self.fiducial_rb.set_rb_transforms(env_idx, "fiducial_rb", [fiducial_rb[env_idx]])
 
     def run(self):
         self.scene.run(policy=self.fingers.visual_servoing)

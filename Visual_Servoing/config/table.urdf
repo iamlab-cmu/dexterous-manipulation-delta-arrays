@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot name="rectangular_block">
+
+  <!-- Link: The physical properties of the rectangular block -->
+  <link name="base_link">
+    <!-- Inertial properties: Mass and inertia tensor -->
+    <inertial>
+      <mass value="1.0"/> <!-- Adjust the mass as needed -->
+      <!-- Define the moments of inertia (Ixx, Iyy, Izz) -->
+      <inertia ixx="0.1" ixy="0.0" ixz="0.0" iyy="0.1" iyz="0.0" izz="0.1"/>
+    </inertial>
+
+    <!-- Visual properties: How the block looks -->
+    <visual>
+      <!-- Geometry of the visual shape -->
+      <geometry>
+        <box size="0.1 0.2 0.3"/> <!-- Adjust the size as needed (x, y, z) -->
+      </geometry>
+      <!-- Material properties -->
+      <material name="blue">
+        <color rgba="0.0 0.0 1.0 1.0"/> <!-- Blue color (RGBA) -->
+      </material>
+    </visual>
+
+    <!-- Collision properties: How the block behaves in collisions -->
+    <collision>
+      <!-- Geometry of the collision shape -->
+      <geometry>
+        <box size="0.1 0.2 0.3"/> <!-- Use the same size as the visual shape -->
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Joint: Attach the link to the world (fixed joint) -->
+  <joint name="fixed" type="fixed">
+    <parent link="world"/>
+    <child link="base_link"/>
+    <!-- Specify the pose (position and orientation) of the block -->
+    <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+  </joint>
+
+</robot>
