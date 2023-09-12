@@ -23,9 +23,42 @@ class NNHelper:
 
         self.cluster_centers = None
 
-    def get_nn_robots(self, boundary_pts, num_clusters=16):
-        kmeans = KMeans(n_clusters=16, random_state=0).fit(boundary_pts)
-        self.cluster_centers = np.flip(np.sort(kmeans.cluster_centers_))
+    def get_nn_robots(self, boundary_pts):
+        if len(boundary_pts) > 200:
+            bd_pts = boundary_pts[np.random.choice(range(len(boundary_pts)), size=200, replace=False)]
+        else:
+            bd_pts = boundary_pts
+        hull = ConvexHull(bd_pts)
+        A, b = hull.equations[:, :-1], hull.equations[:, -1:]
+        idxs = set()
+        eps = np.finfo(np.float32).eps
+        neg_idxs = set()
+        for n, (i,j) in enumerate(bd_pts):
+            idx = spatial.KDTree(self.kdtree_positions).query((i,j))[1]
+            if not (np.all(self.robot_positions[idx//8][idx%8] @ A.T + b.T < eps, axis=1)):
+                idxs.add((idx//8, idx%8))
+            else:
+                kdt_pos_copy = self.kdtree_positions.copy()
+                while np.all(kdt_pos_copy[idx] @ A.T + b.T < eps, axis=1):
+                    x,y = kdt_pos_copy[idx]
+                    idx2 = np.where(np.isclose(self.kdtree_positions[:,0], x) & np.isclose(self.kdtree_positions[:,1], y) )[0][0]
+                    neg_idxs.add((idx2//8, idx2%8))
+
+                    kdt_pos_copy = np.delete(kdt_pos_copy, idx, axis=0)
+                    idx = spatial.KDTree(kdt_pos_copy).query((i,j))[1]
+                    
+                x,y = kdt_pos_copy[idx]
+                idx = np.where(np.isclose(self.kdtree_positions[:,0], x) & np.isclose(self.kdtree_positions[:,1], y) )[0][0]
+                idxs.add((idx//8, idx%8))
+        
+        return idxs, neg_idxs
+
+    def get_nn_robots_and_graph(self, boundary_pts, num_clusters=16):
+        # kmeans = KMeans(n_clusters=num_clusters, random_state=0).fit(boundary_pts)
+        # self.cluster_centers = np.flip(np.sort(kmeans.cluster_centers_))
+        print(self.cluster_centers.shape)
+        plt.scatter(boundary_pts[:,0], boundary_pts[:,1], c='b')
+        plt.scatter(self.cluster_centers[:,0], self.cluster_centers[:,1], c='g')
         # state_space = {i:tuple(self.cluster_centers[i]) for i in range(len(self.cluster_centers))}
         # state_space_inv = dict((v, k) for k, v in state_space.items())
         hull = ConvexHull(self.cluster_centers)

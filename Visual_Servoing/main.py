@@ -33,22 +33,21 @@ class DeltaArrayEnvironment():
                         shape_props=self.cfg['table']['shape_props'],
                         assets_root=Path('config'))
 
-        # Left Top fiducial marker
-        self.fiducial_lt = GymBoxAsset(self.scene, **self.cfg['fiducial']['dims'], 
-                            shape_props=self.cfg['fiducial']['shape_props'], 
-                            rb_props=self.cfg['fiducial']['rb_props'],
-                            asset_options=self.cfg['fiducial']['asset_options'])
-        # Right Bottom fiducial marker
-        # self.cfg['fiducial']['rb_props']['color'] = [0,0,1]
-        self.fiducial_rb = GymBoxAsset(self.scene, **self.cfg['fiducial']['dims'], 
-                            shape_props=self.cfg['fiducial']['shape_props'], 
-                            rb_props=self.cfg['fiducial']['rb_props'],
-                            asset_options=self.cfg['fiducial']['asset_options'])
+        # # Left Top fiducial marker
+        # self.fiducial_lt = GymBoxAsset(self.scene, **self.cfg['fiducial']['dims'], 
+        #                     shape_props=self.cfg['fiducial']['shape_props'], 
+        #                     rb_props=self.cfg['fiducial']['rb_props'],
+        #                     asset_options=self.cfg['fiducial']['asset_options'])
+        # # Right Bottom fiducial marker
+        # self.fiducial_rb = GymBoxAsset(self.scene, **self.cfg['fiducial']['dims'], 
+        #                     shape_props=self.cfg['fiducial']['shape_props'], 
+        #                     rb_props=self.cfg['fiducial']['rb_props'],
+        #                     asset_options=self.cfg['fiducial']['asset_options'])
         self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, obj = self.object, obj_name = self.obj_name, num_tips = [8,8], run_no=self.run_no)
 
         self.cam = GymCamera(self.scene, cam_props = self.cfg['camera'])
         # print(RigidTransform.x_axis_rotation(np.deg2rad(180)))
-        rot = RigidTransform.x_axis_rotation(np.deg2rad(0)) #@RigidTransform.z_axis_rotation(np.deg2rad(-90))
+        rot = RigidTransform.x_axis_rotation(np.deg2rad(0))@RigidTransform.z_axis_rotation(np.deg2rad(-90))
         # print(rot)
         self.cam_offset_transform = RigidTransform_to_transform(RigidTransform(
             rotation=rot,
@@ -69,10 +68,10 @@ class DeltaArrayEnvironment():
         # Add either rigid body or soft body as an asset to the scene
         scene.add_asset(self.obj_name, self.object, gymapi.Transform()) 
         scene.add_asset("table", self.table, gymapi.Transform())
-        scene.add_asset("fiducial_lt", self.fiducial_lt, gymapi.Transform()) 
-        scene.add_asset("fiducial_rb", self.fiducial_rb, gymapi.Transform()) 
+        # scene.add_asset("fiducial_lt", self.fiducial_lt, gymapi.Transform()) 
+        # scene.add_asset("fiducial_rb", self.fiducial_rb, gymapi.Transform()) 
         scene.add_standalone_camera(self.cam_name, self.cam, self.cam_offset_transform)
-        scene.gym.set_light_parameters(scene.sim, 0, gymapi.Vec3(1, 1, 1),gymapi.Vec3(1, 1, 1),gymapi.Vec3(0, 0, 1))
+        scene.gym.set_light_parameters(scene.sim, 0, gymapi.Vec3(1, 1, 1),gymapi.Vec3(1, 1, 1),gymapi.Vec3(0, -1, -1))
 
     def setup_objects(self):
         for i in self.scene.env_idxs:
@@ -81,8 +80,10 @@ class DeltaArrayEnvironment():
         object_p = gymapi.Vec3(0.13125, 0.1407285, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
         object_transforms = [gymapi.Transform(p=object_p) for _ in range(self.scene.n_envs)]
         table_transforms = [gymapi.Transform(p=gymapi.Vec3(0,0,0.5)) for _ in range(self.scene.n_envs)]
-        fiducial_rb = [gymapi.Transform(p=gymapi.Vec3(-0.06, -0.2035, 1.0015)) for _ in range(self.scene.n_envs)]
-        fiducial_lt = [gymapi.Transform(p=gymapi.Vec3(0.2625 + 0.06, 0.303107 + 0.182, 1.0015)) for _ in range(self.scene.n_envs)]
+        # fiducial_rb = [gymapi.Transform(p=gymapi.Vec3(-0.2035, -0.06, 1.0052)) for _ in range(self.scene.n_envs)]
+        # fiducial_lt = [gymapi.Transform(p=gymapi.Vec3(0.303107 + 0.182, 0.2625 + 0.06, 1.0052)) for _ in range(self.scene.n_envs)]
+        # fiducial_rb = [gymapi.Transform(p=gymapi.Vec3(0 - 0.0612, 0 - 0.2085, 1.0052)) for _ in range(self.scene.n_envs)]
+        # fiducial_lt = [gymapi.Transform(p=gymapi.Vec3(0.2625 + 0.062, 0.303107 + 0.1855, 1.0052)) for _ in range(self.scene.n_envs)]
         for env_idx in self.scene.env_idxs:
             self.table.set_rb_transforms(env_idx, 'table', [table_transforms[env_idx]])
             if self.obj_name == 'block':
