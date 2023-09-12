@@ -171,7 +171,12 @@ class DeltaArraySim:
         self.current_scene_frame = frames
 
     def get_nearest_robot_and_crop(self, env_idx):
+        img = self.current_scene_frame['color'].data.astype(np.uint8)
+        plt.imshow(img)
+        plt.show()
         seg_map = self.current_scene_frame['seg'].data.astype(np.uint8)
+        plt.imshow(seg_map)
+        plt.show()
         # cv2.imwrite('./data/testing/boundary.png', seg_map)
         contours,_= cv2.findContours(seg_map,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
 
@@ -208,20 +213,20 @@ class DeltaArraySim:
 
         idxs = np.array(list(idxs))
         neighbors = self.nn_helper.robot_positions[idxs[:,0], idxs[:,1]]
-        plt.scatter(boundary_pts[:,0], boundary_pts[:,1], c='b')
-        plt.scatter(neighbors[:,1],neighbors[:,0], c='r')
-        plt.show()
+        # plt.scatter(boundary_pts[:,0], boundary_pts[:,1], c='b')
+        # plt.scatter(neighbors[:,1],neighbors[:,0], c='r')
+        # plt.show()
  
-        finger_pos = self.nn_helper.robot_positions[min_idx].copy()
-        finger_pos[0] = (finger_pos[0] - self.plane_size[0][0])/(self.plane_size[1][0]-self.plane_size[0][0])*(self.min_max_xy[2]-self.min_max_xy[0])+self.min_max_xy[0]
-        finger_pos[1] = (finger_pos[1] - self.plane_size[0][1])/(self.plane_size[1][1]-self.plane_size[0][1])*(self.min_max_xy[3]-self.min_max_xy[1])+self.min_max_xy[1]
-        finger_pos = finger_pos.astype(np.int32)
+        # finger_pos = self.nn_helper.robot_positions[min_idx].copy()
+        # finger_pos[0] = (finger_pos[0] - self.plane_size[0][0])/(self.plane_size[1][0]-self.plane_size[0][0])*(self.min_max_xy[2]-self.min_max_xy[0])+self.min_max_xy[0]
+        # finger_pos[1] = (finger_pos[1] - self.plane_size[0][1])/(self.plane_size[1][1]-self.plane_size[0][1])*(self.min_max_xy[3]-self.min_max_xy[1])+self.min_max_xy[1]
+        # finger_pos = finger_pos.astype(np.int32)
 
-        plt.imshow(seg_map)
-        plt.scatter(finger_pos[1], finger_pos[0], c='r')
-        plt.show()
+        # plt.imshow(seg_map)
+        # plt.scatter(finger_pos[1], finger_pos[0], c='r')
+        # plt.show()
 
-        crop = seg_map[min_x:max_x, min_y:max_y]
+        crop = seg_map #[min_x:max_x, min_y:max_y]
         # crop = seg_map[finger_pos[0]-112:finger_pos[0]+112, finger_pos[1]-112:finger_pos[1]+112]
         cols = np.random.rand(3)
         crop = np.dstack((crop, crop, crop))*cols
@@ -279,10 +284,16 @@ class DeltaArraySim:
             # Set the robots in idxs to default positions.
             self.set_all_fingers_pose(env_idx, pos_high=True)
 
+    def sim_test(self, env_idx, t_step, env_ptr):
+        for i in range(self.num_tips[0]):
+            for j in range(self.num_tips[1]):
+                self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
+
+
     def visual_servoing(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
         env_ptr = self.scene.env_ptrs[env_idx]
-        
+        # self.sim_test(env_idx, t_step, env_ptr)
         if t_step in {0, 1, self.time_horizon-2}:
             self.reset(env_idx, t_step, env_ptr)
         elif t_step < self.time_horizon-2:

@@ -1,6 +1,7 @@
 import numpy as np
 import os
 import time
+from pathlib import Path
 from autolab_core import YamlConfig, RigidTransform
 from isaacgym import gymapi
 from isaacgym_utils.scene import GymScene
@@ -29,7 +30,8 @@ class DeltaArrayEnvironment():
 
         self.table = GymURDFAsset(self.cfg['table']['urdf_path'], self.scene,
                         asset_options=self.cfg['table']['asset_options'],
-                        shape_props=self.cfg['table']['shape_props'])
+                        shape_props=self.cfg['table']['shape_props'],
+                        assets_root=Path('config'))
 
         # Left Top fiducial marker
         self.fiducial_lt = GymBoxAsset(self.scene, **self.cfg['fiducial']['dims'], 
@@ -50,7 +52,7 @@ class DeltaArrayEnvironment():
         # print(rot)
         self.cam_offset_transform = RigidTransform_to_transform(RigidTransform(
             rotation=rot,
-            translation = np.array([0.13125, 0.1407285, 0.35])
+            translation = np.array([0.13125, 0.1407285, 0.65])
         ))
         self.cam_name = 'hand_cam0'
 
@@ -70,7 +72,7 @@ class DeltaArrayEnvironment():
         scene.add_asset("fiducial_lt", self.fiducial_lt, gymapi.Transform()) 
         scene.add_asset("fiducial_rb", self.fiducial_rb, gymapi.Transform()) 
         scene.add_standalone_camera(self.cam_name, self.cam, self.cam_offset_transform)
-        scene.gym.set_light_parameters(scene.sim, 0, gymapi.Vec3(1, 1, 1),gymapi.Vec3(1, 1, 1),gymapi.Vec3(0, -1, -1))
+        scene.gym.set_light_parameters(scene.sim, 0, gymapi.Vec3(1, 1, 1),gymapi.Vec3(1, 1, 1),gymapi.Vec3(0, 0, 1))
 
     def setup_objects(self):
         for i in self.scene.env_idxs:
@@ -78,9 +80,9 @@ class DeltaArrayEnvironment():
 
         object_p = gymapi.Vec3(0.13125, 0.1407285, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
         object_transforms = [gymapi.Transform(p=object_p) for _ in range(self.scene.n_envs)]
-        table_transforms = [gymapi.Transform(p=gymapi.Vec3(0,0,0)) for _ in range(self.scene.n_envs)]
-        fiducial_rb = [gymapi.Transform(p=gymapi.Vec3(-0.06, -0.2035, 1.00002)) for _ in range(self.scene.n_envs)]
-        fiducial_lt = [gymapi.Transform(p=gymapi.Vec3(0.2625 + 0.06, 0.303107 + 0.182, 1.00002)) for _ in range(self.scene.n_envs)]
+        table_transforms = [gymapi.Transform(p=gymapi.Vec3(0,0,0.5)) for _ in range(self.scene.n_envs)]
+        fiducial_rb = [gymapi.Transform(p=gymapi.Vec3(-0.06, -0.2035, 1.0015)) for _ in range(self.scene.n_envs)]
+        fiducial_lt = [gymapi.Transform(p=gymapi.Vec3(0.2625 + 0.06, 0.303107 + 0.182, 1.0015)) for _ in range(self.scene.n_envs)]
         for env_idx in self.scene.env_idxs:
             self.table.set_rb_transforms(env_idx, 'table', [table_transforms[env_idx]])
             if self.obj_name == 'block':
