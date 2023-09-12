@@ -69,9 +69,9 @@ class DeltaArraySim:
         for i in range(self.num_tips[0]):
             for j in range(self.num_tips[1]):
                 if i%2!=0:
-                    self.finger_positions[i][j] = gymapi.Vec3(i*0.0375, j*0.043301 - 0.02165, 0.5)
+                    self.finger_positions[i][j] = gymapi.Vec3(i*0.0375, j*0.043301 - 0.02165, 1.5)
                 else:
-                    self.finger_positions[i][j] = gymapi.Vec3(i*0.0375, j*0.043301, 0.5)
+                    self.finger_positions[i][j] = gymapi.Vec3(i*0.0375, j*0.043301, 1.5)
         self.neighborhood_fingers = [[] for _ in range(self.scene.n_envs)]
         self.contact_fingers = [set() for _ in range(self.scene.n_envs)]
         self.attraction_error = np.zeros((8,8))
@@ -162,7 +162,7 @@ class DeltaArraySim:
     def set_block_pose(self, env_idx):
         # block_p = gymapi.Vec3(np.random.uniform(0,0.313407), np.random.uniform(0,0.2803), self.cfg[self.obj_name]['dims']['sz'] / 2 + 0.002)
         self.block_com[0] = np.array((0.13125, 0.1407285))
-        block_p = gymapi.Vec3(0.13125, 0.1407285, self.cfg[self.obj_name]['dims']['sz'] / 2 + 0.002)
+        block_p = gymapi.Vec3(0.13125, 0.1407285, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
         self.object.set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p)])
 
     def get_scene_image(self, env_idx):
