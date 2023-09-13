@@ -88,6 +88,7 @@ class DeltaArraySim:
         self.current_episode = 0
 
         """ Visual Servoing and RL Vars """
+        self.bd_pts = None
         self.current_scene_frame = None
         self.batch_size = 32
         self.model = resnet18(pretrained=True)
@@ -114,8 +115,8 @@ class DeltaArraySim:
         self.ep_rewards = []
         self.ep_reward = 0
         self.alpha_reward = -1
-        self.psi_reward = 100
-        self.beta_reward = -100
+        self.psi_reward = 50
+        self.beta_reward = -20
 
     def set_attractor_handles(self, env_idx):
         """ Creates an attractor handle for each fingertip """
@@ -148,7 +149,7 @@ class DeltaArraySim:
             for j in range(self.num_tips[1]):
                 if pos_high:
                     if (i==0) and (j==0):
-                        self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(-0.05, -0.05, 0), r=self.finga_q)])
+                        self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)])
                     else:
                         self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0.0, 0, 0), r=self.finga_q)])
                 elif (i,j) in self.neighborhood_fingers[env_idx][1]:
@@ -187,13 +188,16 @@ class DeltaArraySim:
         
         com = np.mean(boundary_pts, axis=0)
 
-        idxs, neg_idxs = self.nn_helper.get_nn_robots(boundary_pts)
+        if len(boundary_pts) > 200:
+            self.bd_pts = boundary_pts[np.random.choice(range(len(boundary_pts)), size=200, replace=False)]
+        else:
+            self.bd_pts = boundary_pts
+        idxs, neg_idxs = self.nn_helper.get_nn_robots(self.bd_pts)
         idxs = np.array(list(idxs))
         min_idx = tuple(idxs[np.lexsort((idxs[:, 0], idxs[:, 1]))][0])
         
         """ Single Robot Experiment. Change this to include entire neighborhood """
         self.active_idxs.append(min_idx)
-        # self.active_idxs.append((7,0))
         # self.active_idxs = [tuple(idx) for idx in idxs]
 
         idxs = np.array(list(idxs))
@@ -209,12 +213,12 @@ class DeltaArraySim:
         # finger_pos[:,1] = (finger_pos[:,1] - self.plane_size[0][1])/(self.plane_size[1][1]-self.plane_size[0][1])*1920
         # finger_pos = finger_pos.astype(np.int32)
         # plt.imshow(seg_map)
-        # plt.scatter(finger_pos[:,1], finger_pos[:,0], c='r')
+        # plt.scatter(finger_pos[1], finger_pos[0], c='r')
         # plt.show()
 
         crop = seg_map[finger_pos[0]-112:finger_pos[0]+112, finger_pos[1]-112:finger_pos[1]+112]
-        plt.imshow(crop)
-        plt.show()
+        # plt.imshow(crop)
+        # plt.show()
         cols = np.random.rand(3)
         crop = np.dstack((crop, crop, crop))*cols
         crop = Image.fromarray(np.uint8(crop*255))
@@ -223,21 +227,30 @@ class DeltaArraySim:
             state = self.model(crop)
         return state.detach().cpu().squeeze()
 
+    def reward_helper(self, env_idx, t_step):
+        final_trans = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
+        self.block_com[1] = np.array((final_trans.p.x, final_trans.p.y))
+        block_l2_distance = np.linalg.norm(self.block_com[1] - self.block_com[0])
+    
+        robot_to_obj_dists = self.nn_helper.get_min_dist(self.bd_pts, self.active_idxs)
+        return block_l2_distance, robot_to_obj_dists
+
     def compute_reward(self, env_idx, t_step):
         """ Computes reward, saves it in ep_reward variable and returns True if the action was successful """
         if t_step < self.time_horizon-2:
-            self.ep_reward += self.alpha_reward
+            # self.ep_reward += self.alpha_reward
             return False
         else:
-            final_trans = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
-            self.block_com[1] = np.array((final_trans.p.x, final_trans.p.y))
-            
-            block_delta = np.linalg.norm(self.block_com[1] - self.block_com[0])
-            if block_delta < 0.005:
+            block_l2_distance, robot_to_obj_dists = self.reward_helper(env_idx, t_step)
+            print(f'Rewards: {block_l2_distance, robot_to_obj_dists}')
+            self.ep_reward += self.alpha_reward * robot_to_obj_dists[0]
+            if 2e-5 < block_l2_distance < 0.005:
                 self.ep_reward += self.psi_reward
                 return True
+            elif block_l2_distance == 0:
+                self.ep_reward += self.beta_reward
             else:
-                self.ep_reward -= self.beta_reward * block_delta
+                self.ep_reward += self.beta_reward * block_l2_distance
                 return False
 
     def terminate(self, env_idx, t_step):

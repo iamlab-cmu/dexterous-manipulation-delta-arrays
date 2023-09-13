@@ -23,17 +23,24 @@ class NNHelper:
 
         self.cluster_centers = None
 
+    def get_min_dist(self, boundary_pts, idxs):
+        min_dists = []
+        for idx in idxs:
+            min_dist = np.inf
+            for j in boundary_pts:
+                dist = np.linalg.norm(self.robot_positions[idx] - j)
+                if dist < min_dist:
+                    min_dist = dist
+            min_dists.append(min_dist)
+        return min_dists
+
     def get_nn_robots(self, boundary_pts):
-        if len(boundary_pts) > 200:
-            bd_pts = boundary_pts[np.random.choice(range(len(boundary_pts)), size=200, replace=False)]
-        else:
-            bd_pts = boundary_pts
-        hull = ConvexHull(bd_pts)
+        hull = ConvexHull(boundary_pts)
         A, b = hull.equations[:, :-1], hull.equations[:, -1:]
         idxs = set()
         eps = np.finfo(np.float32).eps
         neg_idxs = set()
-        for n, (i,j) in enumerate(bd_pts):
+        for n, (i,j) in enumerate(boundary_pts):
             idx = spatial.KDTree(self.kdtree_positions).query((i,j))[1]
             if not (np.all(self.robot_positions[idx//8][idx%8] @ A.T + b.T < eps, axis=1)):
                 idxs.add((idx//8, idx%8))
