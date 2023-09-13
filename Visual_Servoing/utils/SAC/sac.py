@@ -1,7 +1,7 @@
 """
 Code inspired heavily by https://github.com/cyoon1729/Policy-Gradient-Methods/blob/master/sac/sac2019.py
 """
-
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 # import gymnasium as gym
@@ -13,6 +13,8 @@ import torch.optim as optim
 
 from utils.SAC.network import SoftQNetwork, GaussianPolicy
 from utils.SAC.replay_buffer import ReplayBuffer
+# wandb.login()
+import wandb
 
 class SACAgent:
     def __init__(self, env_dict, gamma, tau, alpha, q_lr, policy_lr, a_lr, buffer_maxlen):
@@ -51,6 +53,32 @@ class SACAgent:
 
         self.replay_buffer = ReplayBuffer(buffer_maxlen)
 
+        self.setup_wandb()
+
+    def setup_wandb(self):
+        if os.path.exists("./utils/SAC/runtracker.txt"):
+            with open("./utils/SAC/runtracker.txt", "r") as f:
+                run = int(f.readline())
+                run += 1
+        else:
+            run = 0
+        with open("./utils/SAC/runtracker.txt", "w") as f:
+            f.write(str(run))
+
+        wandb.init(project="SAC", 
+            name=f"experiment_{run}",
+            config={"gamma"    :0.99, 
+                "tau"          :0.01, 
+                "alpha"        :0.2, 
+                "q_lr"         :3e-3, 
+                "policy_lr"    :3e-3,
+                "a_lr"         :3e-3, 
+                "buffer_maxlen":1000000
+            })
+
+    def end_wandb(self):
+        wandb.finish()
+
     def get_action(self, obs):
         obs = torch.FloatTensor(obs).unsqueeze(0).to(self.device)
         mean, log_std = self.policy.forward(obs)
@@ -66,11 +94,10 @@ class SACAgent:
 
     def update(self, batch_size):
         states, actions, rewards, next_states, dones = self.replay_buffer.sample(batch_size)
-        print(states.shape, type(states))
-        states = torch.FloatTensor(states).to(self.device)
+        states = torch.FloatTensor(torch.stack(states)).to(self.device)
         actions = torch.FloatTensor(actions).to(self.device)
         rewards = torch.FloatTensor(rewards).to(self.device)
-        next_states = torch.FloatTensor(next_states).to(self.device)
+        next_states = torch.FloatTensor(torch.stack(next_states)).to(self.device)
         dones = torch.FloatTensor(dones).to(self.device)
         dones = dones.view(dones.size(0), -1)
 
@@ -93,6 +120,10 @@ class SACAgent:
         self.Q2_optimizer.zero_grad()
         q2_loss.backward()
         self.Q2_optimizer.step()
+        metrics = {
+            "q1_loss": q1_loss.item(),
+            "q2_loss": q2_loss.item()
+        }
 
         # Delayed update for polucy and target networks'
         new_actions, log_pi = self.policy.sample(states)
@@ -109,7 +140,9 @@ class SACAgent:
 
             for target_param, param in zip(self.target_Q2.parameters(), self.Q2.parameters()):
                 target_param.data.copy_(self.tau * param + (1 - self.tau) * target_param)
+            metrics["policy_loss"] = policy_loss.item()
 
+        wandb.log(metrics)
         # Temperature updates
         alpha_loss = (self.log_alpha * (-log_pi - self.target_entropy).detach()).mean()
         self.alpha_optimizer.zero_grad()

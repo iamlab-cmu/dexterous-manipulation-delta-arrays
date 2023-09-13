@@ -24,6 +24,7 @@ from isaacgym_utils.math_utils import RigidTransform_to_transform
 from isaacgym_utils.draw import draw_transforms, draw_contacts, draw_camera
 
 import utils.nn_helper as helper
+import wandb
 import utils.SAC.sac as sac
 device = torch.device("cuda:0")
 
@@ -63,7 +64,6 @@ class DeltaArraySim:
         self.upper_green_filter = np.array([85, 255, 255])
         self.plane_size = 1000*np.array([(0 - 0.063, 0 - 0.2095), (0.2625 + 0.063, 0.303107 + 0.1865)]) # 1000*np.array([(0.13125-0.025, 0.1407285-0.055),(0.13125+0.025, 0.1407285+0.055)])
         # self.save_iters = 0
-        # self.num_samples = 100
         
         """ Fingertip Vars """
         self.finger_positions = np.zeros((8,8)).tolist()
@@ -90,7 +90,7 @@ class DeltaArraySim:
         """ Visual Servoing and RL Vars """
         self.bd_pts = None
         self.current_scene_frame = None
-        self.batch_size = 4
+        self.batch_size = 16
         self.model = resnet18(pretrained=True)
         self.model = torch.nn.Sequential(*list(self.model.children())[:-1])
         self.model.eval()
@@ -104,13 +104,13 @@ class DeltaArraySim:
         env_dict = {'action_space': {'low': -0.03, 'high': 0.03, 'dim': 2},
                     'observation_space': {'dim': 512}}
         self.agent = sac.SACAgent(env_dict=env_dict, 
-            gamma=0.99, 
-            tau=0.01, 
-            alpha=0.2, 
-            q_lr=3e-4, 
-            policy_lr=3e-4,
-            a_lr=3e-4, 
-            buffer_maxlen=1000000
+            gamma           = 0.99, 
+            tau             = 0.01, 
+            alpha           = 0.2, 
+            q_lr            = 3e-3, 
+            policy_lr       = 3e-3,
+            a_lr            = 3e-3, 
+            buffer_maxlen   = 1000000
         )
         self.ep_rewards = []
         self.ep_reward = 0
@@ -267,7 +267,7 @@ class DeltaArraySim:
         final_state = self.get_nearest_robot_and_crop(env_idx)
         self.agent.replay_buffer.push(self.init_state, self.action, self.ep_reward, final_state, True)
         self.ep_rewards.append(self.ep_reward)
-        print(f"Action: {self.action}, Reward: {self.ep_reward}")
+        print(f"Iter: {self.num_sample}, Action: {self.action}, Reward: {self.ep_reward}")
 
     def reset(self, env_idx, t_step, env_ptr):
         if t_step == 0:
@@ -301,6 +301,10 @@ class DeltaArraySim:
 
 
     def visual_servoing(self, scene, env_idx, t_step, _):
+        if self.current_episode < self.max_episodes:
+            self.current_episode += 1
+        else:
+            self.agent.end_wandb()
         t_step = t_step % self.time_horizon
         env_ptr = self.scene.env_ptrs[env_idx]
         # self.sim_test(env_idx, t_step, env_ptr)

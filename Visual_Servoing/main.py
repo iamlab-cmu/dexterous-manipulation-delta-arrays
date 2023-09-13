@@ -11,6 +11,7 @@ from isaacgym_utils.math_utils import RigidTransform_to_transform
 from isaacgym_utils.draw import draw_transforms, draw_contacts, draw_camera
 import torch
 
+import wandb
 import delta_array_sim
 
 class DeltaArrayEnvironment():
