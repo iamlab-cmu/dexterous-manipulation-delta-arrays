@@ -23,12 +23,12 @@ class NNHelper:
 
         self.cluster_centers = None
 
-    def get_min_dist(self, boundary_pts, idxs):
+    def get_min_dist(self, boundary_pts, active_idxs):
         min_dists = []
-        for idx in idxs:
+        for idx in active_idxs.keys():
             min_dist = np.inf
             for j in boundary_pts:
-                dist = np.linalg.norm(self.robot_positions[idx] - j)
+                dist = np.linalg.norm(self.robot_positions[idx] + active_idxs[idx] - j)
                 if dist < min_dist:
                     min_dist = dist
             min_dists.append(min_dist)
