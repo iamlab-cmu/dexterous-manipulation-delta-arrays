@@ -19,9 +19,9 @@ import delta_array_utils.serial_robot_mapping as srm
 
 # plt.ion()
 BUFFER_SIZE = 20
-13
-low_z = 11.5
+low_z = 12.2
 high_z = low_z - 2.5
+ceiling = 5.5
 
 class DeltaArrayEnv():
     def __init__(self):
@@ -45,6 +45,7 @@ class DeltaArrayEnv():
         # for i in self.active_robots:
         #     mean_pos += self.RC.robot_positions[i]/10
         # self.centroid = mean_pos/len(self.active_robots)
+        self.prev_active_robots = None
 
         """ Setup Delta Robot Agents """
         self.delta_agents = {}
@@ -90,17 +91,39 @@ class DeltaArrayEnv():
         self.active_robots = tuple(map(tuple, active_robots))
         print(f"Active Robots: {self.active_robots}")
         self.active_IDs = set([self.RC.robo_dict_inv[i] for i in self.active_robots])
+        if self.prev_active_robots is not None:
+            previous_set = {tuple(row) for row in self.prev_active_robots}
+            new_set = {tuple(row) for row in active_robots}
+            redundant_robots = previous_set - new_set
+            for robot in redundant_robots:
+            # for robot in self.prev_active_robots:
+                self.delta_agents[self.RC.robo_dict_inv[robot]].save_joint_positions(robot, [[0,0, ceiling]]*20)
+            _ = [self.active_IDs.add(self.RC.robo_dict_inv[i]) for i in tuple(map(tuple, self.prev_active_robots))]
+        self.prev_active_robots = active_robots
         return
     
-    def move_delta_robots(self, robot_actions):
+    def get_repelling_traj(self, robot, neighbor, com):
+        """ pos - com is essentially 180 degree vector of com - pos. lul """
+        print(self.RC.robot_positions[robot[::-1]], com)
+        repel_action = self.RC.robot_positions[robot[::-1]] - com
+        # print(repel_action)
+        repel_action = repel_action/np.linalg.norm(repel_action)
+        # print(2*repel_action)
+        traj = np.linspace((0,0),2*repel_action,10)
+        traj = np.hstack([traj, np.ones((10,1))*self.high_z])
+        return traj
+    
+    def move_delta_robots(self, robot_actions, neighbors_cm, com):
         """ Move the delta robots """
-        # print(traj)
         actions_2d = robot_actions[:,:2]
         for n, robot in enumerate(self.active_robots):
-            traj = np.linspace((0,0),(actions_2d[n]),20)
-            traj = np.hstack([traj, np.ones((20,1))*self.low_z]).tolist()
+            traj_1 = self.get_repelling_traj(robot, neighbors_cm[n], com)
+            traj_2 = np.linspace((0,0),(actions_2d[n]),10)
+            traj_2 = np.hstack([traj_2, np.ones((10,1))*self.low_z])
+            traj = np.vstack([traj_1, traj_2]).tolist()
             self.delta_agents[self.RC.robo_dict_inv[robot]].save_joint_positions(robot, traj)
             
+        print(self.active_IDs)
         for i in self.active_IDs:
             self.delta_agents[i].move_useful()
             self.to_be_moved.append(self.delta_agents[i])
@@ -119,14 +142,15 @@ class DeltaArrayEnv():
                     # print(ret)
                     if ret == "A":
                         i.done_moving = True
-                        time.sleep(0.1)
+                        time.sleep(0.5)
                 except Exception as e: 
                     # print(e)
                     pass
+            # print
             bool_dones = [i.done_moving for i in self.to_be_moved]
             # print(bool_dones)
             done_moving = all(bool_dones)
-        time.sleep(0.1)
+        time.sleep(0.5)
         for i in self.delta_agents:
             self.delta_agents[i].done_moving = False
         del self.to_be_moved[:]

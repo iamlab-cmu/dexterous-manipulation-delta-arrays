@@ -8,12 +8,37 @@ from skimage.morphology import skeletonize
 from sklearn.neighbors import NearestNeighbors
 import open3d as o3d
 import copy
+import sys
+# from PyV4L2Camera.camera import Camera
+# from PyV4L2Camera.controls import ControlIDs
+# from PyV4L2Camera.converter import Converter
+# frame_w, frame_h = 1280, 720
+# # frame_w, frame_h = 640, 480 # go to guvcview and see the formats (or lsusb -v, read options under camera)
+# camera = Camera('/dev/video0', frame_w, frame_h, 'mjpeg') # init with frame size and px format (options yuyv, mjpeg)
+# controls = camera.get_controls() # get controls
+# converter = Converter(frame_w, frame_h, 'mjpeg') #launch converter
+# view = True
+# for control in controls:
+#     print(control.name)
+#     print('--')
+
+# # camera.set_control_value(ControlIDs.BRIGHTNESS, 10)
+# camera.set_control_value(ControlIDs.AUTO_WHITE_BALANCE, False)
+# # camera.set_control_value(ControlIDs.BACKLIGHT_COMPENSATION, 120)
+# camera.set_control_value(ControlIDs.WHITE_BALANCE_TEMPERATURE, 3500)
+# # camera.set_control_value(ControlIDs.GAMMA, 150)
+# camera.set_control_value(ControlIDs.AUTOEXPOSURE, 1) # 1 for some reason disables autoexposure options - (1 and 3)
+# # camera.set_control_value(ControlIDs.EXPOSURE_ABSOLUTE, 3) # 
+# camera.set_control_value(ControlIDs.GAIN, 2) 
+# gain = camera.get_control_value(ControlIDs.AUTOEXPOSURE)
+# # gain = camera.get_control_value(ControlIDs.EXPOSURE_ABSOLUTE)
+# print(gain,'<--')
 
 sensitivity = 20
-l_b=np.array([45, 10, 10])# lower hsv bound for red
-u_b=np.array([80, 255, 255])# upper hsv bound to red
+l_b=np.array([80, 10, 10])# lower hsv bound for red
+u_b=np.array([90, 230, 230])# upper hsv bound to red
 kernel = np.ones((31,31),np.uint8)
-img_size = np.array((3840, 2160))
+img_size = np.array((2560, 1440))
 plane_size = np.array([(35, 5),(230.25, -362.25)])
 """ Robot positions and neighborhood parameters """
 robot_positions = np.zeros((8,8,2))
@@ -85,18 +110,21 @@ def grab_frame(cap):
     return ret, cv2.cvtColor(frame,cv2.COLOR_BGR2RGB)
 
 if __name__ == "__main__":
-    cam = cv2.VideoCapture(1)
-    cam.set(cv2.CAP_PROP_FRAME_WIDTH, 3840)
-    cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 2160)
+    vid = cv2.VideoCapture(0)
+    # vid = cv2.VideoCapture("/dev/video0", cv2.CAP_V4L)
+    vid.set(cv2.CAP_PROP_FRAME_WIDTH, 2560)
+    vid.set(cv2.CAP_PROP_FRAME_HEIGHT, 1440)
     img = cv2.imread("./camera_utils/test_data/block2.jpg")
+    img = cv2.resize(img, (2560, 1440))
     goal, max_contour = do_stuff(img)
 
     while True:
         x = input("Press Enter to Capture Image")
-        ret,frame = cam.read()
+        ret,frame = vid.read()
         if not ret:
             print("Failed to Get WebCam img")
             break
+
         # frame = cv2.imread(f"./test_data/block{i}.jpg")
         # frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         a, max_contour = do_stuff(frame)
@@ -142,9 +170,9 @@ if __name__ == "__main__":
         pt2[:,1] = pt2[:,1]/img_size[1]*(plane_size[1][0]-plane_size[0][0])+plane_size[0][0]
         pt2[:,0] = pt2[:,0]/img_size[0]*(plane_size[1][1]-plane_size[0][1])+plane_size[0][1]
 
-        input_key = cv2.waitKey(1)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
     
-    plt.ioff() # due to infinite loop, this gets never called.
-    plt.show()
+    vid.release()
+    # Destroy all the windows
+    cv2.destroyAllWindows()
