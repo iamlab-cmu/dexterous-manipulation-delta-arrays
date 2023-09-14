@@ -17,7 +17,7 @@ from utils.SAC.replay_buffer import ReplayBuffer
 import wandb
 
 class SACAgent:
-    def __init__(self, env_dict, gamma, tau, alpha, q_lr, policy_lr, a_lr, buffer_maxlen):
+    def __init__(self, env_dict, hp_dict):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.env_dict = env_dict
@@ -25,8 +25,8 @@ class SACAgent:
         self.obs_dim = env_dict['observation_space']['dim']
         self.action_dim = env_dict['action_space']['dim']
 
-        self.gamma = gamma
-        self.tau = tau
+        self.gamma = hp_dict['gamma']
+        self.tau = hp_dict['tau']
         self.update_step = 0
         self.delay_step = 2
 
@@ -42,20 +42,20 @@ class SACAgent:
         for target_param, param in zip(self.target_Q2.parameters(), self.Q2.parameters()):
             target_param.data.copy_(param)
         
-        self.Q1_optimizer = optim.Adam(self.Q1.parameters(), lr=q_lr)
-        self.Q2_optimizer = optim.Adam(self.Q2.parameters(), lr=q_lr)
-        self.policy_optimizer = optim.Adam(self.policy.parameters(), lr=policy_lr)
+        self.Q1_optimizer = optim.Adam(self.Q1.parameters(), lr=hp_dict['q_lr'])
+        self.Q2_optimizer = optim.Adam(self.Q2.parameters(), lr=hp_dict['q_lr'])
+        self.policy_optimizer = optim.Adam(self.policy.parameters(), lr=hp_dict['policy_lr'])
 
-        self.alpha = alpha
+        self.alpha = hp_dict['alpha']
         self.target_entropy = -torch.prod(torch.Tensor(self.action_dim).to(self.device)).item()
         self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
-        self.alpha_optimizer = optim.Adam([self.log_alpha], lr=a_lr)
+        self.alpha_optimizer = optim.Adam([self.log_alpha], lr=hp_dict['a_lr'])
 
-        self.replay_buffer = ReplayBuffer(buffer_maxlen)
+        self.replay_buffer = ReplayBuffer(hp_dict['buffer_maxlen'])
 
-        self.setup_wandb()
+        self.setup_wandb(hp_dict)
 
-    def setup_wandb(self):
+    def setup_wandb(self, hp_dict):
         if os.path.exists("./utils/SAC/runtracker.txt"):
             with open("./utils/SAC/runtracker.txt", "r") as f:
                 run = int(f.readline())
@@ -67,14 +67,7 @@ class SACAgent:
 
         wandb.init(project="SAC", 
             name=f"experiment_{run}",
-            config={"gamma"    :0.99, 
-                "tau"          :0.01, 
-                "alpha"        :0.2, 
-                "q_lr"         :3e-3, 
-                "policy_lr"    :3e-3,
-                "a_lr"         :3e-3, 
-                "buffer_maxlen":1000000
-            })
+            config=hp_dict)
 
     def end_wandb(self):
         wandb.finish()

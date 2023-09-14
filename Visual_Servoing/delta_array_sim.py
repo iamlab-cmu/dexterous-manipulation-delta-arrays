@@ -29,16 +29,13 @@ import utils.SAC.sac as sac
 device = torch.device("cuda:0")
 
 class DeltaArraySim:
-    def __init__(self, scene, cfg, obj, obj_name, num_tips = [8,8], run_no = 0):
+    def __init__(self, scene, cfg, obj, obj_name, img_embed_model, transform, agent, num_tips = [8,8]):
         """ Main Vars """
         self.scene = scene
         self.cfg = cfg
-        self.run_no = run_no
         self.num_tips = num_tips
         self.fingertips = np.zeros((8,8)).tolist()
         self.cam = 0
-        self.seed = 0
-        self.image_id  = 0
         self.object = obj
         self.obj_name = obj_name
         self.nn_helper = helper.NNHelper()
@@ -52,11 +49,8 @@ class DeltaArraySim:
                     asset_options=cfg['capsule']['asset_options']
                 ))
         """ Data Collection Vars """
-        self.actions = {}
-        self.pre_imgs = {}
-        self.post_imgs = {}
         self.envs_done = 0
-        self.block_com = np.array(((0.0,0.0),(0.0,0.0)))
+        self.block_com = np.zeros((self.scene.n_envs, 2, 2))
         cols = ['com_x1', 'com_y1', 'com_x2', 'com_y2'] + [f'robotx_{i}' for i in range(64)] + [f'roboty_{i}' for i in range(64)]
         self.df = pd.DataFrame(columns=cols)
 
@@ -85,35 +79,21 @@ class DeltaArraySim:
         self.time_horizon = 152 # This acts as max_steps from Gym envs
         # Max episodes to train policy for
         self.max_episodes = 1000
-        self.current_episode = 0
+        self.current_episode = np.zeros(self.scene.n_envs)
 
         """ Visual Servoing and RL Vars """
-        self.bd_pts = None
+        self.bd_pts = {}
         self.current_scene_frame = None
-        self.batch_size = 16
-        self.model = resnet18(pretrained=True)
-        self.model = torch.nn.Sequential(*list(self.model.children())[:-1])
-        self.model.eval()
-        self.model = self.model.to(device)
-        self.transform = transforms.Compose([
-            transforms.Resize(224),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
+        self.batch_size = 64
+        
+        self.model = img_embed_model
+        self.transform = transform
+        self.agent = agent
+        self.init_state = {}
+        self.action = {}
 
-        env_dict = {'action_space': {'low': -0.03, 'high': 0.03, 'dim': 2},
-                    'observation_space': {'dim': 512}}
-        self.agent = sac.SACAgent(env_dict=env_dict, 
-            gamma           = 0.99, 
-            tau             = 0.01, 
-            alpha           = 0.2, 
-            q_lr            = 3e-3, 
-            policy_lr       = 3e-3,
-            a_lr            = 3e-3, 
-            buffer_maxlen   = 1000000
-        )
         self.ep_rewards = []
-        self.ep_reward = 0
+        self.ep_reward = np.zeros(self.scene.n_envs)
         self.alpha_reward = -0.1
         self.psi_reward = 10
         self.beta_reward = -100
@@ -138,13 +118,6 @@ class DeltaArraySim:
                 scene.add_asset(f'fingertip_{i}_{j}', self.fingertips[i][j], gymapi.Transform())
 
     def set_all_fingers_pose(self, env_idx, pos_high = True, all_or_one = "all"):
-        if pos_high:
-            self.actions[env_idx] = np.zeros((8,8,2))
-        elif all_or_one == "all":
-            self.actions[env_idx] = np.random.uniform(-0.025, 0.025, (8,8,2))
-        else:
-            self.actions[env_idx] = np.zeros((8,8,2))
-
         for i in range(self.num_tips[0]):
             for j in range(self.num_tips[1]):
                 if pos_high:
@@ -164,7 +137,7 @@ class DeltaArraySim:
     def set_block_pose(self, env_idx):
         # T = [0.13125, 0.1407285]
         T = [0.11, 0.16]
-        self.block_com[0] = np.array((T))
+        self.block_com[env_idx][0] = np.array((T))
         block_p = gymapi.Vec3(*T, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
         self.object.set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p)])
 
@@ -195,15 +168,15 @@ class DeltaArraySim:
         com = np.mean(boundary_pts, axis=0)
 
         if len(boundary_pts) > 200:
-            self.bd_pts = boundary_pts[np.random.choice(range(len(boundary_pts)), size=200, replace=False)]
+            self.bd_pts[env_idx] = boundary_pts[np.random.choice(range(len(boundary_pts)), size=200, replace=False)]
         else:
-            self.bd_pts = boundary_pts
-        idxs, neg_idxs = self.nn_helper.get_nn_robots(self.bd_pts)
+            self.bd_pts[env_idx] = boundary_pts
+        idxs, neg_idxs = self.nn_helper.get_nn_robots(self.bd_pts[env_idx])
         idxs = np.array(list(idxs))
         min_idx = tuple(idxs[np.lexsort((idxs[:, 0], idxs[:, 1]))][0])
         
         """ Single Robot Experiment. Change this to include entire neighborhood """
-        self.active_idxs[min_idx] = np.array((0,0))
+        self.active_idxs[env_idx] = {min_idx: np.array((0,0))} # Store the action vector as value here later :)
         # [self.active_idxs[idx]=np.array((0,0)) for idx in idxs]
 
         idxs = np.array(list(idxs))
@@ -238,10 +211,10 @@ class DeltaArraySim:
 
     def reward_helper(self, env_idx, t_step):
         final_trans = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
-        self.block_com[1] = np.array((final_trans.p.x, final_trans.p.y))
-        block_l2_distance = np.linalg.norm(self.block_com[1] - self.block_com[0])
+        self.block_com[env_idx][1] = np.array((final_trans.p.x, final_trans.p.y))
+        block_l2_distance = np.linalg.norm(self.block_com[env_idx][1] - self.block_com[env_idx][0])
     
-        robot_to_obj_dists = self.nn_helper.get_min_dist(self.bd_pts, self.active_idxs)
+        robot_to_obj_dists = self.nn_helper.get_min_dist(self.bd_pts[env_idx], self.active_idxs[env_idx])
         return block_l2_distance, robot_to_obj_dists
 
     def compute_reward(self, env_idx, t_step):
@@ -251,28 +224,27 @@ class DeltaArraySim:
             return False
         else:
             block_l2_distance, robot_to_obj_dists = self.reward_helper(env_idx, t_step)
-            # print(f'Rewards: {block_l2_distance, robot_to_obj_dists}')
-            self.ep_reward += self.alpha_reward * robot_to_obj_dists[0]
+            self.ep_reward[env_idx] += self.alpha_reward * robot_to_obj_dists[0]
             if 5e-4 < block_l2_distance < 0.005:
-                self.ep_reward += self.psi_reward
+                self.ep_reward[env_idx] += self.psi_reward
                 return True
             elif block_l2_distance < 5e-4:
-                self.ep_reward += self.beta_reward * 100 * block_l2_distance
+                self.ep_reward[env_idx] += self.beta_reward * 100 * block_l2_distance
             else:
-                self.ep_reward += self.beta_reward * block_l2_distance
+                self.ep_reward[env_idx] += self.beta_reward * block_l2_distance
                 return False
 
     def terminate(self, env_idx, t_step):
         # Add episodes info in replay buffer
         final_state = self.get_nearest_robot_and_crop(env_idx)
-        self.agent.replay_buffer.push(self.init_state, self.action, self.ep_reward, final_state, True)
-        self.ep_rewards.append(self.ep_reward)
-        print(f"Iter: {self.num_sample}, Action: {self.action}, Reward: {self.ep_reward}")
+        self.agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], final_state, True)
+        self.ep_rewards.append(self.ep_reward[env_idx])
+        print(f"Env_idx: {env_idx}, Iter: {self.current_episode[env_idx]}, Action: {self.action[env_idx]}, Reward: {self.ep_reward[env_idx]}")
+        self.active_idxs[env_idx].clear()
 
     def reset(self, env_idx, t_step, env_ptr):
         if t_step == 0:
-            self.ep_reward = 0
-            self.active_idxs.clear()
+            self.ep_reward[env_idx] = 0
             self.set_block_pose(env_idx) # Reset block to initial pose
             self.get_scene_image(env_idx) 
             self.set_all_fingers_pose(env_idx, pos_high=True) # Set all fingers to high pose
@@ -281,15 +253,13 @@ class DeltaArraySim:
                 for j in range(self.num_tips[1]):
                     self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
             
-            self.init_state = self.get_nearest_robot_and_crop(env_idx)
-            self.action = self.agent.get_action(self.init_state)
-            # print(self.action)
-            # print(f'Current Robot(s) Selected: {self.active_idxs.keys()}')
-            self.set_nn_fingers_pose(env_idx, self.active_idxs.keys())
+            self.init_state[env_idx] = self.get_nearest_robot_and_crop(env_idx)
+            self.action[env_idx] = self.agent.get_action(self.init_state[env_idx])
+            self.set_nn_fingers_pose(env_idx, self.active_idxs[env_idx].keys())
         elif t_step == 1:
-            for idx in self.active_idxs.keys():
-                self.active_idxs[idx] = self.action
-                self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][idx[0]][idx[1]], gymapi.Transform(p=self.finger_positions[idx[0]][idx[1]] + gymapi.Vec3(*self.action, -0.47), r=self.finga_q)) 
+            for idx in self.active_idxs[env_idx].keys():
+                self.active_idxs[env_idx][idx] = self.action[env_idx]
+                self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][idx[0]][idx[1]], gymapi.Transform(p=self.finger_positions[idx[0]][idx[1]] + gymapi.Vec3(*self.action[env_idx], -0.47), r=self.finga_q)) 
         elif t_step == 150:
             # Set the robots in idxs to default positions.
             self.set_all_fingers_pose(env_idx, pos_high=True)
@@ -301,11 +271,12 @@ class DeltaArraySim:
 
 
     def visual_servoing(self, scene, env_idx, t_step, _):
-        if self.current_episode < self.max_episodes:
-            self.current_episode += 1
-        else:
-            self.agent.end_wandb()
         t_step = t_step % self.time_horizon
+        if (t_step == 0) and (env_idx == (self.scene.n_envs-1)):
+            if self.current_episode[env_idx] < self.max_episodes:
+                self.current_episode[env_idx] += 1
+            else:
+                self.agent.end_wandb()
         env_ptr = self.scene.env_ptrs[env_idx]
         # self.sim_test(env_idx, t_step, env_ptr)
         if t_step in {0, 1, self.time_horizon-2}:
@@ -314,6 +285,7 @@ class DeltaArraySim:
             self.compute_reward(env_idx, t_step)
         elif t_step == self.time_horizon-1:
             self.compute_reward(env_idx, t_step)
-            if len(self.agent.replay_buffer) > self.batch_size:
+
+            if (len(self.agent.replay_buffer) > self.batch_size) and (env_idx == (self.scene.n_envs-1)):
                 self.agent.update(self.batch_size)
             self.terminate(env_idx, t_step)

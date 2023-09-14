@@ -9,10 +9,17 @@ from isaacgym_utils.assets import GymBoxAsset, GymCapsuleAsset, GymURDFAsset
 from isaacgym_utils.camera import GymCamera
 from isaacgym_utils.math_utils import RigidTransform_to_transform
 from isaacgym_utils.draw import draw_transforms, draw_contacts, draw_camera
+
 import torch
+import torchvision.transforms as transforms
+from torchvision.models import resnet18
+from scipy.spatial.distance import cosine
 
 import wandb
+
 import delta_array_sim
+import utils.SAC.sac as sac
+device = torch.device("cuda:0")
 
 class DeltaArrayEnvironment():
     def __init__(self, yaml_path, run_no):
@@ -44,7 +51,31 @@ class DeltaArrayEnvironment():
         #                     shape_props=self.cfg['fiducial']['shape_props'], 
         #                     rb_props=self.cfg['fiducial']['rb_props'],
         #                     asset_options=self.cfg['fiducial']['asset_options'])
-        self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, obj = self.object, obj_name = self.obj_name, num_tips = [8,8], run_no=self.run_no)
+        
+
+        self.model = resnet18(pretrained=True)
+        self.model = torch.nn.Sequential(*list(self.model.children())[:-1])
+        self.model.eval()
+        self.model = self.model.to(device)
+        self.transform = transforms.Compose([
+            transforms.Resize(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
+
+        env_dict = {'action_space': {'low': -0.03, 'high': 0.03, 'dim': 2},
+                    'observation_space': {'dim': 512}}
+        self.hp_dict = {"gamma"    :0.99, 
+                "tau"          :0.01, 
+                "alpha"        :0.2, 
+                "q_lr"         :3e-2, 
+                "policy_lr"    :3e-2,
+                "a_lr"         :3e-2, 
+                "buffer_maxlen":1000000
+            }
+        self.agent = sac.SACAgent(env_dict, self.hp_dict)
+    
+        self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.obj_name, self.model, self.transform, self.agent, num_tips = [8,8])
 
         self.cam = GymCamera(self.scene, cam_props = self.cfg['camera'])
         # print(RigidTransform.x_axis_rotation(np.deg2rad(180)))
