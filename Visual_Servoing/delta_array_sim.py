@@ -8,6 +8,7 @@ import cv2
 import pandas as pd
 import networkx as nx
 from PIL import Image
+from scipy.spatial.transform import Rotation
 
 import torch
 import torchvision.transforms as transforms
@@ -26,6 +27,7 @@ from isaacgym_utils.draw import draw_transforms, draw_contacts, draw_camera
 import utils.nn_helper as helper
 import wandb
 import utils.SAC.sac as sac
+from utils.geometric_utils import icp
 device = torch.device("cuda:0")
 
 class DeltaArraySim:
@@ -161,12 +163,6 @@ class DeltaArraySim:
         # 0, 1920 are origin pixels in img space
         boundary_pts[:,0] = (boundary_pts[:,0] - 0)/1080*(self.plane_size[1][0]-self.plane_size[0][0])+self.plane_size[0][0]
         boundary_pts[:,1] = (1920 - boundary_pts[:,1])/1920*(self.plane_size[1][1]-self.plane_size[0][1])+self.plane_size[0][1]
-        
-        # plt.scatter(boundary_pts[:,0], boundary_pts[:,1], c='b')
-        # plt.scatter(self.nn_helper.kdtree_positions[:,0], self.nn_helper.kdtree_positions[:,1], c='r')
-        # plt.show()
-        com = np.mean(boundary_pts, axis=0)
-
         if len(boundary_pts) > 200:
             self.bd_pts[env_idx] = boundary_pts[np.random.choice(range(len(boundary_pts)), size=200, replace=False)]
         else:
@@ -187,18 +183,8 @@ class DeltaArraySim:
         finger_pos[1] = 1920 - (finger_pos[1] - self.plane_size[0][1])/(self.plane_size[1][1]-self.plane_size[0][1])*1920
         finger_pos = finger_pos.astype(np.int32)
 
-        # plt.imshow(seg_map)
-        # for i in range(8):
-        #     for j in range(8):
-        #         finger_pos = self.nn_helper.robot_positions[i,j].copy()
-        #         finger_pos[0] = (finger_pos[0] - self.plane_size[0][0])/(self.plane_size[1][0]-self.plane_size[0][0])*1080 - 0
-        #         finger_pos[1] = 1920 - (finger_pos[1] - self.plane_size[0][1])/(self.plane_size[1][1]-self.plane_size[0][1])*1920
-        #         finger_pos = finger_pos.astype(np.int32)
-
-        #         plt.scatter(finger_pos[1], finger_pos[0], c='r')        
-        # plt.show()
-
-        crop = seg_map[finger_pos[0]-112:finger_pos[0]+112, finger_pos[1]-112:finger_pos[1]+112]
+        crop = seg_map[finger_pos[0]-224:finger_pos[0]+224, finger_pos[1]-224:finger_pos[1]+224]
+        crop = cv2.resize(crop, (224,224), interpolation=cv2.INTER_AREA)
         # plt.imshow(crop)
         # plt.show()
         cols = np.random.rand(3)
@@ -210,11 +196,23 @@ class DeltaArraySim:
         return state.detach().cpu().squeeze()
 
     def reward_helper(self, env_idx, t_step):
-        final_trans = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
-        self.block_com[env_idx][1] = np.array((final_trans.p.x, final_trans.p.y))
-        block_l2_distance = np.linalg.norm(self.block_com[env_idx][1] - self.block_com[env_idx][0])
+        init_bd_pts = self.bd_pts[env_idx]
+        self.final_state = self.get_nearest_robot_and_crop(env_idx)
+        M2 = icp(init_bd_pts, self.bd_pts[env_idx], icp_radius=200)
+        TF_Matrix = np.eye(3)
+        TF_Matrix[:2, :2] = M2[:2, :2]
+        r = Rotation.from_matrix(TF_Matrix)
+        theta_radians = r.as_rotvec()
+        theta = np.linalg.norm(theta_radians)
+        theta_degrees = np.degrees(theta)
+
+        # final_trans = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
+        # self.block_com[env_idx][1] = np.array((final_trans.p.x, final_trans.p.y))
+        # block_l2_distance = np.linalg.norm(self.block_com[env_idx][1] - self.block_com[env_idx][0])
+        block_l2_distance = abs(M2[0,3]) + abs(M2[1,3]) + abs(theta)
     
         robot_to_obj_dists = self.nn_helper.get_min_dist(self.bd_pts[env_idx], self.active_idxs[env_idx])
+        print(abs(M2[0,3]), abs(M2[1,3]), abs(theta), theta_degrees, robot_to_obj_dists)
         return block_l2_distance, robot_to_obj_dists
 
     def compute_reward(self, env_idx, t_step):
@@ -235,9 +233,7 @@ class DeltaArraySim:
                 return False
 
     def terminate(self, env_idx, t_step):
-        # Add episodes info in replay buffer
-        final_state = self.get_nearest_robot_and_crop(env_idx)
-        self.agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], final_state, True)
+        self.agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
         self.ep_rewards.append(self.ep_reward[env_idx])
         print(f"Env_idx: {env_idx}, Iter: {self.current_episode[env_idx]}, Action: {self.action[env_idx]}, Reward: {self.ep_reward[env_idx]}")
         self.active_idxs[env_idx].clear()
@@ -286,6 +282,6 @@ class DeltaArraySim:
         elif t_step == self.time_horizon-1:
             self.compute_reward(env_idx, t_step)
 
-            if (len(self.agent.replay_buffer) > self.batch_size) and (env_idx == (self.scene.n_envs-1)):
+            if len(self.agent.replay_buffer) > self.batch_size:
                 self.agent.update(self.batch_size)
             self.terminate(env_idx, t_step)

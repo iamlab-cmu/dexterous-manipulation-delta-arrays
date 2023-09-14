@@ -17,7 +17,7 @@ from utils.SAC.replay_buffer import ReplayBuffer
 import wandb
 
 class SACAgent:
-    def __init__(self, env_dict, hp_dict):
+    def __init__(self, env_dict, hp_dict, wandb_bool = True):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.env_dict = env_dict
@@ -52,8 +52,9 @@ class SACAgent:
         self.alpha_optimizer = optim.Adam([self.log_alpha], lr=hp_dict['a_lr'])
 
         self.replay_buffer = ReplayBuffer(hp_dict['buffer_maxlen'])
-
-        self.setup_wandb(hp_dict)
+        self.wandb_bool = wandb_bool
+        if self.wandb_bool:
+            self.setup_wandb(hp_dict)
 
     def setup_wandb(self, hp_dict):
         if os.path.exists("./utils/SAC/runtracker.txt"):
@@ -70,7 +71,8 @@ class SACAgent:
             config=hp_dict)
 
     def end_wandb(self):
-        wandb.finish()
+        if self.wandb_bool:
+            wandb.finish()
 
     def get_action(self, obs):
         obs = torch.FloatTensor(obs).unsqueeze(0).to(self.device)
@@ -134,8 +136,8 @@ class SACAgent:
             for target_param, param in zip(self.target_Q2.parameters(), self.Q2.parameters()):
                 target_param.data.copy_(self.tau * param + (1 - self.tau) * target_param)
             metrics["policy_loss"] = policy_loss.item()
-
-        wandb.log(metrics)
+        if self.wandb_bool:
+            wandb.log(metrics)
         # Temperature updates
         alpha_loss = (self.log_alpha * (-log_pi - self.target_entropy).detach()).mean()
         self.alpha_optimizer.zero_grad()
