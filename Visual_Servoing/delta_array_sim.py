@@ -164,10 +164,10 @@ class DeltaArraySim:
         # 0, 1920 are origin pixels in img space
         boundary_pts[:,0] = (boundary_pts[:,0] - 0)/1080*(self.plane_size[1][0]-self.plane_size[0][0])+self.plane_size[0][0]
         boundary_pts[:,1] = (1920 - boundary_pts[:,1])/1920*(self.plane_size[1][1]-self.plane_size[0][1])+self.plane_size[0][1]
-        if len(boundary_pts) > 200000:
-            self.bd_pts[env_idx] = boundary_pts[np.random.choice(range(len(boundary_pts)), size=200, replace=False)]
-        else:
-            self.bd_pts[env_idx] = boundary_pts
+        # if len(boundary_pts) > 200:
+        #     self.bd_pts[env_idx] = boundary_pts[np.random.choice(range(len(boundary_pts)), size=200, replace=False)]
+        # else:
+        self.bd_pts[env_idx] = boundary_pts
         idxs, neg_idxs = self.nn_helper.get_nn_robots(self.bd_pts[env_idx])
         idxs = np.array(list(idxs))
         min_idx = tuple(idxs[np.lexsort((idxs[:, 0], idxs[:, 1]))][0])
@@ -200,6 +200,7 @@ class DeltaArraySim:
         nn_dist = self.nn_helper.get_min_dist(self.bd_pts[env_idx], self.active_idxs[env_idx])
 
         init_bd_pts = self.bd_pts[env_idx]
+        self.get_scene_image(env_idx)
         self.final_state = self.get_nearest_robot_and_crop(env_idx)
         M2 = icp(init_bd_pts, self.bd_pts[env_idx], icp_radius=1000)
         theta = np.arctan2(M2[1, 0], M2[0, 0])
@@ -209,8 +210,8 @@ class DeltaArraySim:
         # self.block_com[env_idx][1] = np.array((final_trans.p.x, final_trans.p.y))
         # block_l2_distance = np.linalg.norm(self.block_com[env_idx][1] - self.block_com[env_idx][0])
         tf = np.linalg.norm(M2[:2,3]) + abs(theta_degrees)
-        print(M2)
-        print(f"TF_loss: {tf}, nn_dist_loss: {nn_dist}")
+        # print(M2)
+        # print(f"TF_loss: {tf}, nn_dist_loss: {nn_dist}")
         return tf, nn_dist
 
     def compute_reward(self, env_idx, t_step):
@@ -234,7 +235,7 @@ class DeltaArraySim:
         if t_step == 0:
             self.ep_reward[env_idx] = 0
             self.set_block_pose(env_idx) # Reset block to initial pose
-            self.get_scene_image(env_idx) 
+            self.get_scene_image(env_idx)
             self.set_all_fingers_pose(env_idx, pos_high=True) # Set all fingers to high pose
 
             for i in range(self.num_tips[0]):

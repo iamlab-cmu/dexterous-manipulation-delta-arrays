@@ -1,7 +1,11 @@
 import numpy as np
 import open3d as o3d
+import matplotlib.pyplot as plt
 
 def icp(a, b, icp_radius = 200):
+    plt.scatter(a[:,0], a[:,1], c='r')
+    plt.scatter(b[:,0], b[:,1], c='b')
+    plt.show()
     a = np.hstack([a, np.zeros([a.shape[0],1])])
     b = np.hstack([b, np.zeros([b.shape[0],1])])
     src = o3d.geometry.PointCloud()
