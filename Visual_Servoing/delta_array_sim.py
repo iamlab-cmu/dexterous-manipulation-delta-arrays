@@ -9,6 +9,7 @@ import pandas as pd
 import networkx as nx
 from PIL import Image
 from scipy.spatial.transform import Rotation
+np.set_printoptions(precision=4)
 
 import torch
 import torchvision.transforms as transforms
@@ -163,7 +164,7 @@ class DeltaArraySim:
         # 0, 1920 are origin pixels in img space
         boundary_pts[:,0] = (boundary_pts[:,0] - 0)/1080*(self.plane_size[1][0]-self.plane_size[0][0])+self.plane_size[0][0]
         boundary_pts[:,1] = (1920 - boundary_pts[:,1])/1920*(self.plane_size[1][1]-self.plane_size[0][1])+self.plane_size[0][1]
-        if len(boundary_pts) > 200:
+        if len(boundary_pts) > 200000:
             self.bd_pts[env_idx] = boundary_pts[np.random.choice(range(len(boundary_pts)), size=200, replace=False)]
         else:
             self.bd_pts[env_idx] = boundary_pts
@@ -196,24 +197,21 @@ class DeltaArraySim:
         return state.detach().cpu().squeeze()
 
     def reward_helper(self, env_idx, t_step):
+        nn_dist = self.nn_helper.get_min_dist(self.bd_pts[env_idx], self.active_idxs[env_idx])
+
         init_bd_pts = self.bd_pts[env_idx]
         self.final_state = self.get_nearest_robot_and_crop(env_idx)
-        M2 = icp(init_bd_pts, self.bd_pts[env_idx], icp_radius=200)
-        TF_Matrix = np.eye(3)
-        TF_Matrix[:2, :2] = M2[:2, :2]
-        r = Rotation.from_matrix(TF_Matrix)
-        theta_radians = r.as_rotvec()
-        theta = np.linalg.norm(theta_radians)
-        theta_degrees = np.degrees(theta)
+        M2 = icp(init_bd_pts, self.bd_pts[env_idx], icp_radius=1000)
+        theta = np.arctan2(M2[1, 0], M2[0, 0])
+        theta_degrees = np.rad2deg(theta)
 
         # final_trans = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
         # self.block_com[env_idx][1] = np.array((final_trans.p.x, final_trans.p.y))
         # block_l2_distance = np.linalg.norm(self.block_com[env_idx][1] - self.block_com[env_idx][0])
-        block_l2_distance = abs(M2[0,3]) + abs(M2[1,3]) + abs(theta)
-    
-        robot_to_obj_dists = self.nn_helper.get_min_dist(self.bd_pts[env_idx], self.active_idxs[env_idx])
-        print(abs(M2[0,3]), abs(M2[1,3]), abs(theta), theta_degrees, robot_to_obj_dists)
-        return block_l2_distance, robot_to_obj_dists
+        tf = np.linalg.norm(M2[:2,3]) + abs(theta_degrees)
+        print(M2)
+        print(f"TF_loss: {tf}, nn_dist_loss: {nn_dist}")
+        return tf, nn_dist
 
     def compute_reward(self, env_idx, t_step):
         """ Computes reward, saves it in ep_reward variable and returns True if the action was successful """
@@ -221,16 +219,10 @@ class DeltaArraySim:
             # self.ep_reward += self.alpha_reward
             return False
         else:
-            block_l2_distance, robot_to_obj_dists = self.reward_helper(env_idx, t_step)
-            self.ep_reward[env_idx] += self.alpha_reward * robot_to_obj_dists[0]
-            if 5e-4 < block_l2_distance < 0.005:
-                self.ep_reward[env_idx] += self.psi_reward
-                return True
-            elif block_l2_distance < 5e-4:
-                self.ep_reward[env_idx] += self.beta_reward * 100 * block_l2_distance
-            else:
-                self.ep_reward[env_idx] += self.beta_reward * block_l2_distance
-                return False
+            tf_loss, nn_dist_loss = self.reward_helper(env_idx, t_step)
+            self.ep_reward[env_idx] += nn_dist_loss[0]
+            self.ep_reward[env_idx] += tf_loss
+            return True 
 
     def terminate(self, env_idx, t_step):
         self.agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
@@ -254,7 +246,7 @@ class DeltaArraySim:
             self.set_nn_fingers_pose(env_idx, self.active_idxs[env_idx].keys())
         elif t_step == 1:
             for idx in self.active_idxs[env_idx].keys():
-                self.active_idxs[env_idx][idx] = self.action[env_idx]
+                self.active_idxs[env_idx][idx] = 1000*self.action[env_idx]
                 self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][idx[0]][idx[1]], gymapi.Transform(p=self.finger_positions[idx[0]][idx[1]] + gymapi.Vec3(*self.action[env_idx], -0.47), r=self.finga_q)) 
         elif t_step == 150:
             # Set the robots in idxs to default positions.
