@@ -81,13 +81,13 @@ class DeltaArraySim:
         self.attractor_handles = {}
         self.time_horizon = 152 # This acts as max_steps from Gym envs
         # Max episodes to train policy for
-        self.max_episodes = 1000
+        self.max_episodes = 101
         self.current_episode = np.zeros(self.scene.n_envs)
 
         """ Visual Servoing and RL Vars """
         self.bd_pts = {}
         self.current_scene_frame = None
-        self.batch_size = 64
+        self.batch_size = 4
         
         self.model = img_embed_model
         self.transform = transform
@@ -185,7 +185,7 @@ class DeltaArraySim:
         finger_pos = finger_pos.astype(np.int32)
 
         crop = seg_map[finger_pos[0]-224:finger_pos[0]+224, finger_pos[1]-224:finger_pos[1]+224]
-        crop = cv2.resize(crop, (224,224), interpolation=cv2.INTER_AREA)
+        crop = cv2.resize(crop, (224,224))
         # plt.imshow(crop)
         # plt.show()
         cols = np.random.rand(3)
@@ -221,8 +221,8 @@ class DeltaArraySim:
             return False
         else:
             tf_loss, nn_dist_loss = self.reward_helper(env_idx, t_step)
-            self.ep_reward[env_idx] += nn_dist_loss[0]
-            self.ep_reward[env_idx] += tf_loss
+            self.ep_reward[env_idx] += -10.0*nn_dist_loss[0]
+            self.ep_reward[env_idx] += -10.0*tf_loss
             return True 
 
     def terminate(self, env_idx, t_step):
@@ -258,10 +258,11 @@ class DeltaArraySim:
             for j in range(self.num_tips[1]):
                 self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.43), r=self.finga_q)) 
 
-
     def visual_servoing(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
         if (t_step == 0) and (env_idx == (self.scene.n_envs-1)):
+            if self.current_episode[env_idx]%10 == 0:
+                self.agent.save_policy_model()
             if self.current_episode[env_idx] < self.max_episodes:
                 self.current_episode[env_idx] += 1
             else:
@@ -271,10 +272,11 @@ class DeltaArraySim:
         if t_step in {0, 1, self.time_horizon-2}:
             self.reset(env_idx, t_step, env_ptr)
         elif t_step < self.time_horizon-2:
-            self.compute_reward(env_idx, t_step)
+            pass # Compute quasi-static rewards
         elif t_step == self.time_horizon-1:
             self.compute_reward(env_idx, t_step)
 
             if len(self.agent.replay_buffer) > self.batch_size:
                 self.agent.update(self.batch_size)
+
             self.terminate(env_idx, t_step)

@@ -53,6 +53,7 @@ class SACAgent:
 
         self.replay_buffer = ReplayBuffer(hp_dict['buffer_maxlen'])
         self.wandb_bool = wandb_bool
+        self.expt_no = None
         if self.wandb_bool:
             self.setup_wandb(hp_dict)
 
@@ -65,7 +66,7 @@ class SACAgent:
             run = 0
         with open("./utils/SAC/runtracker.txt", "w") as f:
             f.write(str(run))
-
+        self.expt_no = run
         wandb.init(project="SAC", 
             name=f"experiment_{run}",
             config=hp_dict)
@@ -74,9 +75,15 @@ class SACAgent:
         if self.wandb_bool:
             wandb.finish()
 
+    def save_policy_model(self):
+        torch.save(self.policy.state_dict(), f"./utils/SAC/policy_models/expt_{self.expt_no}.pt")
+
     def get_action(self, obs):
         obs = torch.FloatTensor(obs).unsqueeze(0).to(self.device)
-        mean, log_std = self.policy.forward(obs)
+        self.policy.eval()
+        with torch.no_grad():
+            mean, log_std = self.policy.forward(obs)
+        self.policy.train()
         std = log_std.exp()
 
         normal = torch.distributions.Normal(mean, std)

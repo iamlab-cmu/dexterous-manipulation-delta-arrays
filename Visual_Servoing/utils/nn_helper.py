@@ -26,12 +26,14 @@ class NNHelper:
     def get_min_dist(self, boundary_pts, active_idxs):
         min_dists = []
         for idx in active_idxs.keys():
-            min_dist = np.inf
-            for j in boundary_pts:
-                dist = np.linalg.norm(self.robot_positions[idx] + active_idxs[idx] - j)
-                if dist < min_dist:
-                    min_dist = dist
-            min_dists.append(min_dist)
+            tgt_pt = self.robot_positions[idx] + active_idxs[idx]
+            distances = np.linalg.norm(tgt_pt - boundary_pts, axis=1)
+            # min_dist = np.inf
+            # for j in boundary_pts:
+            #     dist = np.linalg.norm(self.robot_positions[idx] + active_idxs[idx] - j)
+            #     if dist < min_dist:
+            #         min_dist = dist
+            min_dists.append(np.min(distances))
         return min_dists
 
     def get_nn_robots(self, boundary_pts):
