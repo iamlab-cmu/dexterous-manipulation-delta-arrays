@@ -221,8 +221,8 @@ class DeltaArraySim:
             return False
         else:
             tf_loss, nn_dist_loss = self.reward_helper(env_idx, t_step)
-            self.ep_reward[env_idx] += -10.0*nn_dist_loss[0]
-            self.ep_reward[env_idx] += -10.0*tf_loss
+            self.ep_reward[env_idx] += -nn_dist_loss[0]
+            self.ep_reward[env_idx] += -tf_loss
             return True 
 
     def terminate(self, env_idx, t_step):

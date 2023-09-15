@@ -67,10 +67,10 @@ class DeltaArrayEnvironment():
                     'observation_space': {'dim': 512}}
         self.hp_dict = {"gamma"    :0.99, 
                 "tau"          :0.01, 
-                "alpha"        :0.3, 
-                "q_lr"         :3e-4, 
-                "policy_lr"    :3e-4,
-                "a_lr"         :3e-4, 
+                "alpha"        :0.2, 
+                "q_lr"         :1e-3, 
+                "policy_lr"    :1e-3,
+                "a_lr"         :1e-3, 
                 "buffer_maxlen":1000000
             }
         self.agent = sac.SACAgent(env_dict, self.hp_dict, wandb_bool = True)
