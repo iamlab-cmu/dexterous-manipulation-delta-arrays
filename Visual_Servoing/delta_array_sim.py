@@ -149,7 +149,7 @@ class DeltaArraySim:
         frames = self.cam.frames(env_idx, self.cam_name)
         self.current_scene_frame = frames
 
-    def get_nearest_robot_and_crop(self, env_idx):
+    def get_nearest_robot_and_crop(self, env_idx, final=False):
         # plt.figure(figsize=(6.6667,11.85))
         img = self.current_scene_frame['color'].data.astype(np.uint8)
         # plt.imshow(img)
@@ -173,7 +173,8 @@ class DeltaArraySim:
         min_idx = tuple(idxs[np.lexsort((idxs[:, 0], idxs[:, 1]))][0])
         
         """ Single Robot Experiment. Change this to include entire neighborhood """
-        self.active_idxs[env_idx] = {min_idx: np.array((0,0))} # Store the action vector as value here later :)
+        if not final:
+            self.active_idxs[env_idx] = {min_idx: np.array((0,0))} # Store the action vector as value here later :)
         # [self.active_idxs[idx]=np.array((0,0)) for idx in idxs]
 
         idxs = np.array(list(idxs))
@@ -197,11 +198,10 @@ class DeltaArraySim:
         return state.detach().cpu().squeeze()
 
     def reward_helper(self, env_idx, t_step):
-        nn_dist = self.nn_helper.get_min_dist(self.bd_pts[env_idx], self.active_idxs[env_idx])
-
         init_bd_pts = self.bd_pts[env_idx]
         self.get_scene_image(env_idx)
-        self.final_state = self.get_nearest_robot_and_crop(env_idx)
+        self.final_state = self.get_nearest_robot_and_crop(env_idx, final=True)
+
         M2 = icp(init_bd_pts, self.bd_pts[env_idx], icp_radius=1000)
         theta = np.arctan2(M2[1, 0], M2[0, 0])
         theta_degrees = np.rad2deg(theta)
@@ -210,8 +210,7 @@ class DeltaArraySim:
         # self.block_com[env_idx][1] = np.array((final_trans.p.x, final_trans.p.y))
         # block_l2_distance = np.linalg.norm(self.block_com[env_idx][1] - self.block_com[env_idx][0])
         tf = np.linalg.norm(M2[:2,3]) + abs(theta_degrees)
-        # print(M2)
-        # print(f"TF_loss: {tf}, nn_dist_loss: {nn_dist}")
+        nn_dist = self.nn_helper.get_min_dist(self.bd_pts[env_idx], self.active_idxs[env_idx])
         return tf, nn_dist
 
     def compute_reward(self, env_idx, t_step):
@@ -242,7 +241,7 @@ class DeltaArraySim:
                 for j in range(self.num_tips[1]):
                     self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
             
-            self.init_state[env_idx] = self.get_nearest_robot_and_crop(env_idx)
+            self.init_state[env_idx] = self.get_nearest_robot_and_crop(env_idx, final=False)
             self.action[env_idx] = self.agent.get_action(self.init_state[env_idx])
             self.set_nn_fingers_pose(env_idx, self.active_idxs[env_idx].keys())
         elif t_step == 1:

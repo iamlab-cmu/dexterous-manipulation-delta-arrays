@@ -73,7 +73,7 @@ class DeltaArrayEnvironment():
                 "a_lr"         :1e-3, 
                 "buffer_maxlen":1000000
             }
-        self.agent = sac.SACAgent(env_dict, self.hp_dict, wandb_bool = True)
+        self.agent = sac.SACAgent(env_dict, self.hp_dict, wandb_bool = False)
     
         self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.obj_name, self.model, self.transform, self.agent, num_tips = [8,8])
 
