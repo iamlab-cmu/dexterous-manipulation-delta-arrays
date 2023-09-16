@@ -9,18 +9,22 @@ import networkx as nx
 import pandas as pd
 
 class NNHelper:
-    def __init__(self):
+    def __init__(self, plane_size):
         self.robot_positions = np.zeros((8,8,2))
         self.kdtree_positions = np.zeros((64, 2))
         for i in range(8):
             for j in range(8):
                 if i%2!=0:
-                    self.robot_positions[i,j] = (i*37.5, j*43.301 - 21.65)
-                    self.kdtree_positions[i*8 + j, :] = self.robot_positions[i,j]
+                    finger_pos = np.array((i*37.5, j*43.301 - 21.65))
                 else:
-                    self.robot_positions[i,j] = (i*37.5, j*43.301)
-                    self.kdtree_positions[i*8 + j, :] = self.robot_positions[i,j]
-
+                    finger_pos = np.array((i*37.5, j*43.301))
+        
+                finger_pos[0] = (finger_pos[0] - plane_size[0][0])/(plane_size[1][0]-plane_size[0][0])*1080 - 0
+                finger_pos[1] = 1920 - (finger_pos[1] - plane_size[0][1])/(plane_size[1][1]-plane_size[0][1])*1920
+                finger_pos = finger_pos.astype(np.int32)
+                self.robot_positions[i,j] = finger_pos
+                self.kdtree_positions[i*8 + j, :] = self.robot_positions[i,j]
+        
         self.cluster_centers = None
 
     def get_min_dist(self, boundary_pts, active_idxs):

@@ -28,6 +28,7 @@ from isaacgym_utils.draw import draw_transforms, draw_contacts, draw_camera
 
 import utils.nn_helper as helper
 import utils.SAC.sac as sac
+import utils.SAC.reinforce as reinforce
 from utils.geometric_utils import icp
 device = torch.device("cuda:0")
 
@@ -41,7 +42,6 @@ class DeltaArraySim:
         self.cam = 0
         self.object = obj
         self.obj_name = obj_name
-        self.nn_helper = helper.NNHelper()
         
         # Introduce delta robot EE in the env
         for i in range(self.num_tips[0]):
@@ -60,6 +60,7 @@ class DeltaArraySim:
         self.lower_green_filter = np.array([35, 50, 50])
         self.upper_green_filter = np.array([85, 255, 255])
         self.plane_size = 1000*np.array([(0 - 0.063, 0 - 0.2095), (0.2625 + 0.063, 0.303107 + 0.1865)]) # 1000*np.array([(0.13125-0.025, 0.1407285-0.055),(0.13125+0.025, 0.1407285+0.055)])
+        self.nn_helper = helper.NNHelper(self.plane_size)
         # self.save_iters = 0
         
         """ Fingertip Vars """
@@ -94,6 +95,7 @@ class DeltaArraySim:
         self.agent = agent
         self.init_state = {}
         self.action = {}
+        self.log_pi = {}
 
         self.ep_rewards = []
         self.ep_reward = np.zeros(self.scene.n_envs)
@@ -170,8 +172,8 @@ class DeltaArraySim:
         boundary = cv2.Canny(seg_map,100,200)
         boundary_pts = np.array(np.where(boundary==255)).T
         # 0, 1920 are origin pixels in img space
-        boundary_pts[:,0] = (boundary_pts[:,0] - 0)/1080*(self.plane_size[1][0]-self.plane_size[0][0])+self.plane_size[0][0]
-        boundary_pts[:,1] = (1920 - boundary_pts[:,1])/1920*(self.plane_size[1][1]-self.plane_size[0][1])+self.plane_size[0][1]
+        # boundary_pts[:,0] = (boundary_pts[:,0] - 0)/1080*(self.plane_size[1][0]-self.plane_size[0][0])+self.plane_size[0][0]
+        # boundary_pts[:,1] = (1920 - boundary_pts[:,1])/1920*(self.plane_size[1][1]-self.plane_size[0][1])+self.plane_size[0][1]
         # if len(boundary_pts) > 200:
         #     self.bd_pts[env_idx] = boundary_pts[np.random.choice(range(len(boundary_pts)), size=200, replace=False)]
         # else:
@@ -185,18 +187,16 @@ class DeltaArraySim:
             self.active_idxs[env_idx] = {min_idx: np.array((0,0))} # Store the action vector as value here later :)
         # [self.active_idxs[idx]=np.array((0,0)) for idx in idxs]
 
-        idxs = np.array(list(idxs))
-        neighbors = self.nn_helper.robot_positions[idxs[:,0], idxs[:,1]]
-
-        finger_pos = self.nn_helper.robot_positions[min_idx].copy()
-        finger_pos[0] = (finger_pos[0] - self.plane_size[0][0])/(self.plane_size[1][0]-self.plane_size[0][0])*1080 - 0
-        finger_pos[1] = 1920 - (finger_pos[1] - self.plane_size[0][1])/(self.plane_size[1][1]-self.plane_size[0][1])*1920
-        finger_pos = finger_pos.astype(np.int32)
-
-        crop = seg_map[finger_pos[0]-224:finger_pos[0]+224, finger_pos[1]-224:finger_pos[1]+224]
-        crop = cv2.resize(crop, (224,224))
-        # plt.imshow(crop)
-        # plt.show()
+        # neighbors = self.nn_helper.robot_positions[idxs[:,0], idxs[:,1]]
+        finger_pos = self.nn_helper.robot_positions[min_idx].astype(np.int32)
+        # finger_pos[0] = (finger_pos[0] - self.plane_size[0][0])/(self.plane_size[1][0]-self.plane_size[0][0])*1080 - 0
+        # finger_pos[1] = 1920 - (finger_pos[1] - self.plane_size[0][1])/(self.plane_size[1][1]-self.plane_size[0][1])*1920
+        # finger_pos = finger_pos.astype(np.int32)
+        print(finger_pos)
+        crop = seg_map[finger_pos[0]-112:finger_pos[0]+112, finger_pos[1]-112:finger_pos[1]+112]
+        # crop = cv2.resize(crop, (224,224))
+        plt.imshow(crop)
+        plt.show()
         cols = np.random.rand(3)
         crop = np.dstack((crop, crop, crop))*cols
         crop = Image.fromarray(np.uint8(crop*255))
@@ -240,7 +240,8 @@ class DeltaArraySim:
 
     def terminate(self, env_idx, t_step):
         """ Update the replay buffer and reset the env """
-        self.agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
+        # self.agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
+        self.agent.replay_buffer.push(self.init_state[env_idx], self.log_pi[env_idx], self.ep_reward[env_idx], self.final_state, True)
         self.ep_rewards.append(self.ep_reward[env_idx])
         print(f"Env_idx: {env_idx}, Iter: {self.current_episode[env_idx]}, Action: {self.action[env_idx]}, Reward: {self.ep_reward[env_idx]}")
         self.active_idxs[env_idx].clear()
@@ -263,11 +264,11 @@ class DeltaArraySim:
                     self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
             
             self.init_state[env_idx] = self.get_nearest_robot_and_crop(env_idx, final=False)
-            self.action[env_idx] = self.agent.get_action(self.init_state[env_idx])
+            self.action[env_idx], self.log_pi[env_idx] = self.agent.policy_nw.get_action(self.init_state[env_idx])
             self.set_nn_fingers_pose(env_idx, self.active_idxs[env_idx].keys())
         elif t_step == 1:
             for idx in self.active_idxs[env_idx].keys():
-                self.active_idxs[env_idx][idx] = 1000*self.action[env_idx]
+                self.active_idxs[env_idx][idx] = 1000*self.action[env_idx] # Convert action to mm
                 self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][idx[0]][idx[1]], gymapi.Transform(p=self.finger_positions[idx[0]][idx[1]] + gymapi.Vec3(*self.action[env_idx], -0.47), r=self.finga_q)) 
         elif t_step == 150:
             # Set the robots in idxs to default positions.
@@ -299,6 +300,6 @@ class DeltaArraySim:
             self.compute_reward(env_idx, t_step)
 
             if len(self.agent.replay_buffer) > self.batch_size:
-                self.agent.update(self.batch_size)
+                self.agent.update_policy(self.batch_size)
 
             self.terminate(env_idx, t_step)

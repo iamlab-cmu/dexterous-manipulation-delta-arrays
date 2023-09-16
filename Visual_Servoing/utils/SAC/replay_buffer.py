@@ -29,7 +29,7 @@ class ReplayBuffer:
             reward_batch.append(reward)
             next_state_batch.append(next_state)
             done_batch.append(done)
-        return (state_batch, np.array(action_batch), np.array(reward_batch), next_state_batch, done_batch)
+        return (state_batch, action_batch, np.array(reward_batch), next_state_batch, done_batch)
 
     
     def __len__(self):
