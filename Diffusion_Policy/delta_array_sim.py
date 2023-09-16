@@ -10,6 +10,7 @@ import networkx as nx
 from PIL import Image
 from scipy.spatial.transform import Rotation
 np.set_printoptions(precision=4)
+import wandb
 
 import torch
 import torchvision.transforms as transforms
@@ -26,7 +27,6 @@ from isaacgym_utils.math_utils import RigidTransform_to_transform
 from isaacgym_utils.draw import draw_transforms, draw_contacts, draw_camera
 
 import utils.nn_helper as helper
-import wandb
 import utils.SAC.sac as sac
 from utils.geometric_utils import icp
 device = torch.device("cuda:0")
@@ -116,28 +116,29 @@ class DeltaArraySim:
                 self.attractor_handles[env_ptr][i][j] = self.scene.gym.create_rigid_body_attractor(env_ptr, attractor_props)
 
     def add_asset(self, scene):
+        """ helper function to set up scene """
         for i in range(self.num_tips[0]):
             for j in range(self.num_tips[1]):
                 scene.add_asset(f'fingertip_{i}_{j}', self.fingertips[i][j], gymapi.Transform())
 
     def set_all_fingers_pose(self, env_idx, pos_high = True, all_or_one = "all"):
+        """ Set the fingers to high/low pose """
         for i in range(self.num_tips[0]):
             for j in range(self.num_tips[1]):
                 if pos_high:
-                    if (i==0) and (j==0):
-                        self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)])
-                    else:
-                        self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0.0, 0, 0), r=self.finga_q)])
+                    self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)])
                 elif (i,j) in self.neighborhood_fingers[env_idx][1]:
                     self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.45), r=self.finga_q)])
                 else:
                     self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.47), r=self.finga_q)])
 
     def set_nn_fingers_pose(self, env_idx, idxs):
+        """ Set the fingers in idxs to low pose """
         for (i,j) in idxs:
             self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.49), r=self.finga_q)])
 
     def set_block_pose(self, env_idx):
+        """ Set the block pose to a random pose """
         # T = [0.13125, 0.1407285]
         T = [0.11, 0.16]
         self.block_com[env_idx][0] = np.array((T))
@@ -145,11 +146,18 @@ class DeltaArraySim:
         self.object.set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p)])
 
     def get_scene_image(self, env_idx):
+        """ Render a camera image """
         self.scene.render_cameras()
         frames = self.cam.frames(env_idx, self.cam_name)
         self.current_scene_frame = frames
 
     def get_nearest_robot_and_crop(self, env_idx, final=False):
+        """ 
+        A helper function to get the nearest robot to the block and crop the image around it 
+        Get camera image -> Segment it -> Convert boundary to cartesian coordinate space in mm ->
+        Get nearest robot to the boundary -> Crop the image around the robot -> Resize to 224x224 ->
+        Randomize the colors to get rgb image, and Return resnet embedding of the crop. 
+        """
         # plt.figure(figsize=(6.6667,11.85))
         img = self.current_scene_frame['color'].data.astype(np.uint8)
         # plt.imshow(img)
@@ -198,6 +206,12 @@ class DeltaArraySim:
         return state.detach().cpu().squeeze()
 
     def reward_helper(self, env_idx, t_step):
+        """ 
+        Computes the reward for the quasi-static phase
+        1. Shortest distance between the robot and the block boundary
+        2. ICP output transformation matrix to get delta_xy, and abs(theta)
+        Combine both to compute the final reward
+        """
         init_bd_pts = self.bd_pts[env_idx]
         self.get_scene_image(env_idx)
         self.final_state = self.get_nearest_robot_and_crop(env_idx, final=True)
@@ -225,12 +239,19 @@ class DeltaArraySim:
             return True 
 
     def terminate(self, env_idx, t_step):
+        """ Update the replay buffer and reset the env """
         self.agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
         self.ep_rewards.append(self.ep_reward[env_idx])
         print(f"Env_idx: {env_idx}, Iter: {self.current_episode[env_idx]}, Action: {self.action[env_idx]}, Reward: {self.ep_reward[env_idx]}")
         self.active_idxs[env_idx].clear()
 
     def reset(self, env_idx, t_step, env_ptr):
+        """ 
+        Reset has 3 functions
+        1. Setup the env, get the initial state and action, and set_attractor_pose of the robot.
+        2. Execute the action on the robot by set_attractor_target.
+        3. set_attractor_pose of the robot to high pose so final image can be captured.
+        """
         if t_step == 0:
             self.ep_reward[env_idx] = 0
             self.set_block_pose(env_idx) # Reset block to initial pose
@@ -253,12 +274,16 @@ class DeltaArraySim:
             self.set_all_fingers_pose(env_idx, pos_high=True)
 
     def sim_test(self, env_idx, t_step, env_ptr):
+        """ To visualize the scene without taking any action """
         for i in range(self.num_tips[0]):
             for j in range(self.num_tips[1]):
                 self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.43), r=self.finga_q)) 
 
     def visual_servoing(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
+        env_ptr = self.scene.env_ptrs[env_idx]
+        # self.sim_test(env_idx, t_step, env_ptr)
+
         if (t_step == 0) and (env_idx == (self.scene.n_envs-1)):
             if self.current_episode[env_idx]%10 == 0:
                 self.agent.save_policy_model()
@@ -266,8 +291,6 @@ class DeltaArraySim:
                 self.current_episode[env_idx] += 1
             else:
                 self.agent.end_wandb()
-        env_ptr = self.scene.env_ptrs[env_idx]
-        # self.sim_test(env_idx, t_step, env_ptr)
         if t_step in {0, 1, self.time_horizon-2}:
             self.reset(env_idx, t_step, env_ptr)
         elif t_step < self.time_horizon-2:

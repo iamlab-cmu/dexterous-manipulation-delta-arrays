@@ -78,9 +78,7 @@ class DeltaArrayEnvironment():
         self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.obj_name, self.model, self.transform, self.agent, num_tips = [8,8])
 
         self.cam = GymCamera(self.scene, cam_props = self.cfg['camera'])
-        # print(RigidTransform.x_axis_rotation(np.deg2rad(180)))
         rot = RigidTransform.x_axis_rotation(np.deg2rad(0))@RigidTransform.z_axis_rotation(np.deg2rad(-90))
-        # print(rot)
         self.cam_offset_transform = RigidTransform_to_transform(RigidTransform(
             rotation=rot,
             translation = np.array([0.13125, 0.1407285, 0.65])
@@ -90,12 +88,11 @@ class DeltaArrayEnvironment():
         self.fingers.cam = self.cam 
         self.fingers.cam_name = self.cam_name
 
-            # scene.attach_camera(cam_name, cam, franka_name, 'panda_hand', offset_transform=cam_offset_transform)
+        # scene.attach_camera(cam_name, cam, franka_name, 'panda_hand', offset_transform=cam_offset_transform)
         self.scene.setup_all_envs(self.setup_scene)
         self.setup_objects()
 
     def setup_scene(self, scene, _):
-        # we'll sample block poses later
         self.fingers.add_asset(scene)
         # Add either rigid body or soft body as an asset to the scene
         scene.add_asset(self.obj_name, self.object, gymapi.Transform()) 
