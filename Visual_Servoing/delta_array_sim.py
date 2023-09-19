@@ -32,6 +32,9 @@ import utils.SAC.reinforce as reinforce
 from utils.geometric_utils import icp
 device = torch.device("cuda:0")
 
+# plt.ion()  # Turn on interactive mode
+
+# fig, ax = plt.subplots()
 class DeltaArraySim:
     def __init__(self, scene, cfg, obj, obj_name, img_embed_model, transform, agent, num_tips = [8,8]):
         """ Main Vars """
@@ -192,11 +195,10 @@ class DeltaArraySim:
         # finger_pos[0] = (finger_pos[0] - self.plane_size[0][0])/(self.plane_size[1][0]-self.plane_size[0][0])*1080 - 0
         # finger_pos[1] = 1920 - (finger_pos[1] - self.plane_size[0][1])/(self.plane_size[1][1]-self.plane_size[0][1])*1920
         # finger_pos = finger_pos.astype(np.int32)
-        print(finger_pos)
         crop = seg_map[finger_pos[0]-112:finger_pos[0]+112, finger_pos[1]-112:finger_pos[1]+112]
         # crop = cv2.resize(crop, (224,224))
-        plt.imshow(crop)
-        plt.show()
+        # plt.imshow(crop)
+        # plt.show()
         cols = np.random.rand(3)
         crop = np.dstack((crop, crop, crop))*cols
         crop = Image.fromarray(np.uint8(crop*255))
@@ -235,7 +237,7 @@ class DeltaArraySim:
         else:
             tf_loss, nn_dist_loss = self.reward_helper(env_idx, t_step)
             self.ep_reward[env_idx] += -nn_dist_loss[0]
-            self.ep_reward[env_idx] += -tf_loss
+            self.ep_reward[env_idx] += -tf_loss*0.6
             return True 
 
     def terminate(self, env_idx, t_step):
@@ -243,7 +245,8 @@ class DeltaArraySim:
         # self.agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
         self.agent.replay_buffer.push(self.init_state[env_idx], self.log_pi[env_idx], self.ep_reward[env_idx], self.final_state, True)
         self.ep_rewards.append(self.ep_reward[env_idx])
-        print(f"Env_idx: {env_idx}, Iter: {self.current_episode[env_idx]}, Action: {self.action[env_idx]}, Reward: {self.ep_reward[env_idx]}")
+        if env_idx == (self.scene.n_envs-1):
+            print(f"Iter: {self.current_episode[env_idx]}, Avg Reward: {np.mean(self.ep_rewards[-16:])}")
         self.active_idxs[env_idx].clear()
 
     def reset(self, env_idx, t_step, env_ptr):
@@ -265,6 +268,7 @@ class DeltaArraySim:
             
             self.init_state[env_idx] = self.get_nearest_robot_and_crop(env_idx, final=False)
             self.action[env_idx], self.log_pi[env_idx] = self.agent.policy_nw.get_action(self.init_state[env_idx])
+            self.action[env_idx] = self.agent.rescale_action(self.action[env_idx].detach().squeeze(0).numpy())
             self.set_nn_fingers_pose(env_idx, self.active_idxs[env_idx].keys())
         elif t_step == 1:
             for idx in self.active_idxs[env_idx].keys():
@@ -287,6 +291,7 @@ class DeltaArraySim:
 
         if (t_step == 0) and (env_idx == (self.scene.n_envs-1)):
             if self.current_episode[env_idx]%10 == 0:
+                pkl.dump(self.ep_rewards, open('./data/rl_data/rl_data.pkl', 'wb'))
                 self.agent.save_policy_model()
             if self.current_episode[env_idx] < self.max_episodes:
                 self.current_episode[env_idx] += 1
@@ -299,7 +304,8 @@ class DeltaArraySim:
         elif t_step == self.time_horizon-1:
             self.compute_reward(env_idx, t_step)
 
-            if len(self.agent.replay_buffer) > self.batch_size:
-                self.agent.update_policy(self.batch_size)
+            # if len(self.agent.replay_buffer) > self.batch_size:
+            #     self.agent.update_policy(self.batch_size)
+            self.agent.update_policy_reinforce(self.log_pi[env_idx], self.ep_reward[env_idx])
 
             self.terminate(env_idx, t_step)

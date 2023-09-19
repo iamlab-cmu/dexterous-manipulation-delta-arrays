@@ -12,13 +12,14 @@ from isaacgym_utils.draw import draw_transforms, draw_contacts, draw_camera
 
 import torch
 import torchvision.transforms as transforms
-from torchvision.models import resnet18
+from torchvision.models import resnet18, ResNet18_Weights
 from scipy.spatial.distance import cosine
 
 import wandb
 
 import delta_array_sim
 import utils.SAC.sac as sac
+import utils.SAC.reinforce as reinforce
 device = torch.device("cuda:0")
 
 class DeltaArrayEnvironment():
@@ -52,8 +53,7 @@ class DeltaArrayEnvironment():
         #                     rb_props=self.cfg['fiducial']['rb_props'],
         #                     asset_options=self.cfg['fiducial']['asset_options'])
         
-
-        self.model = resnet18(pretrained=True)
+        self.model = resnet18(weights=ResNet18_Weights.DEFAULT)
         self.model = torch.nn.Sequential(*list(self.model.children())[:-1])
         self.model.eval()
         self.model = self.model.to(device)
@@ -73,7 +73,8 @@ class DeltaArrayEnvironment():
                 "a_lr"         :1e-3, 
                 "buffer_maxlen":1000000
             }
-        self.agent = sac.SACAgent(env_dict, self.hp_dict, wandb_bool = False)
+        # self.agent = sac.SACAgent(env_dict, self.hp_dict, wandb_bool = False)
+        self.agent = reinforce.REINFORCE(env_dict, 3e-4)
     
         self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.obj_name, self.model, self.transform, self.agent, num_tips = [8,8])
 

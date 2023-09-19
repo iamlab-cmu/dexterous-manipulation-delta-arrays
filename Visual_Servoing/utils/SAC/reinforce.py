@@ -8,7 +8,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.autograd import Variable
 
-GAMMA = 0.9
+from utils.SAC.replay_buffer import ReplayBuffer
 
 class PolicyNetwork(nn.Module):
     def __init__(self, n_obs, n_actions, hidden_size=256, learning_rate=3e-4, init_w=3e-3, log_std_min=-20, log_std_max=2):
@@ -20,10 +20,10 @@ class PolicyNetwork(nn.Module):
         self.fc2 = nn.Linear(hidden_size, hidden_size)
         self.fc3 = nn.Linear(hidden_size, hidden_size)
         
-        self.fc4_mean = nn.Linear(hidden_dim, n_actions)
+        self.fc4_mean = nn.Linear(hidden_size, n_actions)
         self.fc4_mean.weight.data.uniform_(-init_w, init_w)
         self.fc4_mean.bias.data.uniform_(-init_w, init_w)
-        self.fc4_log_std = nn.Linear(hidden_dim, n_actions)
+        self.fc4_log_std = nn.Linear(hidden_size, n_actions)
         self.fc4_log_std.weight.data.uniform_(-init_w, init_w)
         self.fc4_log_std.bias.data.uniform_(-init_w, init_w)
 
@@ -48,21 +48,44 @@ class PolicyNetwork(nn.Module):
         action = torch.tanh(z)
 
         log_pi = normal.log_prob(z) - torch.log(1 - (torch.tanh(z)).pow(2) + epsilon)
-        log_pi = log_pi.sum(dim=1, keepdim=True)
+        # log_pi = log_pi.sum(dim=1, keepdim=True)
+        log_pi = log_pi.sum() # for batch_size = 1
         return action, log_pi
 
 class REINFORCE:
-    def __init__(self, env, gamma, lr):
-        self.env = env
-        self.action_range = [env.action_space.low, env.action_space.high]
-        self.gamma = gamma
+    def __init__(self, env_dict, lr, wandb_bool=False):
+        self.env_dict = env_dict
+        self.action_range = [self.env_dict['action_space']['low'], self.env_dict['action_space']['high']]
+        # self.gamma = gamma
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.policy_nw = PolicyNetwork(self.env.observation_space.shape[0], self.env.action_space.shape[0], 256)
-        self.policy_nw.to(self.device)
-        self.replay_buffer = ReplayBuffer(buffer_maxlen)
+        self.policy_nw = PolicyNetwork(self.env_dict['observation_space']['dim'], self.env_dict['action_space']['dim'], 256)
+        self.replay_buffer = ReplayBuffer(10000)
         
         self.lr = lr
+        self.wandb_bool = wandb_bool
+        self.expt_no = None
+        if self.wandb_bool:
+            self.setup_wandb(hp_dict)
+
+    def setup_wandb(self, hp_dict):
+        if os.path.exists("./utils/SAC/runtracker.txt"):
+            with open("./utils/SAC/runtracker.txt", "r") as f:
+                run = int(f.readline())
+                run += 1
+        else:
+            run = 0
+        with open("./utils/SAC/runtracker.txt", "w") as f:
+            f.write(str(run))
+        self.expt_no = run
+        wandb.init(project="SAC", 
+            name=f"experiment_{run}",
+            config=hp_dict)
+
+    def end_wandb(self):
+        if self.wandb_bool:
+            wandb.finish()
+            
     # def get_action(self, obs):
     #     obs = torch.FloatTensor(obs).unsqueeze(0).to(self.device)
     #     self.policy.eval()
@@ -76,20 +99,17 @@ class REINFORCE:
     #     action = torch.tanh(z)
     #     return self.rescale_action(action.cpu().detach().squeeze(0).numpy())
 
-    # def rescale_action(self, action):
-    #     return (action + 1)/2 * (self.action_range[1] - self.action_range[0]) + self.action_range[0]
+    def rescale_action(self, action):
+        return (action + 1)/2 * (self.action_range[1] - self.action_range[0]) + self.action_range[0]
+    
+    def save_policy_model(self):
+        torch.save(self.policy_nw.state_dict(), f"./utils/SAC/policy_models/reinforce_expt_{self.expt_no}.pt")
 
-    def update_policy(batch_size):
-        states, action_log_pis, rewards, next_states, dones = self.replay_buffer.sample(batch_size)
-        # states = torch.tensor(states).to(self.device)
-        action_log_pis = torch.tensor(action_log_pis).to(self.device)
-        rewards = torch.tensor(rewards).to(self.device)
-        # next_states = torch.tensor(next_states).to(self.device)
-        # dones = torch.tensor(dones).to(self.device)
-        # dones = dones.view(dones.size(0), -1)
-
-        # new_actions, log_pi = self.policy.sample(states)
-        policy_nw.optimizer.zero_grad()
-        policy_gradient = self.lr * -action_log_pis * rewards
+    def update_policy_reinforce(self, action_log_pi, reward):
+        action_log_pi = torch.tensor(action_log_pi.clone().detach().requires_grad_(True))
+        reward = torch.tensor(reward.copy(), requires_grad=True)
+        
+        self.policy_nw.optimizer.zero_grad()
+        policy_gradient = -self.lr * action_log_pi * reward
         policy_gradient.backward()
-        policy_nw.optimizer.step()
+        self.policy_nw.optimizer.step()
