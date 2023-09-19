@@ -78,6 +78,15 @@ class SACAgent:
     def save_policy_model(self):
         torch.save(self.policy.state_dict(), f"./utils/SAC/policy_models/expt_{self.expt_no}.pt")
 
+    def load_policy_model(self):
+        if self.expt_no is None:
+            if os.path.exists("./utils/SAC/runtracker.txt"):
+                with open("./utils/SAC/runtracker.txt", "r") as f:
+                    run = int(f.readline())
+            else:
+                run = 0
+        self.policy.load_state_dict(torch.load(f"./utils/SAC/policy_models/expt_{run}.pt"))
+
     def get_action(self, obs):
         obs = torch.FloatTensor(obs).unsqueeze(0).to(self.device)
         self.policy.eval()

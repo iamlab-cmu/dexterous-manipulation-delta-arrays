@@ -309,3 +309,17 @@ class DeltaArraySim:
             self.agent.update_policy_reinforce(self.log_pi[env_idx], self.ep_reward[env_idx])
 
             self.terminate(env_idx, t_step)
+
+    def test_learned_policy(self, scene, env_idx, t_step, _):
+        t_step = t_step % self.time_horizon
+        env_ptr = self.scene.env_ptrs[env_idx]
+        if t_step == 0:
+            self.reset(env_idx, t_step, env_ptr)
+            self.agent.load_policy_model()
+        elif t_step==1:
+            for idx in self.active_idxs[env_idx].keys():
+                self.active_idxs[env_idx][idx] = 1000*self.action[env_idx]
+                self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][idx[0]][idx[1]], gymapi.Transform(p=self.finger_positions[idx[0]][idx[1]] + gymapi.Vec3(*self.action[env_idx], -0.47), r=self.finga_q)) 
+        elif t_step == self.time_horizon-1:
+            self.active_idxs[env_idx].clear()
+            self.set_all_fingers_pose(env_idx, pos_high=True)

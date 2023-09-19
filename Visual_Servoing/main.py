@@ -129,8 +129,7 @@ class DeltaArrayEnvironment():
 
     def run(self):
         self.scene.run(policy=self.fingers.visual_servoing)
-        # self.scene.run(policy=self.fingers.generate_trajectory)
-        # self.scene.run(policy=self.fingers.execute_trajectory)
+        # self.scene.run(policy=self.fingers.test_learned_policy)
 
 if __name__ == "__main__":
     yaml_path = './config/env.yaml'
