@@ -12,6 +12,20 @@ from torch.autograd import Variable
 
 from utils.SAC.replay_buffer import ReplayBuffer
 
+class QNetwork(nn.Module):
+    def __init__(self, n_obs, hidden_size):
+        super(QNetwork, self).__init__()
+        self.fc1 = nn.Linear(n_obs, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, hidden_size)
+        self.fc3 = nn.Linear(hidden_size, 1)
+    
+    def forward(self, state, action):
+        x = torch.cat([state, action], dim=1)
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+
 class PolicyNetwork(nn.Module):
     def __init__(self, n_obs, n_actions, hidden_size=256, learning_rate=3e-4, init_w=3e-3, log_std_min=-20, log_std_max=2):
         super(PolicyNetwork, self).__init__()
@@ -42,18 +56,18 @@ class PolicyNetwork(nn.Module):
         log_std = torch.exp(0.5*log_var)
         return mean, log_std
     
-    # def get_action(self, state, epsilon=1e-6):
-    #     mean, log_std = self.forward(state)
-    #     std = log_std.exp()
+    def get_action(self, state, epsilon=1e-6):
+        mean, log_std = self.forward(state)
+        std = log_std.exp()
 
-    #     normal = torch.distributions.Normal(mean, std)
-    #     z = normal.rsample()
-    #     action = torch.tanh(z)
+        normal = torch.distributions.Normal(mean, std)
+        z = normal.rsample()
+        action = torch.tanh(z)
 
-    #     log_pi = normal.log_prob(z) - torch.log(1 - (torch.tanh(z)).pow(2) + epsilon)
-    #     # log_pi = log_pi.sum(dim=1, keepdim=True)
-    #     log_pi = log_pi.sum() # for batch_size = 1
-    #     return action, log_pi
+        log_pi = normal.log_prob(z) - torch.log(1 - (torch.tanh(z)).pow(2) + epsilon)
+        # log_pi = log_pi.sum(dim=1, keepdim=True)
+        log_pi = log_pi.sum() # for batch_size = 1
+        return action, log_pi
 
 class REINFORCE:
     def __init__(self, env_dict, lr, wandb_bool=False):
@@ -62,7 +76,8 @@ class REINFORCE:
         # self.gamma = gamma
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.policy_nw = PolicyNetwork(self.env_dict['observation_space']['dim'], self.env_dict['action_space']['dim'], 32)
+        self.q_nw = QNetwork(self.env_dict['observation_space']['dim'], 64)
+        self.policy_nw = PolicyNetwork(self.env_dict['observation_space']['dim'], self.env_dict['action_space']['dim'], 64)
         self.replay_buffer = ReplayBuffer(10000)
         
         self.lr = lr

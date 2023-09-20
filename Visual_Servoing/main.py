@@ -20,6 +20,8 @@ import wandb
 import delta_array_sim
 import utils.SAC.sac as sac
 import utils.SAC.reinforce as reinforce
+import utils.DDPG.ddpg as ddpg
+from utils.openai_utils.run_utils import setup_logger_kwargs
 device = torch.device("cuda:0")
 
 class DeltaArrayEnvironment():
@@ -73,10 +75,14 @@ class DeltaArrayEnvironment():
                 "q_lr"         :1e-3, 
                 "policy_lr"    :1e-3,
                 "a_lr"         :1e-3, 
-                "buffer_maxlen":1000000
+                "buffer_maxlen":1000000,
+                'seed'         :3
             }
+
+        logger_kwargs = setup_logger_kwargs("ddpg_expt_0", 69420, data_dir="./data/rl_data")
+        self.agent = ddpg.DDPG(env_dict, self.hp_dict, logger_kwargs)
         # self.agent = sac.SACAgent(env_dict, self.hp_dict, wandb_bool = False)
-        self.agent = reinforce.REINFORCE(env_dict, 3e-3)
+        # self.agent = reinforce.REINFORCE(env_dict, 3e-3)
         if self.train_or_test=="test":
             self.agent.load_policy_model()
         self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.obj_name, self.model, self.transform, self.agent, num_tips = [8,8])
