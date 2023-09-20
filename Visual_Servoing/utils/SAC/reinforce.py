@@ -1,6 +1,8 @@
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
+import scipy.stats as stats
+
 
 import torch
 import torch.nn as nn
@@ -18,7 +20,7 @@ class PolicyNetwork(nn.Module):
         self.n_actions = n_actions
         self.fc1 = nn.Linear(n_obs, hidden_size)
         self.fc2 = nn.Linear(hidden_size, hidden_size)
-        self.fc3 = nn.Linear(hidden_size, hidden_size)
+        # self.fc3 = nn.Linear(hidden_size, hidden_size)
         
         self.fc4_mean = nn.Linear(hidden_size, n_actions)
         self.fc4_mean.weight.data.uniform_(-init_w, init_w)
@@ -32,25 +34,26 @@ class PolicyNetwork(nn.Module):
     def forward(self, state):
         x = F.relu(self.fc1(state))
         x = F.relu(self.fc2(x))
-        x = F.relu(self.fc3(x))
+        # x = F.relu(self.fc3(x))
 
-        mean = self.fc4_mean(x)
-        log_std = self.fc4_log_std(x)
-        log_std = torch.clamp(log_std, self.log_std_min, self.log_std_max)
+        mean = torch.tanh(self.fc4_mean(x))
+        log_var = torch.tanh(self.fc4_log_std(x))
+        # log_var = torch.clamp(log_var, self.log_std_min, self.log_std_max)
+        log_std = torch.exp(0.5*log_var)
         return mean, log_std
     
-    def get_action(self, state, epsilon=1e-6):
-        mean, log_std = self.forward(state)
-        std = log_std.exp()
+    # def get_action(self, state, epsilon=1e-6):
+    #     mean, log_std = self.forward(state)
+    #     std = log_std.exp()
 
-        normal = torch.distributions.Normal(mean, std)
-        z = normal.rsample()
-        action = torch.tanh(z)
+    #     normal = torch.distributions.Normal(mean, std)
+    #     z = normal.rsample()
+    #     action = torch.tanh(z)
 
-        log_pi = normal.log_prob(z) - torch.log(1 - (torch.tanh(z)).pow(2) + epsilon)
-        # log_pi = log_pi.sum(dim=1, keepdim=True)
-        log_pi = log_pi.sum() # for batch_size = 1
-        return action, log_pi
+    #     log_pi = normal.log_prob(z) - torch.log(1 - (torch.tanh(z)).pow(2) + epsilon)
+    #     # log_pi = log_pi.sum(dim=1, keepdim=True)
+    #     log_pi = log_pi.sum() # for batch_size = 1
+    #     return action, log_pi
 
 class REINFORCE:
     def __init__(self, env_dict, lr, wandb_bool=False):
@@ -59,7 +62,7 @@ class REINFORCE:
         # self.gamma = gamma
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.policy_nw = PolicyNetwork(self.env_dict['observation_space']['dim'], self.env_dict['action_space']['dim'], 256)
+        self.policy_nw = PolicyNetwork(self.env_dict['observation_space']['dim'], self.env_dict['action_space']['dim'], 32)
         self.replay_buffer = ReplayBuffer(10000)
         
         self.lr = lr
@@ -86,18 +89,13 @@ class REINFORCE:
         if self.wandb_bool:
             wandb.finish()
             
-    # def get_action(self, obs):
-    #     obs = torch.FloatTensor(obs).unsqueeze(0).to(self.device)
-    #     self.policy.eval()
-    #     with torch.no_grad():
-    #         mean, log_std = self.policy.forward(obs)
-    #     self.policy.train()
-    #     std = log_std.exp()
+    def get_action(self, obs):
+        mu, std = self.policy_nw(obs)
+        normal = torch.distributions.Normal(mu, std)
+        action = normal.rsample()
+        log_prob = normal.log_prob(action).sum(axis=-1)
 
-    #     normal = torch.distributions.Normal(mean, std)
-    #     z = normal.sample()
-    #     action = torch.tanh(z)
-    #     return self.rescale_action(action.cpu().detach().squeeze(0).numpy())
+        return self.rescale_action(action.cpu().detach().squeeze(0).numpy())
 
     def rescale_action(self, action):
         return (action + 1)/2 * (self.action_range[1] - self.action_range[0]) + self.action_range[0]
@@ -105,8 +103,23 @@ class REINFORCE:
     def save_policy_model(self):
         torch.save(self.policy_nw.state_dict(), f"./utils/SAC/policy_models/reinforce_expt_{self.expt_no}.pt")
 
+    def load_policy_model(self):
+        self.policy_nw.load_state_dict(torch.load(f"./utils/SAC/policy_models/reinforce_expt_None.pt"))
+
+    def test_policy(self, state):
+        self.policy_nw.eval()
+        with torch.no_grad():
+            mean, log_std = self.policy_nw.forward(state)
+            std = log_std.exp()
+
+            normal = torch.distributions.Normal(mean, std)
+            z = normal.rsample()
+            action = torch.tanh(z)
+        return self.rescale_action(action.cpu().detach().squeeze(0).numpy())
+
+
     def update_policy_reinforce(self, action_log_pi, reward):
-        action_log_pi = torch.tensor(action_log_pi.clone().detach().requires_grad_(True))
+        action_log_pi = action_log_pi.clone().detach().requires_grad_(True)
         reward = torch.tensor(reward.copy(), requires_grad=True)
         
         self.policy_nw.optimizer.zero_grad()

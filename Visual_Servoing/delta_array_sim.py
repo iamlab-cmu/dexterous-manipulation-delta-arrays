@@ -2,6 +2,9 @@ import numpy as np
 import time
 import pickle as pkl
 from scipy import spatial
+from sklearn.cluster import KMeans
+from scipy.spatial import ConvexHull
+from scipy.interpolate import interp1d
 from matplotlib import cm
 import matplotlib.pyplot as plt
 import cv2
@@ -80,6 +83,7 @@ class DeltaArraySim:
         self.goal = np.zeros((8,8))
         self.finga_q = gymapi.Quat(0, 0.707, 0, 0.707)
         self.active_idxs = {}
+        self.KMeans = KMeans(n_clusters=100, random_state=69, n_init=10)
 
         """ Sim Util Vars """
         self.attractor_handles = {}
@@ -89,6 +93,7 @@ class DeltaArraySim:
         self.current_episode = np.zeros(self.scene.n_envs)
 
         """ Visual Servoing and RL Vars """
+        self.bd_pt_bool = True
         self.bd_pts = {}
         self.current_scene_frame = None
         self.batch_size = 4
@@ -165,8 +170,7 @@ class DeltaArraySim:
         """
         # plt.figure(figsize=(6.6667,11.85))
         img = self.current_scene_frame['color'].data.astype(np.uint8)
-        # plt.imshow(img)
-        # plt.show()
+        
         hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
         mask = cv2.inRange(hsv, self.lower_green_filter, self.upper_green_filter)
         seg_map = cv2.bitwise_and(img, img, mask = mask)
@@ -174,13 +178,10 @@ class DeltaArraySim:
 
         boundary = cv2.Canny(seg_map,100,200)
         boundary_pts = np.array(np.where(boundary==255)).T
-        # 0, 1920 are origin pixels in img space
-        # boundary_pts[:,0] = (boundary_pts[:,0] - 0)/1080*(self.plane_size[1][0]-self.plane_size[0][0])+self.plane_size[0][0]
-        # boundary_pts[:,1] = (1920 - boundary_pts[:,1])/1920*(self.plane_size[1][1]-self.plane_size[0][1])+self.plane_size[0][1]
-        # if len(boundary_pts) > 200:
-        #     self.bd_pts[env_idx] = boundary_pts[np.random.choice(range(len(boundary_pts)), size=200, replace=False)]
-        # else:
-        self.bd_pts[env_idx] = boundary_pts
+        kmeans = self.KMeans.fit(boundary_pts)
+        cluster_centers = kmeans.cluster_centers_
+        
+        self.bd_pts[env_idx] = cluster_centers
         idxs, neg_idxs = self.nn_helper.get_nn_robots(self.bd_pts[env_idx])
         idxs = np.array(list(idxs))
         min_idx = tuple(idxs[np.lexsort((idxs[:, 0], idxs[:, 1]))][0])
@@ -190,22 +191,28 @@ class DeltaArraySim:
             self.active_idxs[env_idx] = {min_idx: np.array((0,0))} # Store the action vector as value here later :)
         # [self.active_idxs[idx]=np.array((0,0)) for idx in idxs]
 
-        # neighbors = self.nn_helper.robot_positions[idxs[:,0], idxs[:,1]]
-        finger_pos = self.nn_helper.robot_positions[min_idx].astype(np.int32)
-        # finger_pos[0] = (finger_pos[0] - self.plane_size[0][0])/(self.plane_size[1][0]-self.plane_size[0][0])*1080 - 0
-        # finger_pos[1] = 1920 - (finger_pos[1] - self.plane_size[0][1])/(self.plane_size[1][1]-self.plane_size[0][1])*1920
-        # finger_pos = finger_pos.astype(np.int32)
-        crop = seg_map[finger_pos[0]-112:finger_pos[0]+112, finger_pos[1]-112:finger_pos[1]+112]
-        # crop = cv2.resize(crop, (224,224))
-        # plt.imshow(crop)
+        # finger_pos = self.nn_helper.robot_positions[min_idx].astype(np.int32)
+        # crop = seg_map[finger_pos[0]-112:finger_pos[0]+112, finger_pos[1]-112:finger_pos[1]+112]
+        # # crop = cv2.resize(crop, (224,224))
+        # cols = np.random.rand(3)
+        # crop = np.dstack((crop, crop, crop))*cols
+        # crop = Image.fromarray(np.uint8(crop*255))
+        # crop = self.transform(crop).unsqueeze(0).to(device)
+        # with torch.no_grad():
+        #     state = self.model(crop)
+        # return state.detach().cpu().squeeze()
+
+        min_dist, xy = self.nn_helper.get_min_dist(self.bd_pts[env_idx], self.active_idxs[env_idx])
+        xy = torch.FloatTensor(xy)
+        if self.bd_pt_bool:
+            plt.imshow(seg_map)
+            plt.scatter(xy[1], xy[0], c='r')
+            plt.scatter(self.nn_helper.robot_positions[min_idx][1], self.nn_helper.robot_positions[min_idx][0], c='g')
+            plt.scatter(self.bd_pts[env_idx][:,1], self.bd_pts[env_idx][:,0], c='b')
+            plt.savefig(f"kmeans_img.png")
+            self.bd_pt_bool = False
         # plt.show()
-        cols = np.random.rand(3)
-        crop = np.dstack((crop, crop, crop))*cols
-        crop = Image.fromarray(np.uint8(crop*255))
-        crop = self.transform(crop).unsqueeze(0).to(device)
-        with torch.no_grad():
-            state = self.model(crop)
-        return state.detach().cpu().squeeze()
+        return xy
 
     def reward_helper(self, env_idx, t_step):
         """ 
@@ -226,7 +233,7 @@ class DeltaArraySim:
         # self.block_com[env_idx][1] = np.array((final_trans.p.x, final_trans.p.y))
         # block_l2_distance = np.linalg.norm(self.block_com[env_idx][1] - self.block_com[env_idx][0])
         tf = np.linalg.norm(M2[:2,3]) + abs(theta_degrees)
-        nn_dist = self.nn_helper.get_min_dist(self.bd_pts[env_idx], self.active_idxs[env_idx])
+        nn_dist, xy = self.nn_helper.get_min_dist(self.bd_pts[env_idx], self.active_idxs[env_idx])
         return tf, nn_dist
 
     def compute_reward(self, env_idx, t_step):
@@ -245,8 +252,8 @@ class DeltaArraySim:
         # self.agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
         self.agent.replay_buffer.push(self.init_state[env_idx], self.log_pi[env_idx], self.ep_reward[env_idx], self.final_state, True)
         self.ep_rewards.append(self.ep_reward[env_idx])
-        if env_idx == (self.scene.n_envs-1):
-            print(f"Iter: {self.current_episode[env_idx]}, Avg Reward: {np.mean(self.ep_rewards[-16:])}")
+        # if env_idx == (self.scene.n_envs-1):
+        print(f"Iter: {self.current_episode[env_idx]}, Reward: {self.ep_reward[env_idx]}")
         self.active_idxs[env_idx].clear()
 
     def reset(self, env_idx, t_step, env_ptr):
@@ -275,7 +282,6 @@ class DeltaArraySim:
                 self.active_idxs[env_idx][idx] = 1000*self.action[env_idx] # Convert action to mm
                 self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][idx[0]][idx[1]], gymapi.Transform(p=self.finger_positions[idx[0]][idx[1]] + gymapi.Vec3(*self.action[env_idx], -0.47), r=self.finga_q)) 
         elif t_step == 150:
-            # Set the robots in idxs to default positions.
             self.set_all_fingers_pose(env_idx, pos_high=True)
 
     def sim_test(self, env_idx, t_step, env_ptr):
@@ -310,16 +316,36 @@ class DeltaArraySim:
 
             self.terminate(env_idx, t_step)
 
+    def test_step(self, env_idx, t_step, env_ptr):
+        """ 
+        Test_step has 3 functions
+        1. Setup the env, get the initial state, query action from policy, and set_attractor_pose of the robot.
+        2. Execute the action on the robot by set_attractor_target.
+        3. set_attractor_pose of the robot to high pose so final image can be captured.
+        """
+        if t_step == 0:
+            self.ep_reward[env_idx] = 0
+            self.set_block_pose(env_idx) # Reset block to initial pose
+            self.get_scene_image(env_idx)
+            self.set_all_fingers_pose(env_idx, pos_high=True) # Set all fingers to high pose
+
+            for i in range(self.num_tips[0]):
+                for j in range(self.num_tips[1]):
+                    self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
+            
+            self.init_state[env_idx] = self.get_nearest_robot_and_crop(env_idx, final=False)
+            self.action[env_idx] = self.agent.test_policy(self.init_state[env_idx])
+            self.set_nn_fingers_pose(env_idx, self.active_idxs[env_idx].keys())
+        elif t_step == 1:
+            for idx in self.active_idxs[env_idx].keys():
+                self.active_idxs[env_idx][idx] = 1000*self.action[env_idx] # Convert action to mm
+                self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][idx[0]][idx[1]], gymapi.Transform(p=self.finger_positions[idx[0]][idx[1]] + gymapi.Vec3(*self.action[env_idx], -0.47), r=self.finga_q)) 
+        elif t_step == 150:
+            self.set_all_fingers_pose(env_idx, pos_high=True)
+
     def test_learned_policy(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
         env_ptr = self.scene.env_ptrs[env_idx]
-        if t_step == 0:
-            self.reset(env_idx, t_step, env_ptr)
-            self.agent.load_policy_model()
-        elif t_step==1:
-            for idx in self.active_idxs[env_idx].keys():
-                self.active_idxs[env_idx][idx] = 1000*self.action[env_idx]
-                self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][idx[0]][idx[1]], gymapi.Transform(p=self.finger_positions[idx[0]][idx[1]] + gymapi.Vec3(*self.action[env_idx], -0.47), r=self.finga_q)) 
-        elif t_step == self.time_horizon-1:
-            self.active_idxs[env_idx].clear()
-            self.set_all_fingers_pose(env_idx, pos_high=True)
+        
+        if t_step in {0, 1, self.time_horizon-2}:
+            self.test_step(env_idx, t_step, env_ptr)

@@ -38,7 +38,8 @@ class NNHelper:
             #     if dist < min_dist:
             #         min_dist = dist
             min_dists.append(np.min(distances))
-        return min_dists
+            xy = boundary_pts[np.argmin(distances)]
+        return min_dists, xy
 
     def get_nn_robots(self, boundary_pts):
         hull = ConvexHull(boundary_pts)
