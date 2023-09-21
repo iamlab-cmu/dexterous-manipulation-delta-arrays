@@ -5,9 +5,9 @@ from torch.optim import Adam
 import time
 import utils.DDPG.core as core
 from utils.openai_utils.logx import EpochLogger
-from utils.DDPG.replay_buffer import ReplayBuffer
+from utils.PPO.replay_buffer import ReplayBuffer
 
-class DDPG:
+class PPO:
     def __init__(self, env_dict, hp_dict, logger_kwargs=dict()):
         self.logger = EpochLogger(**logger_kwargs)
         self.logger.save_config(locals())
@@ -98,12 +98,4 @@ class DDPG:
         a += noise_scale * np.random.randn(self.act_dim)
         return np.clip(a, -self.act_limit, self.act_limit)
 
-    def load_saved_policy(self, path):
-        self.ac.load_state_dict(torch.load('./data/rl_data/ddpg_expt_0/ddpg_expt_0_s69420/pyt_save/model.pt'))
-
-    def test_policy(self, o):
-        with torch.no_grad():
-            a = self.ac.act(torch.as_tensor(o, dtype=torch.float32))
-        return np.clip(a, -self.act_limit, self.act_limit)
-        
-        
+    

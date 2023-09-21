@@ -98,7 +98,7 @@ class DeltaArraySim:
         self.bd_pts = {}
         self.current_scene_frame = None
         self.batch_size = 16
-        self.exploration_cutoff = 100
+        self.exploration_cutoff = 80
         
         self.model = img_embed_model
         self.transform = transform
@@ -109,6 +109,9 @@ class DeltaArraySim:
 
         self.ep_rewards = []
         self.ep_reward = np.zeros(self.scene.n_envs)
+
+        self.optimal_reward = 30
+        self.ep_since_optimal_reward = 0
 
         self.start_time = time.time()
 
@@ -204,7 +207,8 @@ class DeltaArraySim:
         # return state.detach().cpu().squeeze()
 
         min_dist, xy = self.nn_helper.get_min_dist(self.bd_pts[env_idx], self.active_idxs[env_idx])
-        xy = torch.FloatTensor(xy)
+        xy = torch.FloatTensor(np.array([xy[0]/1080, xy[1]/1920, self.nn_helper.robot_positions[min_idx][0]/1080, self.nn_helper.robot_positions[min_idx][0]/1920]))
+        # print(xy)
         if self.bd_pt_bool:
             plt.imshow(seg_map)
             plt.scatter(xy[1], xy[0], c='r')
@@ -257,7 +261,7 @@ class DeltaArraySim:
         self.ep_rewards.append(self.ep_reward[env_idx])
         self.agent.logger.store(EpRet=self.ep_reward[env_idx], EpLen=1)
         # if env_idx == (self.scene.n_envs-1):
-        print(f"Iter: {self.current_episode}, Reward: {self.ep_reward[env_idx]}")
+        print(f"Iter: {self.current_episode}, Action: {self.action[env_idx]},Reward: {self.ep_reward[env_idx]}, Mean Reward: {np.mean(self.ep_rewards[-20:])}")
         self.active_idxs[env_idx].clear()
 
     def reset(self, env_idx, t_step, env_ptr):
@@ -282,11 +286,11 @@ class DeltaArraySim:
             # self.action[env_idx], self.log_pi[env_idx] = self.agent.policy_nw.get_action(self.init_state[env_idx])
             # self.action[env_idx] = self.agent.rescale_action(self.action[env_idx].detach().squeeze(0).numpy())
             if self.exploration_cutoff < self.current_episode:
-                self.action[env_idx] = self.agent.get_action(self.init_state[env_idx], noise_scale=0.001)
+                self.action[env_idx] = self.agent.get_action(self.init_state[env_idx], noise_scale=0.005)
             else:
                 # generate random uniform action between -0.03 and 0.03
                 self.action[env_idx] = np.random.uniform(-0.03, 0.03, size=(2,))
-            print(self.action[env_idx])
+            # print(self.action[env_idx])
             self.set_nn_fingers_pose(env_idx, self.active_idxs[env_idx].keys())
         elif t_step == 1:
             for idx in self.active_idxs[env_idx].keys():
@@ -368,3 +372,6 @@ class DeltaArraySim:
         
         if t_step in {0, 1, self.time_horizon-2}:
             self.test_step(env_idx, t_step, env_ptr)
+        elif t_step == self.time_horizon-1:
+            self.compute_reward(env_idx, t_step)
+            print(f"Action: {self.action[env_idx]},Reward: {self.ep_reward[env_idx]}")
