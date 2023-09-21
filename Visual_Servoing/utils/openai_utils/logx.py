@@ -9,12 +9,12 @@ import json
 import joblib
 import shutil
 import numpy as np
-import tensorflow as tf
+# import tensorflow as tf
 import torch
 import os.path as osp, time, atexit, os
 import warnings
-from spinup.utils.mpi_tools import proc_id, mpi_statistics_scalar
-from spinup.utils.serialization_utils import convert_json
+from utils.openai_utils.mpi_tools import proc_id, mpi_statistics_scalar
+from utils.openai_utils.serialization_utils import convert_json
 
 color2num = dict(
     gray=30,
@@ -269,7 +269,7 @@ class Logger:
                 # something different for your personal PyTorch project.
                 # We use a catch_warnings() context to avoid the warnings about
                 # not being able to save the source code.
-                torch.save(self.pytorch_saver_elements, fname)
+                torch.save(self.pytorch_saver_elements.state_dict(), fname)
 
 
     def dump_tabular(self):

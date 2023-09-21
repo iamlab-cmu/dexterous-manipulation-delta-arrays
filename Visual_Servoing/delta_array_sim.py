@@ -89,14 +89,14 @@ class DeltaArraySim:
         self.attractor_handles = {}
         self.time_horizon = 152 # This acts as max_steps from Gym envs
         # Max episodes to train policy for
-        self.max_episodes = 101
+        self.max_episodes = 100001
         self.current_episode = np.zeros(self.scene.n_envs)
 
         """ Visual Servoing and RL Vars """
         self.bd_pt_bool = True
         self.bd_pts = {}
         self.current_scene_frame = None
-        self.batch_size = 4
+        self.batch_size = 128
         
         self.model = img_embed_model
         self.transform = transform
@@ -250,8 +250,9 @@ class DeltaArraySim:
     def terminate(self, env_idx, t_step):
         """ Update the replay buffer and reset the env """
         # self.agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
-        self.agent.replay_buffer.push(self.init_state[env_idx], self.log_pi[env_idx], self.ep_reward[env_idx], self.final_state, True)
+        self.agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
         self.ep_rewards.append(self.ep_reward[env_idx])
+        self.agent.logger.store(EpRet=self.ep_reward[env_idx], EpLen=1)
         # if env_idx == (self.scene.n_envs-1):
         print(f"Iter: {self.current_episode[env_idx]}, Reward: {self.ep_reward[env_idx]}")
         self.active_idxs[env_idx].clear()
@@ -274,8 +275,11 @@ class DeltaArraySim:
                     self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
             
             self.init_state[env_idx] = self.get_nearest_robot_and_crop(env_idx, final=False)
-            self.action[env_idx], self.log_pi[env_idx] = self.agent.policy_nw.get_action(self.init_state[env_idx])
-            self.action[env_idx] = self.agent.rescale_action(self.action[env_idx].detach().squeeze(0).numpy())
+
+            # self.action[env_idx], self.log_pi[env_idx] = self.agent.policy_nw.get_action(self.init_state[env_idx])
+            # self.action[env_idx] = self.agent.rescale_action(self.action[env_idx].detach().squeeze(0).numpy())
+            
+            self.action[env_idx] = self.agent.get_action(self.init_state[env_idx], noise_scale=0.001)
             self.set_nn_fingers_pose(env_idx, self.active_idxs[env_idx].keys())
         elif t_step == 1:
             for idx in self.active_idxs[env_idx].keys():
@@ -290,29 +294,40 @@ class DeltaArraySim:
             for j in range(self.num_tips[1]):
                 self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.43), r=self.finga_q)) 
 
+    def log_data(self, env_idx, t_step):
+        self.agent.logger.save_state({'ep_rewards': self.ep_rewards}, None)
+
+        # Log info about epoch
+        self.agent.logger.log_tabular('Epoch', epoch)
+        self.agent.logger.log_tabular('EpRet', with_min_and_max=True)
+        self.agent.logger.log_tabular('EpLen', average_only=True)
+        self.agent.logger.log_tabular('TotalEnvInteracts', t)
+        self.agent.logger.log_tabular('QVals', with_min_and_max=True)
+        self.agent.logger.log_tabular('LossPi', average_only=True)
+        self.agent.logger.log_tabular('LossQ', average_only=True)
+        self.agent.logger.log_tabular('Time', time.time()-start_time)
+        self.agent.logger.dump_tabular()
+
     def visual_servoing(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
         env_ptr = self.scene.env_ptrs[env_idx]
         # self.sim_test(env_idx, t_step, env_ptr)
 
-        if (t_step == 0) and (env_idx == (self.scene.n_envs-1)):
+        if (t_step == 0) and (env_idx == 0):
             if self.current_episode[env_idx]%10 == 0:
-                pkl.dump(self.ep_rewards, open('./data/rl_data/rl_data.pkl', 'wb'))
-                self.agent.save_policy_model()
+                self.log_data(env_idx, t_step)
             if self.current_episode[env_idx] < self.max_episodes:
                 self.current_episode[env_idx] += 1
-            else:
-                self.agent.end_wandb()
         if t_step in {0, 1, self.time_horizon-2}:
             self.reset(env_idx, t_step, env_ptr)
         elif t_step < self.time_horizon-2:
-            pass # Compute quasi-static rewards
+            pass # Compute only quasi-static rewards
         elif t_step == self.time_horizon-1:
             self.compute_reward(env_idx, t_step)
 
-            # if len(self.agent.replay_buffer) > self.batch_size:
-            #     self.agent.update_policy(self.batch_size)
-            self.agent.update_policy_reinforce(self.log_pi[env_idx], self.ep_reward[env_idx])
+            if self.agent.replay_buffer.size > self.batch_size:
+                self.agent.update_policy(self.batch_size)
+            # self.agent.update_policy_reinforce(self.log_pi[env_idx], self.ep_reward[env_idx])
 
             self.terminate(env_idx, t_step)
 

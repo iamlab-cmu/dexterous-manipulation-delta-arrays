@@ -44,8 +44,7 @@ class MLPQFunction(nn.Module):
 
 class MLPActorCritic(nn.Module):
 
-    def __init__(self, obs_dim, act_dim, act_limit, hidden_sizes=(256,256),
-                 activation=nn.ReLU):
+    def __init__(self, obs_dim, act_dim, act_limit, hidden_sizes=(256,256),activation=nn.ReLU):
         super().__init__()
 
         # build policy and value functions

@@ -69,14 +69,12 @@ class DeltaArrayEnvironment():
 
         env_dict = {'action_space': {'low': -0.03, 'high': 0.03, 'dim': 2},
                     'observation_space': {'dim': 2}}
-        self.hp_dict = {"gamma"    :0.99, 
-                "tau"          :0.01, 
-                "alpha"        :0.2, 
-                "q_lr"         :1e-3, 
-                "policy_lr"    :1e-3,
-                "a_lr"         :1e-3, 
-                "buffer_maxlen":1000000,
-                'seed'         :3
+        self.hp_dict = {
+                "tau"         :0.005,
+                "q_lr"        :1e-3,
+                "pi_lr"        :1e-3, 
+                "replay_size" :1e6,
+                'seed'        :3
             }
 
         logger_kwargs = setup_logger_kwargs("ddpg_expt_0", 69420, data_dir="./data/rl_data")
