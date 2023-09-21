@@ -22,9 +22,9 @@
         "output_dir":	"./data/rl_data/ddpg_expt_0/ddpg_expt_0_s69420"
     },
     "self":	{
-        "<utils.DDPG.ddpg.DDPG object at 0x7f5a60060df0>":	{
+        "<utils.DDPG.ddpg.DDPG object at 0x7ff7adc9afd0>":	{
             "logger":	{
-                "<utils.openai_utils.logx.EpochLogger object at 0x7f5a60060d30>":	{
+                "<utils.openai_utils.logx.EpochLogger object at 0x7ff7adc9ad90>":	{
                     "epoch_dict":	{},
                     "exp_name":	"ddpg_expt_0",
                     "first_row":	true,

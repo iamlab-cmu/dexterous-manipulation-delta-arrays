@@ -12,9 +12,9 @@ class DDPG:
         self.logger = EpochLogger(**logger_kwargs)
         self.logger.save_config(locals())
 
-        torch.manual_seed(hp_dict['seed'])
-        np.random.seed(hp_dict['seed'])
-
+        # torch.manual_seed(hp_dict['seed'])
+        # np.random.seed(hp_dict['seed'])
+        self.hp_dict = hp_dict
         self.env_dict = env_dict
         self.obs_dim = self.env_dict['observation_space']['dim']
         self.act_dim = self.env_dict['action_space']['dim']
@@ -54,7 +54,7 @@ class DDPG:
         loss_info = dict(QVals=q.detach().numpy())
         return loss_q, loss_info
 
-    def compute_loss_pi(self, data):
+    def compute_pi_loss(self, data):
         o = data['obs']
         q_pi = self.ac.q(o, self.ac.pi(o))
         return -q_pi.mean()
@@ -63,7 +63,7 @@ class DDPG:
         data = self.replay_buffer.sample_batch(batch_size)
         # First run one gradient descent step for Q.
         self.q_optimizer.zero_grad()
-        loss_q, loss_info = self.compute_loss_q(data)
+        loss_q, loss_info = self.compute_q_loss(data)
         loss_q.backward()
         self.q_optimizer.step()
 
@@ -74,7 +74,7 @@ class DDPG:
 
         # Next run one gradient descent step for pi.
         self.pi_optimizer.zero_grad()
-        loss_pi = self.compute_loss_pi(data)
+        loss_pi = self.compute_pi_loss(data)
         loss_pi.backward()
         self.pi_optimizer.step()
 
@@ -90,8 +90,8 @@ class DDPG:
             for p, p_targ in zip(self.ac.parameters(), self.ac_targ.parameters()):
                 # NB: We use an in-place operations "mul_", "add_" to update target
                 # params, as opposed to "mul" and "add", which would make new tensors.
-                p_targ.data.mul_(self.hp_dict['tau'])
-                p_targ.data.add_((1 - self.hp_dict['tau']) * p.data)
+                p_targ.data.mul_(1 - self.hp_dict['tau'])
+                p_targ.data.add_(self.hp_dict['tau'] * p.data)
 
     def get_action(self, o, noise_scale):
         a = self.ac.act(torch.as_tensor(o, dtype=torch.float32))

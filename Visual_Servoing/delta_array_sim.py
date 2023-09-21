@@ -97,7 +97,8 @@ class DeltaArraySim:
         self.bd_pt_bool = True
         self.bd_pts = {}
         self.current_scene_frame = None
-        self.batch_size = 128
+        self.batch_size = 16
+        self.exploration_cutoff = 100
         
         self.model = img_embed_model
         self.transform = transform
@@ -108,9 +109,7 @@ class DeltaArraySim:
 
         self.ep_rewards = []
         self.ep_reward = np.zeros(self.scene.n_envs)
-        self.alpha_reward = -0.1
-        self.psi_reward = 10
-        self.beta_reward = -100
+
         self.start_time = time.time()
 
     def set_attractor_handles(self, env_idx):
@@ -252,13 +251,13 @@ class DeltaArraySim:
     def terminate(self, env_idx, t_step):
         """ Update the replay buffer and reset the env """
         # self.agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
+        if self.agent.replay_buffer.size > self.batch_size:
+            self.log_data(env_idx, t_step)
         self.agent.replay_buffer.store(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
         self.ep_rewards.append(self.ep_reward[env_idx])
         self.agent.logger.store(EpRet=self.ep_reward[env_idx], EpLen=1)
         # if env_idx == (self.scene.n_envs-1):
         print(f"Iter: {self.current_episode}, Reward: {self.ep_reward[env_idx]}")
-        if self.current_episode%10 == 0:
-            self.log_data(env_idx, t_step)
         self.active_idxs[env_idx].clear()
 
     def reset(self, env_idx, t_step, env_ptr):
@@ -282,8 +281,12 @@ class DeltaArraySim:
 
             # self.action[env_idx], self.log_pi[env_idx] = self.agent.policy_nw.get_action(self.init_state[env_idx])
             # self.action[env_idx] = self.agent.rescale_action(self.action[env_idx].detach().squeeze(0).numpy())
-            
-            self.action[env_idx] = self.agent.get_action(self.init_state[env_idx], noise_scale=0.001)
+            if self.exploration_cutoff < self.current_episode:
+                self.action[env_idx] = self.agent.get_action(self.init_state[env_idx], noise_scale=0.001)
+            else:
+                # generate random uniform action between -0.03 and 0.03
+                self.action[env_idx] = np.random.uniform(-0.03, 0.03, size=(2,))
+            print(self.action[env_idx])
             self.set_nn_fingers_pose(env_idx, self.active_idxs[env_idx].keys())
         elif t_step == 1:
             for idx in self.active_idxs[env_idx].keys():
@@ -305,7 +308,6 @@ class DeltaArraySim:
         self.agent.logger.log_tabular('Epoch', self.current_episode)
         self.agent.logger.log_tabular('EpRet', with_min_and_max=True)
         self.agent.logger.log_tabular('EpLen', average_only=True)
-        self.agent.logger.log_tabular('TotalEnvInteracts', t)
         self.agent.logger.log_tabular('QVals', with_min_and_max=True)
         self.agent.logger.log_tabular('LossPi', average_only=True)
         self.agent.logger.log_tabular('LossQ', average_only=True)
@@ -328,7 +330,7 @@ class DeltaArraySim:
             self.compute_reward(env_idx, t_step)
 
             if self.agent.replay_buffer.size > self.batch_size:
-                self.agent.update_policy(self.batch_size)
+                self.agent.update(self.batch_size)
             # self.agent.update_policy_reinforce(self.log_pi[env_idx], self.ep_reward[env_idx])
 
             self.terminate(env_idx, t_step)
