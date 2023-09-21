@@ -4,6 +4,8 @@ from collections import deque
 from copy import deepcopy
 import torch
 
+import utils.DDPG.core as core
+
 class ReplayBuffer:
     def __init__(self, obs_dim, act_dim, size):
         self.obs_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)

@@ -21,14 +21,14 @@ class DDPG:
 
         self.act_limit = self.env_dict['action_space']['high']
 
-        self.ac = actor_critic(self.obs_dim, self.act_dim, self.act_limit, **ac_kwargs)
+        self.ac = core.MLPActorCritic(self.obs_dim, self.act_dim, self.act_limit)
         self.ac_targ = deepcopy(self.ac)
 
         # Freeze target networks with respect to optimizers (only update via polyak averaging)
         for p in self.ac_targ.parameters():
             p.requires_grad = False
 
-        self.replay_buffer = ReplayBuffer(obs_dim=obs_dim, act_dim=act_dim, size=hp_dict['replay_size'])
+        self.replay_buffer = ReplayBuffer(obs_dim=self.obs_dim, act_dim=self.act_dim, size=hp_dict['replay_size'])
 
         # Count variables (protip: try to get a feel for how different size networks behave!)
         var_counts = tuple(core.count_vars(module) for module in [self.ac.pi, self.ac.q])

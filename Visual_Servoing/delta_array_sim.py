@@ -1,6 +1,7 @@
 import numpy as np
 import time
 import pickle as pkl
+import time
 from scipy import spatial
 from sklearn.cluster import KMeans
 from scipy.spatial import ConvexHull
@@ -89,8 +90,8 @@ class DeltaArraySim:
         self.attractor_handles = {}
         self.time_horizon = 152 # This acts as max_steps from Gym envs
         # Max episodes to train policy for
-        self.max_episodes = 100001
-        self.current_episode = np.zeros(self.scene.n_envs)
+        self.max_episodes = 10000001
+        self.current_episode = 0
 
         """ Visual Servoing and RL Vars """
         self.bd_pt_bool = True
@@ -110,6 +111,7 @@ class DeltaArraySim:
         self.alpha_reward = -0.1
         self.psi_reward = 10
         self.beta_reward = -100
+        self.start_time = time.time()
 
     def set_attractor_handles(self, env_idx):
         """ Creates an attractor handle for each fingertip """
@@ -250,11 +252,13 @@ class DeltaArraySim:
     def terminate(self, env_idx, t_step):
         """ Update the replay buffer and reset the env """
         # self.agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
-        self.agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
+        self.agent.replay_buffer.store(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
         self.ep_rewards.append(self.ep_reward[env_idx])
         self.agent.logger.store(EpRet=self.ep_reward[env_idx], EpLen=1)
         # if env_idx == (self.scene.n_envs-1):
-        print(f"Iter: {self.current_episode[env_idx]}, Reward: {self.ep_reward[env_idx]}")
+        print(f"Iter: {self.current_episode}, Reward: {self.ep_reward[env_idx]}")
+        if self.current_episode%10 == 0:
+            self.log_data(env_idx, t_step)
         self.active_idxs[env_idx].clear()
 
     def reset(self, env_idx, t_step, env_ptr):
@@ -298,14 +302,14 @@ class DeltaArraySim:
         self.agent.logger.save_state({'ep_rewards': self.ep_rewards}, None)
 
         # Log info about epoch
-        self.agent.logger.log_tabular('Epoch', epoch)
+        self.agent.logger.log_tabular('Epoch', self.current_episode)
         self.agent.logger.log_tabular('EpRet', with_min_and_max=True)
         self.agent.logger.log_tabular('EpLen', average_only=True)
         self.agent.logger.log_tabular('TotalEnvInteracts', t)
         self.agent.logger.log_tabular('QVals', with_min_and_max=True)
         self.agent.logger.log_tabular('LossPi', average_only=True)
         self.agent.logger.log_tabular('LossQ', average_only=True)
-        self.agent.logger.log_tabular('Time', time.time()-start_time)
+        self.agent.logger.log_tabular('Time', time.time()-self.start_time)
         self.agent.logger.dump_tabular()
 
     def visual_servoing(self, scene, env_idx, t_step, _):
@@ -313,11 +317,9 @@ class DeltaArraySim:
         env_ptr = self.scene.env_ptrs[env_idx]
         # self.sim_test(env_idx, t_step, env_ptr)
 
-        if (t_step == 0) and (env_idx == 0):
-            if self.current_episode[env_idx]%10 == 0:
-                self.log_data(env_idx, t_step)
-            if self.current_episode[env_idx] < self.max_episodes:
-                self.current_episode[env_idx] += 1
+        if (t_step == 0):
+            if self.current_episode < self.max_episodes:
+                self.current_episode += 1
         if t_step in {0, 1, self.time_horizon-2}:
             self.reset(env_idx, t_step, env_ptr)
         elif t_step < self.time_horizon-2:
