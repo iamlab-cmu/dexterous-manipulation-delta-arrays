@@ -26,7 +26,7 @@ device = torch.device("cuda:0")
 
 class DeltaArrayEnvironment():
     def __init__(self, yaml_path, run_no):
-        self.train_or_test = "test"
+        self.train_or_test = "train"
 
         gym = gymapi.acquire_gym()
         self.run_no = run_no
@@ -131,6 +131,7 @@ class DeltaArrayEnvironment():
             elif self.obj_name == 'rope':
                 self.object.set_rb_transforms(env_idx, self.obj_name, [object_transforms[env_idx]])
             self.fingers.set_all_fingers_pose(env_idx)
+            # self.fingers.set_block_pose(env_idx)
             # self.fiducial_lt.set_rb_transforms(env_idx, "fiducial_lt", [fiducial_lt[env_idx]])
             # self.fiducial_rb.set_rb_transforms(env_idx, "fiducial_rb", [fiducial_rb[env_idx]])
 

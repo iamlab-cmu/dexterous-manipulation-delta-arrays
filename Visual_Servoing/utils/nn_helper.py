@@ -41,8 +41,25 @@ class NNHelper:
             xy = boundary_pts[np.argmin(distances)]
         return min_dists, xy
 
+    def expand_hull(self, hull):
+        robot_radius = 21
+        expanded_hull_vertices = []
+        for simplex in hull.simplices:
+            v1, v2 = hull.points[simplex]
+            
+            edge_vector = v2 - v1
+            normal_vector = np.array([-edge_vector[1], edge_vector[0]])
+            normal_vector /= np.linalg.norm(normal_vector)
+            
+            expanded_v1 = v1 + robot_radius * normal_vector
+            expanded_v2 = v2 + robot_radius * normal_vector
+            expanded_hull_vertices.extend([expanded_v1, expanded_v2])
+
+        return ConvexHull(expanded_hull_vertices)
+
     def get_nn_robots(self, boundary_pts):
         hull = ConvexHull(boundary_pts)
+        hull = self.expand_hull(hull)
         A, b = hull.equations[:, :-1], hull.equations[:, -1:]
         idxs = set()
         eps = np.finfo(np.float32).eps
@@ -54,9 +71,9 @@ class NNHelper:
             else:
                 kdt_pos_copy = self.kdtree_positions.copy()
                 while np.all(kdt_pos_copy[idx] @ A.T + b.T < eps, axis=1):
-                    x,y = kdt_pos_copy[idx]
-                    idx2 = np.where(np.isclose(self.kdtree_positions[:,0], x) & np.isclose(self.kdtree_positions[:,1], y) )[0][0]
-                    neg_idxs.add((idx2//8, idx2%8))
+                    # x,y = kdt_pos_copy[idx]
+                    # idx2 = np.where(np.isclose(self.kdtree_positions[:,0], x) & np.isclose(self.kdtree_positions[:,1], y) )[0][0]
+                    # neg_idxs.add((idx2//8, idx2%8))
 
                     kdt_pos_copy = np.delete(kdt_pos_copy, idx, axis=0)
                     idx = spatial.KDTree(kdt_pos_copy).query((i,j))[1]
