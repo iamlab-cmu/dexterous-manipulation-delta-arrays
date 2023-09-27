@@ -42,7 +42,7 @@ class NNHelper:
         return min_dists, xy
 
     def expand_hull(self, hull):
-        robot_radius = 21
+        robot_radius = 23
         expanded_hull_vertices = []
         for simplex in hull.simplices:
             v1, v2 = hull.points[simplex]
