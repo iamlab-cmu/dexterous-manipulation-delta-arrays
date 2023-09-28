@@ -71,8 +71,8 @@ class DeltaArrayEnvironment():
                     'observation_space': {'dim': 4}}
         self.hp_dict = {
                 "tau"         :0.005,
-                "q_lr"        :1e-4,
-                "pi_lr"       :1e-4, 
+                "q_lr"        :1e-5,
+                "pi_lr"       :1e-5, 
                 "replay_size" :100000,
                 'seed'        :3
             }

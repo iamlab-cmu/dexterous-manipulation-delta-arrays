@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<robot name="table">
+
+    <!-- Material definition -->
+    <material name="blue">
+        <color rgba="0 0 1 1"/>
+    </material>
+
+    <!-- Link definition for the cube -->
+    <link name="cube">
+        <visual>
+            <origin xyz="-0.5 -0.5 -0.5" rpy="0 0 0"/>
+            <geometry>
+                <box size="0.1 0.1 0.1"/> <!-- Defining a 1x1x1 cube -->
+            </geometry>
+            <material name="blue"/>
+        </visual>
+
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <box size="1 1 1"/>
+            </geometry>
+        </collision>
+
+        <inertial>
+            <mass value="1.0"/> <!-- Assume the block has a mass of 1.0 kg -->
+            <inertia ixx="0.1667" ixy="0" ixz="0" iyy="0.1667" iyz="0" izz="0.1667"/>
+            <!-- The moment of inertia for a uniform cube of side length a and mass m about its centroidal axis is 1/6 * m * a^2 -->
+        </inertial>
+    </link>
+
+</robot>

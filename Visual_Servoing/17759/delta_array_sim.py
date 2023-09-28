@@ -254,7 +254,7 @@ class DeltaArraySim:
         # block_l2_distance = np.linalg.norm(self.block_com[env_idx][1] - self.block_com[env_idx][0])
         tf = np.linalg.norm(M2[:2,3]) + abs(theta_degrees)
         # min_dist, xy = self.nn_helper.get_min_dist(self.bd_pts[env_idx], self.active_idxs[env_idx])
-        # print(tf, min_dist)
+        print(tf, min_dist)
         return tf, min_dist
 
     def compute_reward(self, env_idx, t_step):
@@ -271,15 +271,13 @@ class DeltaArraySim:
     def terminate(self, env_idx, t_step):
         """ Update the replay buffer and reset the env """
         # self.agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
-        if self.ep_reward[env_idx] > -180:
-            if self.agent.replay_buffer.size > self.batch_size:
-                self.log_data(env_idx, t_step)
-            self.ep_reward[env_idx] = (self.ep_reward[env_idx] - -90)/180
-            self.agent.replay_buffer.store(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
-            self.ep_rewards.append(self.ep_reward[env_idx])
-            self.agent.logger.store(EpRet=self.ep_reward[env_idx], EpLen=1)
-            # if env_idx == (self.scene.n_envs-1):
-            print(f"Iter: {self.current_episode}, Action: {self.action[env_idx]},Mean Reward: {np.mean(self.ep_rewards[-20:])}, Current Reward: {self.ep_reward[env_idx]}")
+        if self.agent.replay_buffer.size > self.batch_size:
+            self.log_data(env_idx, t_step)
+        self.agent.replay_buffer.store(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
+        self.ep_rewards.append(self.ep_reward[env_idx])
+        self.agent.logger.store(EpRet=self.ep_reward[env_idx], EpLen=1)
+        # if env_idx == (self.scene.n_envs-1):
+        print(f"Iter: {self.current_episode}, Action: {self.action[env_idx]},Mean Reward: {np.mean(self.ep_rewards[-20:])}, Current Reward: {self.ep_reward[env_idx]}")
         self.active_idxs[env_idx].clear()
         self.set_all_fingers_pose(env_idx, pos_high=True)
 
