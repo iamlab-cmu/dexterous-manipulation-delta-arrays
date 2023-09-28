@@ -200,8 +200,8 @@ class DeltaArraySim:
         # min_idx = tuple(idxs[np.lexsort((idxs[:, 0], idxs[:, 1]))][0])
         min_idx = tuple(random.choice(tuple(idxs)))
         
-        plt.imshow(seg_map)
-        plt.scatter(self.bd_pts[env_idx][:,1], self.bd_pts[env_idx][:,0], c='b')
+        # plt.imshow(seg_map)
+        # plt.scatter(self.bd_pts[env_idx][:,1], self.bd_pts[env_idx][:,0], c='b')
         """ Single Robot Experiment. Change this to include entire neighborhood """
         if not final:
             self.active_idxs[env_idx] = {min_idx: np.array((0,0))} # Store the action vector as value here later :)
@@ -209,16 +209,16 @@ class DeltaArraySim:
             # Use the same robot that was chosen initially.
             min_idx = tuple(self.active_idxs[env_idx].keys())[0]
 
-        tgt_pt = np.array((0,0))
-        tgt_pt[0] = self.nn_helper.robot_positions[min_idx][0] + self.active_idxs[env_idx][min_idx][0]/(self.plane_size[1][0]-self.plane_size[0][0])*1080
-        tgt_pt[1] = self.nn_helper.robot_positions[min_idx][1] + self.active_idxs[env_idx][min_idx][1]/(self.plane_size[1][1]-self.plane_size[0][1])*1920
+        # tgt_pt = self.nn_helper.robot_positions[min_idx] + self.active_idxs[env_idx][min_idx]
+        # tgt_pt[0] = self.nn_helper.robot_positions[min_idx][0] + self.active_idxs[env_idx][min_idx][0]
+        # tgt_pt[1] = self.nn_helper.robot_positions[min_idx][1] + self.active_idxs[env_idx][min_idx][1]
         
-        final_trans = self.fingertips[min_idx[0]][min_idx[1]].get_rb_transforms(env_idx, f'fingertip_{min_idx[0]}_{min_idx[1]}')[0]
-        finger_pos = np.array(((1000*final_trans.p.x - self.plane_size[0][0])/(self.plane_size[1][0]-self.plane_size[0][0])*1080, 1920 - (1000*final_trans.p.y - self.plane_size[0][1])/(self.plane_size[1][1]-self.plane_size[0][1])*1920))
+        # final_trans = self.fingertips[min_idx[0]][min_idx[1]].get_rb_transforms(env_idx, f'fingertip_{min_idx[0]}_{min_idx[1]}')[0]
+        # finger_pos = np.array(((1000*final_trans.p.x - self.plane_size[0][0])/(self.plane_size[1][0]-self.plane_size[0][0])*1080, 1920 - (1000*final_trans.p.y - self.plane_size[0][1])/(self.plane_size[1][1]-self.plane_size[0][1])*1920))
 
-        print(self.nn_helper.robot_positions[min_idx], tgt_pt)
-        plt.scatter(tgt_pt[1], tgt_pt[0], c='r')
-        plt.scatter(finger_pos[1], finger_pos[0], c='g')
+        # print(self.nn_helper.robot_positions[min_idx], self.active_idxs[env_idx][min_idx])
+        # plt.scatter(tgt_pt[1], tgt_pt[0], c='r')
+        # plt.scatter(finger_pos[1], finger_pos[0], c='g')
         # [self.active_idxs[idx]=np.array((0,0)) for idx in idxs]
 
         # finger_pos = self.nn_helper.robot_positions[min_idx].astype(np.int32)
@@ -235,19 +235,17 @@ class DeltaArraySim:
         # return state.detach().cpu().squeeze()
 
         min_dist, xy = self.nn_helper.get_min_dist(self.bd_pts[env_idx], self.active_idxs[env_idx])
-        plt.scatter(xy[1], xy[0], c='orange')
-        plt.show()  
-        print(min_idx)
-        print(np.array([xy[0], xy[1], self.nn_helper.robot_positions[min_idx][0], self.nn_helper.robot_positions[min_idx][1]]))
+        # plt.scatter(xy[1], xy[0], c='orange')
+        # plt.show()
         xy = torch.FloatTensor(np.array([xy[0]/1080, xy[1]/1920, self.nn_helper.robot_positions[min_idx][0]/1080, self.nn_helper.robot_positions[min_idx][1]/1920]))
         # print(xy)
-        if self.bd_pt_bool:
-            plt.imshow(seg_map)
-            plt.scatter(xy[1], xy[0], c='r')
-            plt.scatter(self.nn_helper.robot_positions[min_idx][1], self.nn_helper.robot_positions[min_idx][0], c='g')
-            plt.scatter(self.bd_pts[env_idx][:,1], self.bd_pts[env_idx][:,0], c='b')
-            plt.savefig(f"kmeans_img.png")
-            self.bd_pt_bool = False
+        # if self.bd_pt_bool:
+        #     plt.imshow(seg_map)
+        #     plt.scatter(xy[1], xy[0], c='r')
+        #     plt.scatter(self.nn_helper.robot_positions[min_idx][1], self.nn_helper.robot_positions[min_idx][0], c='g')
+        #     plt.scatter(self.bd_pts[env_idx][:,1], self.bd_pts[env_idx][:,0], c='b')
+        #     plt.savefig(f"kmeans_img.png")
+        #     self.bd_pt_bool = False
         # plt.show()
         return min_dist, xy
 
@@ -303,7 +301,7 @@ class DeltaArraySim:
         Reset has 3 functions
         1. Setup the env, get the initial state and action, and set_attractor_pose of the robot.
         2. Execute the action on the robot by set_attractor_target.
-        3. set_attractor_pose of the robot to high pose so final image can be captured.
+        # 3. set_attractor_pose of the robot to high pose so final image can be captured.
         """
         if t_step == 0:
             self.ep_reward[env_idx] = 0
@@ -327,20 +325,23 @@ class DeltaArraySim:
             self.set_nn_fingers_pose(env_idx, self.active_idxs[env_idx].keys())
         elif t_step == 1:
             for idx in self.active_idxs[env_idx].keys():
-                self.active_idxs[env_idx][idx] = 1000*self.action[env_idx] # Convert action to mm
+                # self.active_idxs[env_idx][idx] = 1000*self.action[env_idx] # Convert action to mm
+                self.active_idxs[env_idx][idx][0] = 1000*self.action[env_idx][0]/(self.plane_size[1][0]-self.plane_size[0][0])*1080
+                self.active_idxs[env_idx][idx][1] = -1000*self.action[env_idx][1]/(self.plane_size[1][1]-self.plane_size[0][1])*1920
+                
                 self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][idx[0]][idx[1]], gymapi.Transform(p=self.finger_positions[idx[0]][idx[1]] + gymapi.Vec3(self.action[env_idx][0], self.action[env_idx][1], -0.47), r=self.finga_q)) 
         elif t_step == self.time_horizon-3:
-            print("Hakuna")
+            pass
 
     def sim_test(self, env_idx, t_step, env_ptr):
-        """ To visualize the scene without taking any action """
+        """ Call this function to visualize the scene without taking any action """
         for i in range(self.num_tips[0]):
             for j in range(self.num_tips[1]):
                 self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.43), r=self.finga_q)) 
 
     def log_data(self, env_idx, t_step):
+        """ Store data about training progress in systematic data structures """
         self.agent.logger.save_state({'ep_rewards': self.ep_rewards}, None)
-
         # Log info about epoch
         self.agent.logger.log_tabular('Epoch', self.current_episode)
         self.agent.logger.log_tabular('EpRet', with_min_and_max=True)
