@@ -32,8 +32,8 @@ from isaacgym_utils.math_utils import RigidTransform_to_transform
 from isaacgym_utils.draw import draw_transforms, draw_contacts, draw_camera
 
 import utils.nn_helper as helper
-import utils.SAC.sac as sac
-import utils.SAC.reinforce as reinforce
+# import utils.SAC.sac as sac
+# import utils.SAC.reinforce as reinforce
 from utils.geometric_utils import icp
 device = torch.device("cuda:0")
 
@@ -98,8 +98,8 @@ class DeltaArraySim:
         self.bd_pt_bool = True
         self.bd_pts = {}
         self.current_scene_frame = {}
-        self.batch_size = 128
-        self.exploration_cutoff = 100
+        self.batch_size = 4
+        self.exploration_cutoff = 1
         
         self.model = img_embed_model
         self.transform = transform
@@ -304,7 +304,7 @@ class DeltaArraySim:
             # self.action[env_idx], self.log_pi[env_idx] = self.agent.policy_nw.get_action(self.init_state[env_idx])
             # self.action[env_idx] = self.agent.rescale_action(self.action[env_idx].detach().squeeze(0).numpy())
             if self.exploration_cutoff < self.current_episode:
-                self.action[env_idx] = self.agent.get_action(self.init_state[env_idx], noise_scale=0.005)
+                self.action[env_idx] = self.agent.get_action(self.init_state[env_idx])
             else:
                 # generate random uniform action between -0.03 and 0.03
                 self.action[env_idx] = np.random.uniform(-0.03, 0.03, size=(2,))
@@ -332,8 +332,10 @@ class DeltaArraySim:
         # Log info about epoch
         self.agent.logger.log_tabular('Epoch', self.current_episode)
         self.agent.logger.log_tabular('EpRet', with_min_and_max=True)
-        self.agent.logger.log_tabular('EpLen', average_only=True)
-        self.agent.logger.log_tabular('QVals', with_min_and_max=True)
+        self.agent.logger.log_tabular('EpLen', average_only=True)            
+        self.agent.logger.log_tabular('Q1Vals', with_min_and_max=True)
+        self.agent.logger.log_tabular('Q2Vals', with_min_and_max=True)
+        self.agent.logger.log_tabular('LogPi', with_min_and_max=True)
         self.agent.logger.log_tabular('LossPi', average_only=True)
         self.agent.logger.log_tabular('LossQ', average_only=True)
         self.agent.logger.log_tabular('Time', time.time()-self.start_time)

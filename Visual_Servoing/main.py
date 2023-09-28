@@ -19,7 +19,7 @@ import wandb
 
 import delta_array_sim
 import utils.SAC.sac as sac
-import utils.SAC.reinforce as reinforce
+
 import utils.DDPG.ddpg as ddpg
 from utils.openai_utils.run_utils import setup_logger_kwargs
 device = torch.device("cuda:0")
@@ -71,15 +71,17 @@ class DeltaArrayEnvironment():
                     'observation_space': {'dim': 4}}
         self.hp_dict = {
                 "tau"         :0.005,
+                "gamma"       :0.99,
                 "q_lr"        :1e-4,
-                "pi_lr"       :1e-4, 
+                "pi_lr"       :1e-4,
+                "alpha"       :0.2,
                 "replay_size" :100000,
                 'seed'        :3
             }
 
         logger_kwargs = setup_logger_kwargs("ddpg_expt_0", 69420, data_dir="./data/rl_data")
-        self.agent = ddpg.DDPG(env_dict, self.hp_dict, logger_kwargs)
-        # self.agent = sac.SACAgent(env_dict, self.hp_dict, wandb_bool = False)
+        # self.agent = ddpg.DDPG(env_dict, self.hp_dict, logger_kwargs)
+        self.agent = sac.SAC(env_dict, self.hp_dict, logger_kwargs)
         # self.agent = reinforce.REINFORCE(env_dict, 3e-3)
         if self.train_or_test=="test":
             self.agent.load_saved_policy('Visual_Servoing/data/rl_data/ddpg_expt_0/ddpg_expt_0_s69420/pyt_save/model.pt')

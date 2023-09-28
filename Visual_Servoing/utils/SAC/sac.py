@@ -1,206 +1,126 @@
-"""
-Code inspired heavily by https://github.com/cyoon1729/Policy-Gradient-Methods/blob/master/sac/sac2019.py
-"""
-import os
+from copy import deepcopy
 import numpy as np
-import matplotlib.pyplot as plt
-# import gymnasium as gym
-
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-
-from utils.SAC.network import SoftQNetwork, GaussianPolicy
+from torch.optim import Adam
+import time
+import utils.SAC.core as core
+from utils.openai_utils.logx import EpochLogger
 from utils.SAC.replay_buffer import ReplayBuffer
-# wandb.login()
-import wandb
+import itertools
 
-class SACAgent:
-    def __init__(self, env_dict, hp_dict, wandb_bool = True):
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+class SAC:
+    def __init__(self, env_dict, hp_dict, logger_kwargs=dict()):
+        self.logger = EpochLogger(**logger_kwargs)
+        self.logger.save_config(locals())
 
+        # torch.manual_seed(hp_dict['seed'])
+        # np.random.seed(hp_dict['seed'])
+        self.hp_dict = hp_dict
         self.env_dict = env_dict
-        self.action_range = [env_dict['action_space']['low'], env_dict['action_space']['high']]
-        self.obs_dim = env_dict['observation_space']['dim']
-        self.action_dim = env_dict['action_space']['dim']
+        self.obs_dim = self.env_dict['observation_space']['dim']
+        self.act_dim = self.env_dict['action_space']['dim']
 
-        self.gamma = hp_dict['gamma']
-        self.tau = hp_dict['tau']
-        self.update_step = 0
-        self.delay_step = 2
+        self.act_limit = self.env_dict['action_space']['high']
 
-        self.Q1 = SoftQNetwork(self.obs_dim, self.action_dim).to(self.device)
-        self.Q2 = SoftQNetwork(self.obs_dim, self.action_dim).to(self.device)
-        self.target_Q1 = SoftQNetwork(self.obs_dim, self.action_dim).to(self.device)
-        self.target_Q2 = SoftQNetwork(self.obs_dim, self.action_dim).to(self.device)
-        self.policy = GaussianPolicy(self.obs_dim, self.action_dim).to(self.device)
+        self.ac = core.MLPActorCritic(self.obs_dim, self.act_dim, self.act_limit)
+        self.ac_targ = deepcopy(self.ac)
 
-        for target_param, param in zip(self.target_Q1.parameters(), self.Q1.parameters()):
-            target_param.data.copy_(param)
+        # Freeze target networks with respect to optimizers (only update via polyak averaging)
+        for p in self.ac_targ.parameters():
+            p.requires_grad = False
+        self.replay_buffer = ReplayBuffer(obs_dim=self.obs_dim, act_dim=self.act_dim, size=hp_dict['replay_size'])
 
-        for target_param, param in zip(self.target_Q2.parameters(), self.Q2.parameters()):
-            target_param.data.copy_(param)
+        # Count variables (protip: try to get a feel for how different size networks behave!)
+        var_counts = tuple(core.count_vars(module) for module in [self.ac.pi, self.ac.q1, self.ac.q2])
+        self.logger.log('\nNumber of parameters: \t pi: %d, \t q1: %d, \t q2: %d\n'%var_counts)
         
-        self.Q1_optimizer = optim.Adam(self.Q1.parameters(), lr=hp_dict['q_lr'])
-        self.Q2_optimizer = optim.Adam(self.Q2.parameters(), lr=hp_dict['q_lr'])
-        self.policy_optimizer = optim.Adam(self.policy.parameters(), lr=hp_dict['policy_lr'])
+        self.q_params = itertools.chain(self.ac.q1.parameters(), self.ac.q2.parameters())
+        self.pi_optimizer = Adam(self.ac.pi.parameters(), lr=hp_dict['pi_lr'])
+        self.q_optimizer = Adam(self.q_params, lr=hp_dict['q_lr'])
 
-        self.alpha = hp_dict['alpha']
-        self.target_entropy = -torch.prod(torch.Tensor(self.action_dim).to(self.device)).item()
-        self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
-        self.alpha_optimizer = optim.Adam([self.log_alpha], lr=hp_dict['a_lr'])
+        # Set up model saving
+        self.logger.setup_pytorch_saver(self.ac)
 
-        self.replay_buffer = ReplayBuffer(hp_dict['buffer_maxlen'])
-        self.wandb_bool = wandb_bool
-        self.expt_no = None
-        if self.wandb_bool:
-            self.setup_wandb(hp_dict)
+    def compute_q_loss(self, data):
+        o, a, r, o2, d = data['obs'], data['act'], data['rew'], data['obs2'], data['done']
+        q1 = self.ac.q1(o,a)
+        q2 = self.ac.q2(o,a)
 
-    def setup_wandb(self, hp_dict):
-        if os.path.exists("./utils/SAC/runtracker.txt"):
-            with open("./utils/SAC/runtracker.txt", "r") as f:
-                run = int(f.readline())
-                run += 1
-        else:
-            run = 0
-        with open("./utils/SAC/runtracker.txt", "w") as f:
-            f.write(str(run))
-        self.expt_no = run
-        wandb.init(project="SAC", 
-            name=f"experiment_{run}",
-            config=hp_dict)
-
-    def end_wandb(self):
-        if self.wandb_bool:
-            wandb.finish()
-
-    def save_policy_model(self):
-        torch.save(self.policy.state_dict(), f"./utils/SAC/policy_models/expt_{self.expt_no}.pt")
-
-    def load_policy_model(self):
-        if self.expt_no is None:
-            if os.path.exists("./utils/SAC/runtracker.txt"):
-                with open("./utils/SAC/runtracker.txt", "r") as f:
-                    run = int(f.readline())
-            else:
-                run = 0
-        self.policy.load_state_dict(torch.load(f"./utils/SAC/policy_models/expt_{run}.pt"))
-
-    def get_action(self, obs):
-        obs = torch.FloatTensor(obs).unsqueeze(0).to(self.device)
-        self.policy.eval()
+        # Bellman backup for Q function. For 1 step quasi static policy, this is just reward value. No discounted returns.``
         with torch.no_grad():
-            mean, log_std = self.policy.forward(obs)
-        self.policy.train()
-        std = log_std.exp()
+            # q_pi_targ = self.ac_targ.q(o2, self.ac_targ.pi(o2))
+            # backup = r + gamma * (1 - d) * q_pi_targ
+            a2, logp_a2 = self.ac.pi(o2)
+            # Target Q-values
+            q1_pi_targ = self.ac_targ.q1(o2, a2)
+            q2_pi_targ = self.ac_targ.q2(o2, a2)
+            q_pi_targ = torch.min(q1_pi_targ, q2_pi_targ)
+            backup = r + self.hp_dict['gamma'] * (1 - d) * (q_pi_targ - self.hp_dict['alpha'] * logp_a2)
+        
+        # MSE loss against Bellman backup
+        loss_q1 = ((q1 - backup)**2).mean()
+        loss_q2 = ((q2 - backup)**2).mean()
+        loss_q = loss_q1 + loss_q2
 
-        normal = torch.distributions.Normal(mean, std)
-        z = normal.sample()
-        action = torch.tanh(z)
-        return self.rescale_action(action.cpu().detach().squeeze(0).numpy())
+        q_info = dict(Q1Vals=q1.detach().numpy(),
+                        Q2Vals=q2.detach().numpy())
+        return loss_q, q_info
 
-    def rescale_action(self, action):
-        return action * (self.action_range[1] - self.action_range[0]) / 2.0 + (self.action_range[1] + self.action_range[0]) / 2.0
+    def compute_pi_loss(self, data):
+        o = data['obs']
+        pi, logp_pi = self.ac.pi(o)
+        q1_pi = self.ac.q1(o, pi)
+        q2_pi = self.ac.q2(o, pi)
+        q_pi = torch.min(q1_pi, q2_pi)
+        # Entropy-regularized policy loss
+        loss_pi = (self.hp_dict['alpha'] * logp_pi - q_pi).mean()
+        # Useful info for logging
+        pi_info = dict(LogPi=logp_pi.detach().numpy())
+        return loss_pi, pi_info
 
     def update(self, batch_size):
-        states, actions, rewards, next_states, dones = self.replay_buffer.sample(batch_size)
-        states = torch.FloatTensor(torch.stack(states)).to(self.device)
-        actions = torch.FloatTensor(actions).to(self.device)
-        rewards = torch.FloatTensor(rewards).to(self.device)
-        next_states = torch.FloatTensor(torch.stack(next_states)).to(self.device)
-        dones = torch.FloatTensor(dones).to(self.device)
-        dones = dones.view(dones.size(0), -1)
+        data = self.replay_buffer.sample_batch(batch_size)
+        # First run one gradient descent step for Q.
+        self.q_optimizer.zero_grad()
+        loss_q, q_info = self.compute_q_loss(data)
+        loss_q.backward()
+        self.q_optimizer.step()
+        # Record things
+        self.logger.store(LossQ=loss_q.item(), **q_info)
 
-        next_actions, next_log_pi = self.policy.sample(next_states)
+        # Freeze Q-network so you don't waste computational effort 
+        # computing gradients for it during the policy learning step.
+        for p in self.q_params:
+            p.requires_grad = False
 
-        # Do twin delayed DDPG stuff here
-        next_q1 = self.target_Q1(next_states, next_actions)
-        next_q2 = self.target_Q2(next_states, next_actions)
-        next_q_target = torch.min(next_q1, next_q2) - self.alpha * next_log_pi
-        expected_q = rewards + (1 - dones) * self.gamma * next_q_target
+        # Next run one gradient descent step for pi.
+        self.pi_optimizer.zero_grad()
+        loss_pi, pi_info = self.compute_pi_loss(data)
+        loss_pi.backward()
+        self.pi_optimizer.step()
 
-        current_q1 = self.Q1(states, actions)
-        current_q2 = self.Q2(states, actions)
-        q1_loss = F.mse_loss(current_q1, expected_q.detach())
-        q2_loss = F.mse_loss(current_q2, expected_q.detach())
+        # Unfreeze Q-network so you can optimize it at next DDPG step.
+        for p in self.q_params:
+            p.requires_grad = True
+        self.logger.store(LossPi=loss_pi.item(), **pi_info)
 
-        self.Q1_optimizer.zero_grad()
-        q1_loss.backward()
-        self.Q1_optimizer.step()
-        self.Q2_optimizer.zero_grad()
-        q2_loss.backward()
-        self.Q2_optimizer.step()
-        metrics = {
-            "q1_loss": q1_loss.item(),
-            "q2_loss": q2_loss.item()
-        }
+        # Finally, update target networks by polyak averaging.
+        with torch.no_grad():
+            for p, p_targ in zip(self.ac.parameters(), self.ac_targ.parameters()):
+                # NB: We use an in-place operations "mul_", "add_" to update target
+                # params, as opposed to "mul" and "add", which would make new tensors.
+                p_targ.data.mul_(1 - self.hp_dict['tau'])
+                p_targ.data.add_(self.hp_dict['tau'] * p.data)
 
-        # Delayed update for polucy and target networks'
-        new_actions, log_pi = self.policy.sample(states)
-        if self.update_step % self.delay_step == 0:
-            min_q = torch.min(self.Q1(states, new_actions), self.Q2(states, new_actions))
-            policy_loss = (self.alpha * log_pi - min_q).mean()
+    def get_action(self, o, deterministic=False):
+        return self.ac.act(torch.as_tensor(o, dtype=torch.float32), deterministic)
 
-            self.policy_optimizer.zero_grad()
-            policy_loss.backward()
-            self.policy_optimizer.step()
+    def load_saved_policy(self, path):
+        self.ac.load_state_dict(torch.load('./data/rl_data/ddpg_expt_0/ddpg_expt_0_s69420/pyt_save/model.pt'))
 
-            for target_param, param in zip(self.target_Q1.parameters(), self.Q1.parameters()):
-                target_param.data.copy_(self.tau * param + (1 - self.tau) * target_param)
-
-            for target_param, param in zip(self.target_Q2.parameters(), self.Q2.parameters()):
-                target_param.data.copy_(self.tau * param + (1 - self.tau) * target_param)
-            metrics["policy_loss"] = policy_loss.item()
-        if self.wandb_bool:
-            wandb.log(metrics)
-        # Temperature updates
-        alpha_loss = (self.log_alpha * (-log_pi - self.target_entropy).detach()).mean()
-        self.alpha_optimizer.zero_grad()
-        alpha_loss.backward()
-        self.alpha_optimizer.step()
-        self.alpha = self.log_alpha.exp()
-
-        self.update_step += 1
-
-# def train(env, agent, max_episodes, max_steps, batch_size):
-#     ep_rewards = []
-#     for ep in range(max_episodes):
-#         obs, _ = env.reset()
-#         ep_reward = 0
-#         for step in range(max_steps):
-#             action = agent.get_action(obs)
-#             next_obs, reward, terminate, truncate, _ = env.step(action)
-#             agent.replay_buffer.push(obs, action, reward, next_obs, terminate or truncate)
-#             ep_reward += reward
-            
-#             if len(agent.replay_buffer) > batch_size:
-#                 agent.update(batch_size)
-
-#             if terminate or truncate or (step==max_steps-1):
-#                 ep_rewards.append(ep_reward)
-#                 print("Episode: {}, Reward: {}".format(ep, ep_reward))
-#                 print(step)
-#                 break
-#             obs = next_obs
-#         print(step)
-#     return ep_rewards
-
-
-# if __name__=="__main__":
-#     env = gym.make("Pendulum-v1")
-#     agent = SACAgent(env=env, 
-#         gamma=0.99, 
-#         tau=0.01, 
-#         alpha=0.2, 
-#         q_lr=3e-4, 
-#         policy_lr=3e-4, 
-#         a_lr=3e-4, 
-#         buffer_maxlen=1000000
-#     )
-
-    # ep_rewards = train(env, agent, 
-    #     max_episodes=1000, 
-    #     max_steps=1600, 
-    #     batch_size=256
-    # )
+    def test_policy(self, o):
+        with torch.no_grad():
+            a = self.ac.act(torch.as_tensor(o, dtype=torch.float32), True)
+        return np.clip(a, -self.act_limit, self.act_limit)
+        
+        
