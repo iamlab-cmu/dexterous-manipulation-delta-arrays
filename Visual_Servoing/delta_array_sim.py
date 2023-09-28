@@ -85,7 +85,7 @@ class DeltaArraySim:
         self.goal = np.zeros((8,8))
         self.finga_q = gymapi.Quat(0, 0.707, 0, 0.707)
         self.active_idxs = {}
-        self.KMeans = KMeans(n_clusters=300, random_state=69, n_init='auto')
+        self.KMeans = KMeans(n_clusters=64, random_state=69, n_init='auto')
 
         """ Sim Util Vars """
         self.attractor_handles = {}
@@ -190,11 +190,11 @@ class DeltaArraySim:
 
         boundary = cv2.Canny(seg_map,100,200)
         boundary_pts = np.array(np.where(boundary==255)).T
-        # kmeans = self.KMeans.fit(boundary_pts)
-        # cluster_centers = kmeans.cluster_centers_
+        kmeans = self.KMeans.fit(boundary_pts)
+        cluster_centers = kmeans.cluster_centers_
         
-        # self.bd_pts[env_idx] = cluster_centers
-        self.bd_pts[env_idx] = boundary_pts
+        self.bd_pts[env_idx] = cluster_centers
+        # self.bd_pts[env_idx] = boundary_pts
         idxs, neg_idxs = self.nn_helper.get_nn_robots(self.bd_pts[env_idx])
         idxs = np.array(list(idxs))
         # min_idx = tuple(idxs[np.lexsort((idxs[:, 0], idxs[:, 1]))][0])
@@ -209,16 +209,6 @@ class DeltaArraySim:
             # Use the same robot that was chosen initially.
             min_idx = tuple(self.active_idxs[env_idx].keys())[0]
 
-        # tgt_pt = self.nn_helper.robot_positions[min_idx] + self.active_idxs[env_idx][min_idx]
-        # tgt_pt[0] = self.nn_helper.robot_positions[min_idx][0] + self.active_idxs[env_idx][min_idx][0]
-        # tgt_pt[1] = self.nn_helper.robot_positions[min_idx][1] + self.active_idxs[env_idx][min_idx][1]
-        
-        # final_trans = self.fingertips[min_idx[0]][min_idx[1]].get_rb_transforms(env_idx, f'fingertip_{min_idx[0]}_{min_idx[1]}')[0]
-        # finger_pos = np.array(((1000*final_trans.p.x - self.plane_size[0][0])/(self.plane_size[1][0]-self.plane_size[0][0])*1080, 1920 - (1000*final_trans.p.y - self.plane_size[0][1])/(self.plane_size[1][1]-self.plane_size[0][1])*1920))
-
-        # print(self.nn_helper.robot_positions[min_idx], self.active_idxs[env_idx][min_idx])
-        # plt.scatter(tgt_pt[1], tgt_pt[0], c='r')
-        # plt.scatter(finger_pos[1], finger_pos[0], c='g')
         # [self.active_idxs[idx]=np.array((0,0)) for idx in idxs]
 
         # finger_pos = self.nn_helper.robot_positions[min_idx].astype(np.int32)
@@ -235,18 +225,7 @@ class DeltaArraySim:
         # return state.detach().cpu().squeeze()
 
         min_dist, xy = self.nn_helper.get_min_dist(self.bd_pts[env_idx], self.active_idxs[env_idx])
-        # plt.scatter(xy[1], xy[0], c='orange')
-        # plt.show()
         xy = torch.FloatTensor(np.array([xy[0]/1080, xy[1]/1920, self.nn_helper.robot_positions[min_idx][0]/1080, self.nn_helper.robot_positions[min_idx][1]/1920]))
-        # print(xy)
-        # if self.bd_pt_bool:
-        #     plt.imshow(seg_map)
-        #     plt.scatter(xy[1], xy[0], c='r')
-        #     plt.scatter(self.nn_helper.robot_positions[min_idx][1], self.nn_helper.robot_positions[min_idx][0], c='g')
-        #     plt.scatter(self.bd_pts[env_idx][:,1], self.bd_pts[env_idx][:,0], c='b')
-        #     plt.savefig(f"kmeans_img.png")
-        #     self.bd_pt_bool = False
-        # plt.show()
         return min_dist, xy
 
     def reward_helper(self, env_idx, t_step):

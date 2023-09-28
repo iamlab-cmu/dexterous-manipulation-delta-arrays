@@ -28,20 +28,21 @@ class NNHelper:
         self.cluster_centers = None
 
     def get_min_dist(self, boundary_pts, active_idxs):
+        """
+        Returns the minimum distance between the boundary points and the robot positions, and the closest boundary point
+        """
         min_dists = []
         for idx in active_idxs.keys():
             tgt_pt = self.robot_positions[idx] + active_idxs[idx]
             distances = np.linalg.norm(tgt_pt - boundary_pts, axis=1)
-            # min_dist = np.inf
-            # for j in boundary_pts:
-            #     dist = np.linalg.norm(self.robot_positions[idx] + active_idxs[idx] - j)
-            #     if dist < min_dist:
-            #         min_dist = dist
             min_dists.append(np.min(distances))
             xy = boundary_pts[np.argmin(distances)]
         return min_dists, xy
 
     def expand_hull(self, hull):
+        """
+        Expands the convex hull by the radius of the robot
+        """
         robot_radius = 25
         expanded_hull_vertices = []
         for simplex in hull.simplices:
@@ -58,6 +59,9 @@ class NNHelper:
         return ConvexHull(expanded_hull_vertices)
 
     def get_nn_robots(self, boundary_pts):
+        """
+        Returns the indices of the robots that are closest to the boundary points
+        """
         hull = ConvexHull(boundary_pts)
         hull = self.expand_hull(hull)
         A, b = hull.equations[:, :-1], hull.equations[:, -1:]
