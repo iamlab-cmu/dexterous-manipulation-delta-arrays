@@ -26,7 +26,7 @@ device = torch.device("cuda:0")
 
 class DeltaArrayEnvironment():
     def __init__(self, yaml_path, run_no):
-        self.train_or_test = "train"
+        self.train_or_test = "test"
 
         gym = gymapi.acquire_gym()
         self.run_no = run_no

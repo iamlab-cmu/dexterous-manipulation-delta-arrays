@@ -120,7 +120,7 @@ class SAC:
 
     def test_policy(self, o):
         with torch.no_grad():
-            a = self.ac.act(torch.as_tensor(o, dtype=torch.float32), True)
+            a = self.ac.act(torch.as_tensor(o, dtype=torch.float32), True) # Generate deterministic policies
         return np.clip(a, -self.act_limit, self.act_limit)
         
         
