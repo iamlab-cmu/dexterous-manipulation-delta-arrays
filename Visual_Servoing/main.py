@@ -79,7 +79,8 @@ class DeltaArrayEnvironment():
                 'seed'        :3
             }
 
-        logger_kwargs = setup_logger_kwargs("ddpg_expt_0", 69420, data_dir="./data/rl_data")
+        if self.train_or_test=="train":
+            logger_kwargs = setup_logger_kwargs("ddpg_expt_0", 69420, data_dir="./data/rl_data")
         # self.agent = ddpg.DDPG(env_dict, self.hp_dict, logger_kwargs)
         self.agent = sac.SAC(env_dict, self.hp_dict, logger_kwargs)
         # self.agent = reinforce.REINFORCE(env_dict, 3e-3)
