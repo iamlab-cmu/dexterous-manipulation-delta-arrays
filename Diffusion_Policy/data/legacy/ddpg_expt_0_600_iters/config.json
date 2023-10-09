@@ -1,0 +1,43 @@
+{
+    "env_dict":	{
+        "action_space":	{
+            "dim":	2,
+            "high":	0.03,
+            "low":	-0.03
+        },
+        "observation_space":	{
+            "dim":	4
+        }
+    },
+    "exp_name":	"ddpg_expt_0",
+    "hp_dict":	{
+        "pi_lr":	1e-05,
+        "q_lr":	1e-05,
+        "replay_size":	100000,
+        "seed":	3,
+        "tau":	0.005
+    },
+    "logger_kwargs":	{
+        "exp_name":	"ddpg_expt_0",
+        "output_dir":	"./data/rl_data/ddpg_expt_0/ddpg_expt_0_s69420"
+    },
+    "self":	{
+        "<utils.DDPG.ddpg.DDPG object at 0x7f222c4ecfd0>":	{
+            "logger":	{
+                "<utils.openai_utils.logx.EpochLogger object at 0x7f222c4ecd60>":	{
+                    "epoch_dict":	{},
+                    "exp_name":	"ddpg_expt_0",
+                    "first_row":	true,
+                    "log_current_row":	{},
+                    "log_headers":	[],
+                    "output_dir":	"./data/rl_data/ddpg_expt_0/ddpg_expt_0_s69420",
+                    "output_file":	{
+                        "<_io.TextIOWrapper name='./data/rl_data/ddpg_expt_0/ddpg_expt_0_s69420/progress.txt' mode='w' encoding='UTF-8'>":	{
+                            "mode":	"w"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

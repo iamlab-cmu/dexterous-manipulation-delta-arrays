@@ -12,17 +12,20 @@ from isaacgym_utils.draw import draw_transforms, draw_contacts, draw_camera
 
 import torch
 import torchvision.transforms as transforms
-from torchvision.models import resnet18
+from torchvision.models import resnet18, ResNet18_Weights
 from scipy.spatial.distance import cosine
 
 import wandb
 
 import delta_array_sim
-import utils.SAC.sac as sac
+import utils.DDPG.ddpg as ddpg
+from utils.openai_utils.run_utils import setup_logger_kwargs
 device = torch.device("cuda:0")
 
 class DeltaArrayEnvironment():
     def __init__(self, yaml_path, run_no):
+        self.train_or_test = "test"
+
         gym = gymapi.acquire_gym()
         self.run_no = run_no
         self.cfg = YamlConfig(yaml_path)
@@ -52,8 +55,7 @@ class DeltaArrayEnvironment():
         #                     rb_props=self.cfg['fiducial']['rb_props'],
         #                     asset_options=self.cfg['fiducial']['asset_options'])
         
-
-        self.model = resnet18(pretrained=True)
+        self.model = resnet18(weights=ResNet18_Weights.DEFAULT)
         self.model = torch.nn.Sequential(*list(self.model.children())[:-1])
         self.model.eval()
         self.model = self.model.to(device)
@@ -64,21 +66,27 @@ class DeltaArrayEnvironment():
         ])
 
         env_dict = {'action_space': {'low': -0.03, 'high': 0.03, 'dim': 2},
-                    'observation_space': {'dim': 512}}
-        self.hp_dict = {"gamma"    :0.99, 
-                "tau"          :0.01, 
-                "alpha"        :0.2, 
-                "q_lr"         :1e-3, 
-                "policy_lr"    :1e-3,
-                "a_lr"         :1e-3, 
-                "buffer_maxlen":1000000
+                    'observation_space': {'dim': 4}}
+        self.hp_dict = {
+                "tau"         :0.005,
+                "q_lr"        :1e-5,
+                "pi_lr"       :1e-5, 
+                "replay_size" :100000,
+                'seed'        :3
             }
-        self.agent = sac.SACAgent(env_dict, self.hp_dict, wandb_bool = False)
-    
+
+        logger_kwargs = setup_logger_kwargs("ddpg_expt_0", 69420, data_dir="./data/rl_data")
+        self.agent = ddpg.DDPG(env_dict, self.hp_dict, logger_kwargs)
+        # self.agent = sac.SACAgent(env_dict, self.hp_dict, wandb_bool = False)
+        # self.agent = reinforce.REINFORCE(env_dict, 3e-3)
+        if self.train_or_test=="test":
+            self.agent.load_saved_policy('Visual_Servoing/data/rl_data/ddpg_expt_0/ddpg_expt_0_s69420/pyt_save/model.pt')
         self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.obj_name, self.model, self.transform, self.agent, num_tips = [8,8])
 
         self.cam = GymCamera(self.scene, cam_props = self.cfg['camera'])
+        # print(RigidTransform.x_axis_rotation(np.deg2rad(180)))
         rot = RigidTransform.x_axis_rotation(np.deg2rad(0))@RigidTransform.z_axis_rotation(np.deg2rad(-90))
+        # print(rot)
         self.cam_offset_transform = RigidTransform_to_transform(RigidTransform(
             rotation=rot,
             translation = np.array([0.13125, 0.1407285, 0.65])
@@ -88,11 +96,12 @@ class DeltaArrayEnvironment():
         self.fingers.cam = self.cam 
         self.fingers.cam_name = self.cam_name
 
-        # scene.attach_camera(cam_name, cam, franka_name, 'panda_hand', offset_transform=cam_offset_transform)
+            # scene.attach_camera(cam_name, cam, franka_name, 'panda_hand', offset_transform=cam_offset_transform)
         self.scene.setup_all_envs(self.setup_scene)
         self.setup_objects()
 
     def setup_scene(self, scene, _):
+        # we'll sample block poses later
         self.fingers.add_asset(scene)
         # Add either rigid body or soft body as an asset to the scene
         scene.add_asset(self.obj_name, self.object, gymapi.Transform()) 
@@ -124,9 +133,10 @@ class DeltaArrayEnvironment():
             # self.fiducial_rb.set_rb_transforms(env_idx, "fiducial_rb", [fiducial_rb[env_idx]])
 
     def run(self):
-        self.scene.run(policy=self.fingers.visual_servoing)
-        # self.scene.run(policy=self.fingers.generate_trajectory)
-        # self.scene.run(policy=self.fingers.execute_trajectory)
+        if self.train_or_test=="train":
+            self.scene.run(policy=self.fingers.visual_servoing)
+        else:
+            self.scene.run(policy=self.fingers.test_learned_policy)
 
 if __name__ == "__main__":
     yaml_path = './config/env.yaml'
