@@ -2,6 +2,8 @@ import numpy as np
 import os
 import time
 from pathlib import Path
+import wandb
+import argparse
 from autolab_core import YamlConfig, RigidTransform
 from isaacgym import gymapi
 from isaacgym_utils.scene import GymScene
@@ -15,18 +17,17 @@ import torchvision.transforms as transforms
 from torchvision.models import resnet18, ResNet18_Weights
 from scipy.spatial.distance import cosine
 
-import wandb
-
 import delta_array_sim
+import delta_array_real
 import utils.SAC.sac as sac
-
 import utils.DDPG.ddpg as ddpg
+
 from utils.openai_utils.run_utils import setup_logger_kwargs
 device = torch.device("cuda:0")
 
-class DeltaArrayEnvironment():
-    def __init__(self, yaml_path, run_no):
-        self.train_or_test = "test"
+class DeltaArraySimEnvironment():
+    def __init__(self, yaml_path, run_no, train_or_test="test"):
+        self.train_or_test = train_or_test
 
         gym = gymapi.acquire_gym()
         self.run_no = run_no
@@ -144,8 +145,48 @@ class DeltaArrayEnvironment():
         else:
             self.scene.run(policy=self.fingers.test_learned_policy)
 
+class DeltaArrayRealEnvironment():
+    def __init__(self, train_or_test="test"):
+        self.train_or_test = train_or_test
+        env_dict = {'action_space': {'low': -0.03, 'high': 0.03, 'dim': 2},
+                    'observation_space': {'dim': 4}}
+        self.hp_dict = {
+                "tau"         :0.005,
+                "gamma"       :0.99,
+                "q_lr"        :1e-4,
+                "pi_lr"       :1e-4,
+                "alpha"       :0.2,
+                "replay_size" :100000,
+                'seed'        :3
+            }
+
+        if self.train_or_test=="train":
+            logger_kwargs = setup_logger_kwargs("ddpg_expt_0", 69420, data_dir="./data/rl_data")
+        else:
+            logger_kwargs = {}
+        # self.agent = ddpg.DDPG(env_dict, self.hp_dict, logger_kwargs)
+        self.agent = sac.SAC(env_dict, self.hp_dict, logger_kwargs=logger_kwargs, train_or_test=self.train_or_test)
+        # self.agent = reinforce.REINFORCE(env_dict, 3e-3)
+        if self.train_or_test=="test":
+            self.agent.load_saved_policy('Visual_Servoing/models/trained_models/SAC_1_agent_stochastic/pyt_save/model.pt')
+        self.delta_array = delta_array_real.DeltaArrayReal(None, None, agent=self.agent)
+
+    def run(self):
+        self.delta_array.test_grasping_policy()
+
+
 if __name__ == "__main__":
-    yaml_path = './config/env.yaml'
-    run_no = 0
-    env = DeltaArrayEnvironment(yaml_path, run_no)
-    env.run()
+    parser = argparse.ArgumentParser(description="Args for sim/real test/train")
+
+    parser.add_argument("-r", "--real", action="store_true", help="True for Real Robot")
+    parser.add_argument("-t", "--test", action="store_true", help="True for Test")
+    args = parser.parse_args()
+    train_or_test = "test" if args.test else "train"
+    if not args.real:
+        yaml_path = './config/env.yaml'
+        run_no = 0
+        env = DeltaArraySimEnvironment(yaml_path, run_no, train_or_test)
+        env.run()
+    else:
+        env = DeltaArrayRealEnvironment(train_or_test)
+        env.run()

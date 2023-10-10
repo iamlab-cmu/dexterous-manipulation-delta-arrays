@@ -9,10 +9,8 @@ from utils.SAC.replay_buffer import ReplayBuffer
 import itertools
 
 class SAC:
-    def __init__(self, env_dict, hp_dict, logger_kwargs=dict()):
-        self.logger = EpochLogger(**logger_kwargs)
-        self.logger.save_config(locals())
-
+    def __init__(self, env_dict, hp_dict, logger_kwargs=dict(), train_or_test="train"):
+        self.train_or_test = train_or_test
         # torch.manual_seed(hp_dict['seed'])
         # np.random.seed(hp_dict['seed'])
         self.hp_dict = hp_dict
@@ -32,14 +30,16 @@ class SAC:
 
         # Count variables (protip: try to get a feel for how different size networks behave!)
         var_counts = tuple(core.count_vars(module) for module in [self.ac.pi, self.ac.q1, self.ac.q2])
-        self.logger.log('\nNumber of parameters: \t pi: %d, \t q1: %d, \t q2: %d\n'%var_counts)
-        
         self.q_params = itertools.chain(self.ac.q1.parameters(), self.ac.q2.parameters())
         self.pi_optimizer = Adam(self.ac.pi.parameters(), lr=hp_dict['pi_lr'])
         self.q_optimizer = Adam(self.q_params, lr=hp_dict['q_lr'])
 
         # Set up model saving
-        self.logger.setup_pytorch_saver(self.ac)
+        if self.train_or_test == "train":
+            self.logger = EpochLogger(**logger_kwargs)
+            self.logger.save_config(locals())
+            self.logger.log('\nNumber of parameters: \t pi: %d, \t q1: %d, \t q2: %d\n'%var_counts)
+            self.logger.setup_pytorch_saver(self.ac)
 
     def compute_q_loss(self, data):
         o, a, r, o2, d = data['obs'], data['act'], data['rew'], data['obs2'], data['done']

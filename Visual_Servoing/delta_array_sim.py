@@ -80,9 +80,7 @@ class DeltaArraySim:
                 else:
                     self.finger_positions[i][j] = gymapi.Vec3(i*0.0375, j*0.043301, 1.5)
         self.neighborhood_fingers = [[] for _ in range(self.scene.n_envs)]
-        self.contact_fingers = [set() for _ in range(self.scene.n_envs)]
         self.attraction_error = np.zeros((8,8))
-        self.goal = np.zeros((8,8))
         self.finga_q = gymapi.Quat(0, 0.707, 0, 0.707)
         self.active_idxs = {}
         self.KMeans = KMeans(n_clusters=64, random_state=69, n_init='auto')
@@ -96,7 +94,6 @@ class DeltaArraySim:
         self.dont_skip_episode = True
 
         """ Visual Servoing and RL Vars """
-        self.bd_pt_bool = True
         self.bd_pts = {}
         self.current_scene_frame = {}
         self.batch_size = 128

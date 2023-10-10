@@ -27,17 +27,18 @@ class NNHelper:
         
         self.cluster_centers = None
 
-    def get_min_dist(self, boundary_pts, active_idxs):
+    def get_min_dist(self, boundary_pts, active_idxs, actions):
         """
         Returns the minimum distance between the boundary points and the robot positions, and the closest boundary point
         """
         min_dists = []
-        for idx in active_idxs.keys():
-            tgt_pt = self.robot_positions[idx] + active_idxs[idx]
+        xys = []
+        for idx in active_idxs:
+            tgt_pt = self.robot_positions[idx] + actions[idx]
             distances = np.linalg.norm(tgt_pt - boundary_pts, axis=1)
             min_dists.append(np.min(distances))
-            xy = boundary_pts[np.argmin(distances)]
-        return min_dists, xy
+            xys.append(boundary_pts[np.argmin(distances)])
+        return min_dists, xys
 
     def expand_hull(self, hull):
         """
