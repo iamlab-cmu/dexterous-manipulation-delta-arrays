@@ -15,9 +15,9 @@ class NNHelper:
         for i in range(8):
             for j in range(8):
                 if i%2!=0:
-                    finger_pos = np.array((i*37.5, j*43.301 - 21.65))
+                    finger_pos = np.array((i*3.75, j*4.3301 - 2.165))
                 else:
-                    finger_pos = np.array((i*37.5, j*43.301))
+                    finger_pos = np.array((i*3.75, j*4.3301))
         
                 finger_pos[0] = (finger_pos[0] - plane_size[0][0])/(plane_size[1][0]-plane_size[0][0])*1080 - 0
                 finger_pos[1] = 1920 - (finger_pos[1] - plane_size[0][1])/(plane_size[1][1]-plane_size[0][1])*1920
@@ -38,7 +38,7 @@ class NNHelper:
             distances = np.linalg.norm(tgt_pt - boundary_pts, axis=1)
             min_dists.append(np.min(distances))
             xys.append(boundary_pts[np.argmin(distances)])
-        return min_dists, xys
+        return min_dists, np.array(xys)
 
     def expand_hull(self, hull):
         """

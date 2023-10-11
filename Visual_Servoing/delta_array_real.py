@@ -46,9 +46,9 @@ class DeltaArrayReal:
         self.cam = 0
         
         """ Data Collection Vars """
-        self.lower_green_filter = np.array([35, 50, 50])
-        self.upper_green_filter = np.array([85, 255, 255])
-        self.plane_size = 1000*np.array([(0 - 0.063, 0 - 0.2095), (0.2625 + 0.063, 0.303107 + 0.1865)]) # 1000*np.array([(0.13125-0.025, 0.1407285-0.055),(0.13125+0.025, 0.1407285+0.055)])
+        self.lower_green_filter = np.array([30, 5, 5])
+        self.upper_green_filter = np.array([90, 255, 255])
+        self.plane_size = np.array([(1.8, 1.9),(23.125, -36.225)])
         self.nn_helper = helper.NNHelper(self.plane_size)
         
         """ Fingertip Vars """
@@ -71,6 +71,7 @@ class DeltaArrayReal:
         self.RC = RoboCoords()
         self.neighborhood_fingers = []
         self.active_idxs = []
+        self.actions = {}
 
         """ Camera Vars """
         self.cam = cv2.VideoCapture(0)
@@ -114,7 +115,7 @@ class DeltaArrayReal:
             except Exception as e:
                 print("Error at robot ID: ", i)
                 raise e
-        self.reset()
+        # self.reset()
         return
     
     def reset(self):
@@ -138,17 +139,23 @@ class DeltaArrayReal:
         ret, img = self.cam.read()
         if not ret:
             return
-
-        plt.imshow(img)
-        plt.show()
         
         hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
         mask = cv2.inRange(hsv, self.lower_green_filter, self.upper_green_filter)
         seg_map = cv2.bitwise_and(img, img, mask = mask)
         seg_map = cv2.cvtColor(seg_map, cv2.COLOR_BGR2GRAY)
+        ret, seg_map = cv2.threshold(seg_map, 10, 255, cv2.THRESH_BINARY)
 
+        kernel = np.ones((11,11),np.uint8)
+        seg_map = cv2.morphologyEx(seg_map, cv2.MORPH_ERODE, kernel)
+        seg_map = cv2.morphologyEx(seg_map, cv2.MORPH_DILATE, kernel)
+        seg_map = cv2.morphologyEx(seg_map, cv2.MORPH_CLOSE, kernel)
+        seg_map = cv2.morphologyEx(seg_map, cv2.MORPH_CLOSE, kernel)
+        # seg_map = cv2.morphologyEx(seg_map, cv2.MORPH_CLOSE, kernel)
+        plt.imshow(seg_map)
         boundary = cv2.Canny(seg_map,100,200)
         boundary_pts = np.array(np.where(boundary==255)).T
+        plt.scatter(boundary_pts[:,1], boundary_pts[:,0], c='g')
         if len(boundary_pts) < 64:
             self.dont_skip_episode = False
             return None, None
@@ -161,15 +168,15 @@ class DeltaArrayReal:
             # self.bd_pts = boundary_pts
             idxs, neg_idxs = self.nn_helper.get_nn_robots(self.bd_pts)
             self.active_idxs = list(idxs)
-
-            if final:
-                # Use the same robot that was chosen initially.
-                idxs = tuple(self.active_idxs.keys())[0]
             
             for idx in self.active_idxs:
                 self.actions[idx] = np.array((0,0))
 
             min_dists, xys = self.nn_helper.get_min_dist(self.bd_pts, self.active_idxs, self.actions)
+            print(xys)
+            plt.scatter(*self.nn_helper.robot_positions[self.active_idxs[0]].T, c='orange')
+            plt.scatter(xys[:,1], xys[:,0], c='r')
+            plt.show()
             xys = [torch.FloatTensor(np.array([xys[i][0]/1080, xys[i][1]/1920, self.nn_helper.robot_positions[idxs[i]][0]/1080, self.nn_helper.robot_positions[idxs[i]][1]/1920])) for i in range(len(xys))]
             return min_dists, xys
     
@@ -184,7 +191,7 @@ class DeltaArrayReal:
                     # print(ret)
                     if ret == "A":
                         i.done_moving = True
-                        time.sleep(0.1)
+                        time.sleep(0.5)
                 except Exception as e: 
                     # print(e)
                     pass
@@ -192,7 +199,7 @@ class DeltaArrayReal:
             bool_dones = [i.done_moving for i in self.to_be_moved]
             # print(bool_dones)
             done_moving = all(bool_dones)
-        time.sleep(0.1)
+        time.sleep(0.5)
         for i in self.delta_agents:
             self.delta_agents[i].done_moving = False
         del self.to_be_moved[:]
@@ -201,7 +208,7 @@ class DeltaArrayReal:
     
     def test_grasping_policy(self):
         # Set all robots to high pose
-        self.reset()
+        # self.reset()
 
         # Capture an image and preprocess and extract neighbors and their closest points
         _, xys = self.get_nearest_robot_and_state()
