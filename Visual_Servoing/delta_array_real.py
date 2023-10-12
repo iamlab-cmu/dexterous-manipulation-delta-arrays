@@ -35,8 +35,8 @@ import delta_array_utils.serial_robot_mapping as srm
 device = torch.device("cuda:0")
 BUFFER_SIZE = 20
 
-low_z = 13.5
-high_z = low_z - 8
+low_z = 12
+high_z = 5.5
 
 class DeltaArrayReal:
     def __init__(self, img_embed_model, transform, agent, num_tips = [8,8]):
@@ -56,9 +56,9 @@ class DeltaArrayReal:
         for i in range(self.num_tips[0]):
             for j in range(self.num_tips[1]):
                 if i%2!=0:
-                    self.finger_positions_cm[i][j] = (i*3.75, j*4.3301 - 2.165)
+                    self.finger_positions_cm[i][j] = (i*3.75, -j*4.3301 + 2.165)
                 else:
-                    self.finger_positions_cm[i][j] = (i*3.75, j*4.3301)
+                    self.finger_positions_cm[i][j] = (i*3.75, -j*4.3301)
         self.KMeans = KMeans(n_clusters=64, random_state=69, n_init='auto')
 
         """ Real World Util Vars """
@@ -70,7 +70,8 @@ class DeltaArrayReal:
         self.Delta = Prismatic_Delta(s_p, s_b, l)
         self.RC = RoboCoords()
         self.neighborhood_fingers = []
-        self.active_idxs = []
+        self.active_robots = []
+        self.active_IDs = set()
         self.actions = {}
 
         """ Camera Vars """
@@ -152,10 +153,10 @@ class DeltaArrayReal:
         seg_map = cv2.morphologyEx(seg_map, cv2.MORPH_CLOSE, kernel)
         seg_map = cv2.morphologyEx(seg_map, cv2.MORPH_CLOSE, kernel)
         # seg_map = cv2.morphologyEx(seg_map, cv2.MORPH_CLOSE, kernel)
-        plt.imshow(seg_map)
         boundary = cv2.Canny(seg_map,100,200)
         boundary_pts = np.array(np.where(boundary==255)).T
-        plt.scatter(boundary_pts[:,1], boundary_pts[:,0], c='g')
+        # plt.imshow(seg_map)
+        # plt.scatter(boundary_pts[:,1], boundary_pts[:,0], c='g')
         if len(boundary_pts) < 64:
             self.dont_skip_episode = False
             return None, None
@@ -167,17 +168,20 @@ class DeltaArrayReal:
             self.bd_pts = cluster_centers
             # self.bd_pts = boundary_pts
             idxs, neg_idxs = self.nn_helper.get_nn_robots(self.bd_pts)
-            self.active_idxs = list(idxs)
+            self.active_robots = list(idxs)
             
-            for idx in self.active_idxs:
+            for idx in self.active_robots:
                 self.actions[idx] = np.array((0,0))
 
-            min_dists, xys = self.nn_helper.get_min_dist(self.bd_pts, self.active_idxs, self.actions)
-            print(xys)
-            plt.scatter(*self.nn_helper.robot_positions[self.active_idxs[0]].T, c='orange')
-            plt.scatter(xys[:,1], xys[:,0], c='r')
-            plt.show()
-            xys = [torch.FloatTensor(np.array([xys[i][0]/1080, xys[i][1]/1920, self.nn_helper.robot_positions[idxs[i]][0]/1080, self.nn_helper.robot_positions[idxs[i]][1]/1920])) for i in range(len(xys))]
+            min_dists, xys = self.nn_helper.get_min_dist(self.bd_pts, self.active_robots, self.actions)
+            # print(xys)
+            # for i in range(len(self.active_robots)):
+            #     robopos = self.nn_helper.robot_positions[self.active_robots[i]]
+            #     plt.scatter(robopos[1], robopos[0], c='orange')
+            # plt.scatter(self.nn_helper.robot_positions[0,0,0], self.nn_helper.robot_positions[0,0,1], c="yellow")
+            # plt.scatter(xys[:,1], xys[:,0], c='r')
+            # plt.show()
+            xys = [torch.FloatTensor(np.array([xys[i][0]/1080, xys[i][1]/1920, self.nn_helper.robot_positions[self.active_robots[i]][0]/1080, self.nn_helper.robot_positions[self.active_robots[i]][1]/1920])) for i in range(len(xys))]
             return min_dists, xys
     
     def wait_until_done(self, topandbottom=False):
@@ -203,18 +207,39 @@ class DeltaArrayReal:
         for i in self.delta_agents:
             self.delta_agents[i].done_moving = False
         del self.to_be_moved[:]
+        self.active_IDs.clear()
         # print("Done!")
         return
     
+    def practicalize_traj(self, traj):
+        traj[0] = [-1*traj[0][0], -1*traj[0][1], high_z]
+        for i in range(1,5):
+            traj[i] = [-1*traj[i][0], -1*traj[i][1], low_z]
+        return traj
+        
+    
     def test_grasping_policy(self):
         # Set all robots to high pose
-        # self.reset()
 
         # Capture an image and preprocess and extract neighbors and their closest points
         _, xys = self.get_nearest_robot_and_state()
 
         # Pass closest points through a policy
-        for n, idx in self.active_idxs.keys():
+        for n, idx in enumerate(self.active_robots):
             self.actions[idx] = 100*self.agent.test_policy(xys[n])
-        # Execute action given by the policy in real world coordinates -> Transform the action from pixel space to cm
+            
+            # Execute action given by the policy in real world
             print(f'Robot {idx} is moving to {self.actions[idx]}')
+            traj = [[self.actions[idx][0], -1*self.actions[idx][1], low_z] for _ in range(20)]
+            traj = self.practicalize_traj(traj)
+            self.delta_agents[self.RC.robo_dict_inv[idx] - 1].save_joint_positions(idx, traj)
+            _ = [self.active_IDs.add(self.RC.robo_dict_inv[idx]) for i in self.active_robots]
+            
+        for i in self.active_IDs:
+            self.delta_agents[i-1].move_useful()
+            self.to_be_moved.append(self.delta_agents[i-1])
+
+        print("Moving Delta Robots on Trajectory...")
+        self.wait_until_done()
+        print("Done!")
+        self.reset()

@@ -81,7 +81,6 @@ def get_robot_actions(frame, goal, nn_helper, savefig = True):
     robot_actions_pix = robot_actions_pix/np.linalg.norm(robot_actions_pix, axis=1)[:,np.newaxis]
     # robot_actions_pix = np.dot(rot_matrix_90, robot_actions_pix.T).T
 
-
     ax = f.add_subplot(111)
     ax.scatter(*com)
     ax.plot(start[:,0],start[:,1])

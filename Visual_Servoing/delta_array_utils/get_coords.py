@@ -18,9 +18,9 @@ class RoboCoords:
         for i in range(8):
             for j in range(8):
                 if j%2==0:
-                    self.robot_positions[i,j] = (i*3.75, j*4.3301 - 2.165)
+                    self.robot_positions[i,j] = (i*3.75, -j*4.3301 + 2.165)
                 else:
-                    self.robot_positions[i,j] = (i*3.75, j*4.3301)
+                    self.robot_positions[i,j] = (i*3.75, -j*4.3301)
 
         self.robo_dict_inv = {
             **dict.fromkeys([(0,0),(1,0),(0,1),(1,1)], 16), 

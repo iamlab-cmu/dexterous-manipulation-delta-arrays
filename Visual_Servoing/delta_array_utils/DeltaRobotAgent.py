@@ -54,6 +54,7 @@ class DeltaArrayAgent:
         traj_len = len(traj)
         # print(traj)
         if traj_len == 20:
+            # print([np.clip(np.array(Delta.IK(pos))*0.01, self.min_joint_pos, self.max_joint_pos) for pos in traj])
             self.robot_pos_ctrl_dict[new_idx] = np.array([np.clip(np.array(Delta.IK(pos))*0.01, self.min_joint_pos, self.max_joint_pos) for pos in traj])
         elif traj_len == 0:
             self.robot_pos_ctrl_dict[new_idx] = [np.clip(np.array(Delta.IK([0,0,5.5]))*0.01, self.min_joint_pos, self.max_joint_pos) for i in range(20)]

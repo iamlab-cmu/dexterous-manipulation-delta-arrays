@@ -22,7 +22,7 @@ max_joint_pos = 0.0985
 Delta = Prismatic_Delta(s_p, s_b, l)
 
 ##########################################################################
-robot_id = 12                                                   # ROBOT ID
+robot_id = 16                                                   # ROBOT ID
 ##########################################################################
 delta_message.id = robot_id
 ip_addr = srm.inv_delta_comm_dict[robot_id]
@@ -35,7 +35,7 @@ angles = np.linspace(0, 0*np.pi, 20)
 x = 0 * np.cos(angles)
 y = 0 * np.sin(angles)
 for j in range(20):
-    ee_pts = [x[j],y[j],5.0]
+    ee_pts = [x[j],y[j],5.5]
     # ee_pts = [0,0,12]
     pts = Delta.IK(ee_pts)
     pts = np.array(pts) * 0.01
