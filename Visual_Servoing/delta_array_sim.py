@@ -323,7 +323,11 @@ class DeltaArraySim:
             if self.current_episode < self.max_episodes:
                 self.current_episode += 1
             else:
-                pass # Kill the pipeline somehow? 
+                pass # Kill the pipeline somehow?
+        if self.ep_len==0:
+            
+
+
         if (t_step in {0, 1}) and self.dont_skip_episode:
             self.step(env_idx, t_step, env_ptr)
         elif (t_step == self.time_horizon-2) and self.dont_skip_episode:
