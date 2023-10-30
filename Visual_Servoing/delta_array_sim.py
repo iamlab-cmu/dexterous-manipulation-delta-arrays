@@ -32,14 +32,13 @@ from isaacgym_utils.math_utils import RigidTransform_to_transform
 from isaacgym_utils.draw import draw_transforms, draw_contacts, draw_camera
 
 import utils.nn_helper as helper
+import utils.log_utils as log_utils
+import utils.rl_utils as rl_utils
 # import utils.SAC.sac as sac
 # import utils.SAC.reinforce as reinforce
 from utils.geometric_utils import icp
 device = torch.device("cuda:0")
 
-# plt.ion()  # Turn on interactive mode
-
-# fig, ax = plt.subplots()
 class DeltaArraySim:
     def __init__(self, scene, cfg, obj, obj_name, img_embed_model, transform, agent, num_tips = [8,8]):
         """ Main Vars """
@@ -108,6 +107,7 @@ class DeltaArraySim:
 
         self.ep_rewards = []
         self.ep_reward = np.zeros(self.scene.n_envs)
+        self.ep_len = 0
 
         self.optimal_reward = 30
         self.ep_since_optimal_reward = 0
@@ -201,15 +201,8 @@ class DeltaArraySim:
             idxs, neg_idxs = self.nn_helper.get_nn_robots(self.bd_pts[env_idx])
             idxs = np.array(list(idxs))
             # min_idx = tuple(idxs[np.lexsort((idxs[:, 0], idxs[:, 1]))][0])
-
-            """ ################################################################################################################### 
-                Thea: You can change this part to include all nearest robot idxs
-                ###################################################################################################################
-            """
             min_idx = tuple(random.choice(tuple(idxs)))
             
-            # plt.imshow(seg_map)
-            # plt.scatter(self.bd_pts[env_idx][:,1], self.bd_pts[env_idx][:,0], c='b')
             """ Single Robot Experiment. Change this to include entire neighborhood """
             if not final:
                 self.active_idxs[env_idx] = {min_idx: np.array((0,0))} # Store the action vector as value here later :)
@@ -244,33 +237,16 @@ class DeltaArraySim:
         Combine both to compute the final reward
         """
         init_bd_pts = self.bd_pts[env_idx]
-        # self.get_scene_image(env_idx)
         min_dist, self.final_state = self.get_nearest_robot_and_state(env_idx, final=True)
-        if min_dist is None:
-            return None, None
-
-        M2 = icp(init_bd_pts, self.bd_pts[env_idx], icp_radius=1000)
-        theta = np.arctan2(M2[1, 0], M2[0, 0])
-        theta_degrees = np.rad2deg(theta)
-
-        # final_trans = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
-        # self.block_com[env_idx][1] = np.array((final_trans.p.x, final_trans.p.y))
-        # block_l2_distance = np.linalg.norm(self.block_com[env_idx][1] - self.block_com[env_idx][0])
-        tf = np.linalg.norm(M2[:2,3]) + abs(theta_degrees)
-        # min_dist, xy = self.nn_helper.get_min_dist(self.bd_pts[env_idx], self.active_idxs[env_idx])
-        # print(tf, min_dist)
-        return tf, min_dist
+        tf_loss = rl_utils.reward_helper(init_bd_pts, self.bd_pts[env_idx])
+        return tf_loss, min_dist
 
     def compute_reward(self, env_idx, t_step):
         """ Computes reward, saves it in ep_reward variable and returns True if the action was successful """
-        if t_step < self.time_horizon-2:
-            # self.ep_reward += self.alpha_reward
-            return False
-        else:
-            tf_loss, nn_dist_loss = self.reward_helper(env_idx, t_step)
-            self.ep_reward[env_idx] += -nn_dist_loss[0]
-            self.ep_reward[env_idx] += -tf_loss*0.6
-            return True 
+        tf_loss, nn_dist_loss = self.reward_helper(env_idx, t_step)
+        self.ep_reward[env_idx] += -nn_dist_loss[0]
+        self.ep_reward[env_idx] += -tf_loss*0.6
+        return True 
 
     def terminate(self, env_idx, t_step):
         """ Update the replay buffer and reset the env """
@@ -281,7 +257,7 @@ class DeltaArraySim:
             self.ep_reward[env_idx] = (self.ep_reward[env_idx] - -45)/90
             self.agent.replay_buffer.store(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
             self.ep_rewards.append(self.ep_reward[env_idx])
-            self.agent.logger.store(EpRet=self.ep_reward[env_idx], EpLen=1)
+            self.agent.logger.store(EpRet=self.ep_reward[env_idx], EpLen=self.ep_len)
             # if env_idx == (self.scene.n_envs-1):
             print(f"Iter: {self.current_episode}, Action: {self.action[env_idx]},Mean Reward: {np.mean(self.ep_rewards[-20:])}, Current Reward: {self.ep_reward[env_idx]}")
         self.active_idxs[env_idx].clear()
@@ -292,7 +268,7 @@ class DeltaArraySim:
         self.active_idxs[env_idx].clear()
         self.set_all_fingers_pose(env_idx, pos_high=True)
 
-    def reset(self, env_idx, t_step, env_ptr):
+    def step(self, env_idx, t_step, env_ptr):
         """ 
         Reset has 3 functions
         1. Setup the env, get the initial state and action, and set_attractor_pose of the robot.
@@ -328,8 +304,6 @@ class DeltaArraySim:
                 self.active_idxs[env_idx][idx][1] = -1000*self.action[env_idx][1]/(self.plane_size[1][1]-self.plane_size[0][1])*1920
                 
                 self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][idx[0]][idx[1]], gymapi.Transform(p=self.finger_positions[idx[0]][idx[1]] + gymapi.Vec3(self.action[env_idx][0], self.action[env_idx][1], -0.47), r=self.finga_q)) 
-        elif t_step == self.time_horizon-3:
-            pass
 
     def sim_test(self, env_idx, t_step, env_ptr):
         """ Call this function to visualize the scene without taking any action """
@@ -339,29 +313,19 @@ class DeltaArraySim:
 
     def log_data(self, env_idx, t_step):
         """ Store data about training progress in systematic data structures """
-        self.agent.logger.save_state({'ep_rewards': self.ep_rewards}, None)
-        # Log info about epoch
-        self.agent.logger.log_tabular('Epoch', self.current_episode)
-        self.agent.logger.log_tabular('EpRet', with_min_and_max=True)
-        self.agent.logger.log_tabular('EpLen', average_only=True)            
-        self.agent.logger.log_tabular('Q1Vals', with_min_and_max=True)
-        self.agent.logger.log_tabular('Q2Vals', with_min_and_max=True)
-        self.agent.logger.log_tabular('LogPi', with_min_and_max=True)
-        self.agent.logger.log_tabular('LossPi', average_only=True)
-        self.agent.logger.log_tabular('LossQ', average_only=True)
-        self.agent.logger.log_tabular('Time', time.time()-self.start_time)
-        self.agent.logger.dump_tabular()
+        log_utils.log_data(self.agent.logger, self.ep_rewards, self.current_episode, self.start_time)
 
     def visual_servoing(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
         env_ptr = self.scene.env_ptrs[env_idx]
-        # self.sim_test(env_idx, t_step, env_ptr)
 
-        if (t_step == 0):
+        if (t_step == 0) and (self.ep_len == 0):
             if self.current_episode < self.max_episodes:
                 self.current_episode += 1
-        if (t_step in {0, 1, self.time_horizon-3}) and self.dont_skip_episode:
-            self.reset(env_idx, t_step, env_ptr)
+            else:
+                pass # Kill the pipeline somehow? 
+        if (t_step in {0, 1}) and self.dont_skip_episode:
+            self.step(env_idx, t_step, env_ptr)
         elif (t_step == self.time_horizon-2) and self.dont_skip_episode:
             self.compute_reward(env_idx, t_step)
             if self.agent.replay_buffer.size > self.batch_size:
