@@ -40,7 +40,7 @@ from utils.geometric_utils import icp
 device = torch.device("cuda:0")
 
 class DeltaArraySim:
-    def __init__(self, scene, cfg, obj, obj_name, img_embed_model, transform, agent, num_tips = [8,8]):
+    def __init__(self, scene, cfg, obj, obj_name, img_embed_model, transform, agents, num_tips = [8,8]):
         """ Main Vars """
         self.scene = scene
         self.cfg = cfg
@@ -100,7 +100,11 @@ class DeltaArraySim:
         
         self.model = img_embed_model
         self.transform = transform
-        self.agent = agent
+        if len(agents) == 1:
+            self.agent = agent[0]
+        else:
+            self.grasping_agent = agents[0]
+            self.pushing_agent = agents[1]
         self.init_state = {}
         self.action = {}
         self.log_pi = {}
@@ -145,7 +149,7 @@ class DeltaArraySim:
                 else:
                     self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.47), r=self.finga_q)])
 
-    def set_nn_fingers_pose(self, env_idx, idxs):
+    def set_nn_fingers_pose_low(self, env_idx, idxs):
         """ Set the fingers in idxs to low pose """
         for (i,j) in idxs:
             self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.49), r=self.finga_q)])
@@ -248,27 +252,33 @@ class DeltaArraySim:
         self.ep_reward[env_idx] += -tf_loss*0.6
         return True 
 
-    def terminate(self, env_idx, t_step):
+    def terminate(self, env_idx, t_step, agent):
         """ Update the replay buffer and reset the env """
-        # self.agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
+        # agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
         if self.ep_reward[env_idx] > -180:
-            if self.agent.replay_buffer.size > self.batch_size:
+            if agent.replay_buffer.size > self.batch_size:
                 self.log_data(env_idx, t_step)
+
+            #normalize the reward for easier training
             self.ep_reward[env_idx] = (self.ep_reward[env_idx] - -45)/90
-            self.agent.replay_buffer.store(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
+            agent.replay_buffer.store(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
             self.ep_rewards.append(self.ep_reward[env_idx])
-            self.agent.logger.store(EpRet=self.ep_reward[env_idx], EpLen=self.ep_len)
+            agent.logger.store(EpRet=self.ep_reward[env_idx], EpLen=self.ep_len)
             # if env_idx == (self.scene.n_envs-1):
             print(f"Iter: {self.current_episode}, Action: {self.action[env_idx]},Mean Reward: {np.mean(self.ep_rewards[-20:])}, Current Reward: {self.ep_reward[env_idx]}")
         self.active_idxs[env_idx].clear()
         self.set_all_fingers_pose(env_idx, pos_high=True)
 
-    def alt_terminate(self, env_idx, t_step):
+    def reset(self, env_idx, t_step):
         """ Terminate state when block degenerately collides with robot. This is due to an artifact of the simulation. """
         self.active_idxs[env_idx].clear()
         self.set_all_fingers_pose(env_idx, pos_high=True)
+        for i in range(self.num_tips[0]):
+            for j in range(self.num_tips[1]):
+                self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
+        self.ep_reward[env_idx] = 0
 
-    def step(self, env_idx, t_step, env_ptr):
+    def step(self, env_idx, t_step, env_ptr, agent):
         """ 
         Reset has 3 functions
         1. Setup the env, get the initial state and action, and set_attractor_pose of the robot.
@@ -276,30 +286,20 @@ class DeltaArraySim:
         # 3. set_attractor_pose of the robot to high pose so final image can be captured.
         """
         if t_step == 0:
-            self.ep_reward[env_idx] = 0
-            # self.get_scene_image(env_idx)
-            self.set_all_fingers_pose(env_idx, pos_high=True) # Set all fingers to high pose
-
-            for i in range(self.num_tips[0]):
-                for j in range(self.num_tips[1]):
-                    self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
-            
             _, self.init_state[env_idx] = self.get_nearest_robot_and_state(env_idx, final=False)
             if not self.dont_skip_episode:
                 return
 
-            # self.action[env_idx], self.log_pi[env_idx] = self.agent.policy_nw.get_action(self.init_state[env_idx])
-            # self.action[env_idx] = self.agent.rescale_action(self.action[env_idx].detach().squeeze(0).numpy())
-            if self.exploration_cutoff < self.current_episode:
-                self.action[env_idx] = self.agent.get_action(self.init_state[env_idx])
+            if self.current_episode > self.exploration_cutoff:
+                self.action[env_idx] = agent.get_action(self.init_state[env_idx])
             else:
-                # generate random uniform action between -0.03 and 0.03
                 self.action[env_idx] = np.random.uniform(-0.03, 0.03, size=(2,))
-            # print(self.action[env_idx])
-            self.set_nn_fingers_pose(env_idx, self.active_idxs[env_idx].keys())
+            
+            if self.ep_len == 0:
+                self.set_nn_fingers_pose_low(env_idx, self.active_idxs[env_idx].keys())
         elif (t_step == 1) and (self.dont_skip_episode):
             for idx in self.active_idxs[env_idx].keys():
-                # self.active_idxs[env_idx][idx] = 1000*self.action[env_idx] # Convert action to mm
+                # Convert action to mm
                 self.active_idxs[env_idx][idx][0] = 1000*self.action[env_idx][0]/(self.plane_size[1][0]-self.plane_size[0][0])*1080
                 self.active_idxs[env_idx][idx][1] = -1000*self.action[env_idx][1]/(self.plane_size[1][1]-self.plane_size[0][1])*1920
                 
@@ -311,9 +311,9 @@ class DeltaArraySim:
             for j in range(self.num_tips[1]):
                 self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.43), r=self.finga_q)) 
 
-    def log_data(self, env_idx, t_step):
+    def log_data(self, env_idx, t_step, agent):
         """ Store data about training progress in systematic data structures """
-        log_utils.log_data(self.agent.logger, self.ep_rewards, self.current_episode, self.start_time)
+        log_utils.log_data(agent.logger, self.ep_rewards, self.current_episode, self.start_time)
 
     def visual_servoing(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
@@ -325,21 +325,30 @@ class DeltaArraySim:
             else:
                 pass # Kill the pipeline somehow?
         if self.ep_len==0:
+            # Call the pretrained policy for all NN robots and set attractor
+            if (t_step in {0, 1}) and self.dont_skip_episode:
+                self.step(env_idx, t_step, env_ptr)
+        elif self.ep_len < self.cfg['task_params']['max_ep_len']:
+            # Gen actions from new policy and set attractor until max episodes
+            
+            if (t_step in {0, 1}) and self.dont_skip_episode:
+                self.step(env_idx, t_step, env_ptr)
+            elif (t_step == self.time_horizon-2) and self.dont_skip_episode:
+                self.compute_reward(env_idx, t_step)
+                if self.agent.replay_buffer.size > self.batch_size:
+                    self.agent.update(self.batch_size)
+                self.terminate(env_idx, t_step)
+            elif (t_step == self.time_horizon-2):
+                self.alt_terminate(env_idx, t_step)
+                self.dont_skip_episode = True
+            elif t_step == self.time_horizon - 1:
+                self.set_block_pose(env_idx) # Reset block to initial pose
+        else:
+            # Terminate episode and update policy
+            
             
 
 
-        if (t_step in {0, 1}) and self.dont_skip_episode:
-            self.step(env_idx, t_step, env_ptr)
-        elif (t_step == self.time_horizon-2) and self.dont_skip_episode:
-            self.compute_reward(env_idx, t_step)
-            if self.agent.replay_buffer.size > self.batch_size:
-                self.agent.update(self.batch_size)
-            self.terminate(env_idx, t_step)
-        elif (t_step == self.time_horizon-2):
-            self.alt_terminate(env_idx, t_step)
-            self.dont_skip_episode = True
-        elif t_step == self.time_horizon - 1:
-            self.set_block_pose(env_idx) # Reset block to initial pose
 
     def test_step(self, env_idx, t_step, env_ptr):
         """ 
@@ -360,7 +369,7 @@ class DeltaArraySim:
             
             _, self.init_state[env_idx] = self.get_nearest_robot_and_state(env_idx, final=False)
             self.action[env_idx] = self.agent.test_policy(self.init_state[env_idx])
-            self.set_nn_fingers_pose(env_idx, self.active_idxs[env_idx].keys())
+            self.set_nn_fingers_pose_low(env_idx, self.active_idxs[env_idx].keys())
         elif t_step == 1:
             for idx in self.active_idxs[env_idx].keys():
                 self.active_idxs[env_idx][idx][0] = 1000*self.action[env_idx][0]/(self.plane_size[1][0]-self.plane_size[0][0])*1080
