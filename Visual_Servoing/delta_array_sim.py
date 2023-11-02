@@ -103,9 +103,10 @@ class DeltaArraySim:
         if len(agents) == 1:
             self.agent = agent[0]
         else:
-            self.grasping_agent = agents[0]
-            self.pushing_agent = agents[1]
+            self.pretrained_agent = agents[0]
+            self.agent = agents[1]
         self.init_state = {}
+        self.goal_state = {}
         self.action = {}
         self.log_pi = {}
 
@@ -278,32 +279,29 @@ class DeltaArraySim:
                 self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
         self.ep_reward[env_idx] = 0
 
-    def step(self, env_idx, t_step, env_ptr, agent):
-        """ 
-        Reset has 3 functions
-        1. Setup the env, get the initial state and action, and set_attractor_pose of the robot.
-        2. Execute the action on the robot by set_attractor_target.
-        # 3. set_attractor_pose of the robot to high pose so final image can be captured.
-        """
-        if t_step == 0:
+    def get_state_and_nn_robots(self, env_idx, t_step, agent):
+        if (self.ep_len == 0) and (t_step == 0):
+            _, self.goal_state[env_idx] = self.get_nearest_robot_and_state(env_idx, final=False)
+        else:
             _, self.init_state[env_idx] = self.get_nearest_robot_and_state(env_idx, final=False)
-            if not self.dont_skip_episode:
-                return
-
-            if self.current_episode > self.exploration_cutoff:
-                self.action[env_idx] = agent.get_action(self.init_state[env_idx])
-            else:
-                self.action[env_idx] = np.random.uniform(-0.03, 0.03, size=(2,))
-            
-            if self.ep_len == 0:
+            if t_step == 1:
                 self.set_nn_fingers_pose_low(env_idx, self.active_idxs[env_idx].keys())
-        elif (t_step == 1) and (self.dont_skip_episode):
-            for idx in self.active_idxs[env_idx].keys():
-                # Convert action to mm
-                self.active_idxs[env_idx][idx][0] = 1000*self.action[env_idx][0]/(self.plane_size[1][0]-self.plane_size[0][0])*1080
-                self.active_idxs[env_idx][idx][1] = -1000*self.action[env_idx][1]/(self.plane_size[1][1]-self.plane_size[0][1])*1920
-                
-                self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][idx[0]][idx[1]], gymapi.Transform(p=self.finger_positions[idx[0]][idx[1]] + gymapi.Vec3(self.action[env_idx][0], self.action[env_idx][1], -0.47), r=self.finga_q)) 
+
+        if not self.dont_skip_episode:
+            return
+
+        if (self.current_episode > self.exploration_cutoff) or (self.ep_len == 0):
+            self.action[env_idx] = agent.get_action(self.init_state[env_idx])
+        else:
+            self.action[env_idx] = np.random.uniform(-0.03, 0.03, size=(2,))
+
+    def set_attractor_target(self, env_idx, t_step, env_ptr):
+        for idx in self.active_idxs[env_idx].keys():
+            # Convert action to mm
+            self.active_idxs[env_idx][idx][0] = 1000*self.action[env_idx][0]/(self.plane_size[1][0]-self.plane_size[0][0])*1080
+            self.active_idxs[env_idx][idx][1] = -1000*self.action[env_idx][1]/(self.plane_size[1][1]-self.plane_size[0][1])*1920
+            
+            self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][idx[0]][idx[1]], gymapi.Transform(p=self.finger_positions[idx[0]][idx[1]] + gymapi.Vec3(self.action[env_idx][0], self.action[env_idx][1], -0.47), r=self.finga_q)) 
 
     def sim_test(self, env_idx, t_step, env_ptr):
         """ Call this function to visualize the scene without taking any action """
@@ -317,22 +315,32 @@ class DeltaArraySim:
 
     def visual_servoing(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
-        env_ptr = self.scene.env_ptrs[env_idx]
-
+        
         if (t_step == 0) and (self.ep_len == 0):
             if self.current_episode < self.max_episodes:
                 self.current_episode += 1
             else:
                 pass # Kill the pipeline somehow?
+            
         if self.ep_len==0:
             # Call the pretrained policy for all NN robots and set attractor
-            if (t_step in {0, 1}) and self.dont_skip_episode:
-                self.step(env_idx, t_step, env_ptr)
+            if t_step == 0:
+                self.get_state_and_nn_robots(env_idx, t_step, self.pretrained_agent)
+            elif t_step == 1:
+                self.get_state_and_nn_robots(env_idx, t_step, self.pretrained_agent)
+            elif (t_step == 2) and self.dont_skip_episode:
+                self.ep_len += 1
+                env_ptr = self.scene.env_ptrs[env_idx]
+                self.set_attractor_target(env_idx, t_step, env_ptr)
+            elif not self.dont_skip_episode:
+                self.ep_len = 0
+                self.reset(env_idx, t_step)
+
         elif self.ep_len < self.cfg['task_params']['max_ep_len']:
             # Gen actions from new policy and set attractor until max episodes
             
-            if (t_step in {0, 1}) and self.dont_skip_episode:
-                self.step(env_idx, t_step, env_ptr)
+            if (t_step == 0) and self.dont_skip_episode:
+                self.get_state_and_nn_robots(env_idx, t_step, self.pretrained_agent)
             elif (t_step == self.time_horizon-2) and self.dont_skip_episode:
                 self.compute_reward(env_idx, t_step)
                 if self.agent.replay_buffer.size > self.batch_size:
