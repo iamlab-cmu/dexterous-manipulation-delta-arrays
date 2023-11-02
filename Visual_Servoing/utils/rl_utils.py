@@ -12,4 +12,6 @@ def reward_helper(init_bd_pts, new_bd_pts):
     # self.block_com[env_idx][1] = np.array((final_trans.p.x, final_trans.p.y))
     # block_l2_distance = np.linalg.norm(self.block_com[env_idx][1] - self.block_com[env_idx][0])
     tf = np.linalg.norm(M2[:2,3]) + abs(theta_degrees)
+    self.ep_reward[env_idx] += -nn_dist_loss[0]
+    self.ep_reward[env_idx] += -tf_loss*0.6
     return tf

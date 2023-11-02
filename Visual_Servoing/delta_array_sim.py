@@ -243,11 +243,16 @@ class DeltaArraySim:
         """
         init_bd_pts = self.bd_pts[env_idx]
         min_dist, self.final_state = self.get_nearest_robot_and_state(env_idx, final=True)
-        tf_loss = rl_utils.reward_helper(init_bd_pts, self.bd_pts[env_idx])
+        
         return tf_loss, min_dist
 
     def compute_reward(self, env_idx, t_step):
         """ Computes reward, saves it in ep_reward variable and returns True if the action was successful """
+        init_bd_pts = self.bd_pts[env_idx]
+        min_dist, self.final_state = self.get_nearest_robot_and_state(env_idx, final=True)
+        
+        tf_loss = rl_utils.reward_helper(init_bd_pts, self.bd_pts[env_idx])
+        
         tf_loss, nn_dist_loss = self.reward_helper(env_idx, t_step)
         self.ep_reward[env_idx] += -nn_dist_loss[0]
         self.ep_reward[env_idx] += -tf_loss*0.6
@@ -315,7 +320,7 @@ class DeltaArraySim:
 
     def visual_servoing(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
-        
+
         if (t_step == 0) and (self.ep_len == 0):
             if self.current_episode < self.max_episodes:
                 self.current_episode += 1
@@ -340,7 +345,7 @@ class DeltaArraySim:
             # Gen actions from new policy and set attractor until max episodes
             
             if (t_step == 0) and self.dont_skip_episode:
-                self.get_state_and_nn_robots(env_idx, t_step, self.pretrained_agent)
+                self.get_state_and_nn_robots(env_idx, t_step, self.agent)
             elif (t_step == self.time_horizon-2) and self.dont_skip_episode:
                 self.compute_reward(env_idx, t_step)
                 if self.agent.replay_buffer.size > self.batch_size:
