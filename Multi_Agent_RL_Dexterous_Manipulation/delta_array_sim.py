@@ -331,6 +331,7 @@ class DeltaArraySim:
             # Call the pretrained policy for all NN robots and set attractor
             if t_step == 0:
                 self.get_state_and_nn_robots(env_idx, t_step, self.pretrained_agent)
+                self.set_block_pose(env_idx) # Reset block to current initial pose
             elif t_step == 1:
                 self.get_state_and_nn_robots(env_idx, t_step, self.pretrained_agent)
             elif (t_step == 2) and self.dont_skip_episode:
@@ -341,12 +342,12 @@ class DeltaArraySim:
                 self.ep_len = 0
                 self.reset(env_idx, t_step)
 
-        elif self.ep_len < self.cfg['task_params']['max_ep_len']:
-            # Gen actions from new policy and set attractor until max episodes
-            
+        else:
+            # Gen actions from new policy and set attractor until max episodes            
             if (t_step == 0) and self.dont_skip_episode:
                 self.get_state_and_nn_robots(env_idx, t_step, self.agent)
             elif (t_step == self.time_horizon-2) and self.dont_skip_episode:
+                # Update policy
                 self.compute_reward(env_idx, t_step)
                 if self.agent.replay_buffer.size > self.batch_size:
                     self.agent.update(self.batch_size)
@@ -355,9 +356,10 @@ class DeltaArraySim:
                 self.alt_terminate(env_idx, t_step)
                 self.dont_skip_episode = True
             elif t_step == self.time_horizon - 1:
-                self.set_block_pose(env_idx) # Reset block to initial pose
-        else:
-            # Terminate episode and update policy
+                # Terminate episode
+                self.set_block_pose(env_idx) # Set block to next goal pose
+                self.ep_len = 0
+             
             
             
 
