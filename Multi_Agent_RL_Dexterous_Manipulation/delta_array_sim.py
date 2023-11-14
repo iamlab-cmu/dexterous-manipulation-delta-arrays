@@ -155,12 +155,17 @@ class DeltaArraySim:
         for (i,j) in idxs:
             self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.49), r=self.finga_q)])
 
-    def set_block_pose(self, env_idx):
+    def set_block_pose(self, env_idx, goal=False):
         """ Set the block pose to a random pose """
         # T = [0.13125, 0.1407285]
         # 0.0, -0.02165, 0.2625, 0.303107
-        T = [np.random.uniform(0.009, 0.21), np.random.uniform(0.005, 0.25)]
-        self.block_com[env_idx][0] = np.array((T))
+        if goal:
+            self.block_com[env_idx][0] = np.array([np.random.uniform(0.009, 0.21), np.random.uniform(0.005, 0.25)])
+            T = tuple(self.block_com[env_idx][0])
+        else:
+            self.block_com[env_idx][1] = self.block_com[env_idx][0] + np.array([0.01, 0])
+            T = tuple(self.block_com[env_idx][1])
+
         block_p = gymapi.Vec3(*T, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
         self.object.set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p)])
 
@@ -357,7 +362,7 @@ class DeltaArraySim:
                 self.dont_skip_episode = True
             elif t_step == self.time_horizon - 1:
                 # Terminate episode
-                self.set_block_pose(env_idx) # Set block to next goal pose
+                self.set_block_pose(env_idx, goal=True) # Set block to next goal pose
                 self.ep_len = 0
              
             
