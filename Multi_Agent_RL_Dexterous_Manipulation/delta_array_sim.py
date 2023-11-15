@@ -36,7 +36,7 @@ import utils.log_utils as log_utils
 import utils.rl_utils as rl_utils
 # import utils.SAC.sac as sac
 # import utils.SAC.reinforce as reinforce
-from utils.geometric_utils import icp
+from utils.geometric_utils import icp, GFT
 device = torch.device("cuda:0")
 
 class DeltaArraySim:
@@ -202,6 +202,8 @@ class DeltaArraySim:
             self.dont_skip_episode = False
             return None, None
         else:
+            obj_gft = GFT(seg_map)
+
             kmeans = self.KMeans.fit(boundary_pts)
             cluster_centers = kmeans.cluster_centers_
             
@@ -340,7 +342,8 @@ class DeltaArraySim:
             elif t_step == 1:
                 self.get_state_and_nn_robots(env_idx, t_step, self.pretrained_agent) #Store Init Pose
             elif (t_step == 2) and self.dont_skip_episode:
-                self.ep_len = 1
+                self.set_block_pose(env_idx, goal=True) # Remove this after GFT Debugging
+                self.ep_len = 0                         # Change this later to 1.
                 env_ptr = self.scene.env_ptrs[env_idx]
                 self.set_attractor_target(env_idx, t_step, env_ptr)
             elif not self.dont_skip_episode:
@@ -364,7 +367,7 @@ class DeltaArraySim:
                 # Terminate episode
                 self.set_block_pose(env_idx, goal=True) # Set block to next goal pose
                 self.ep_len = 0
-             
+            
             
             
 

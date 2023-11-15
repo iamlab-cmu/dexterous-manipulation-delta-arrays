@@ -1,6 +1,17 @@
 import numpy as np
-import open3d as o3d
+import time
 import matplotlib.pyplot as plt
+import cv2
+
+import open3d as o3d
+import networkx as nx
+import triangle as tr
+
+import scipy.linalg as linalg
+from scipy.spatial import Delaunay
+from scipy.spatial.transform import Rotation as R
+from skimage.measure import find_contours
+
 
 def icp(a, b, icp_radius = 200):
     # plt.scatter(a[:,0], a[:,1], c='r')
@@ -15,3 +26,108 @@ def icp(a, b, icp_radius = 200):
     reg_p2p = o3d.pipelines.registration.registration_icp(src, dest, icp_radius, np.identity(4),
                             o3d.pipelines.registration.TransformationEstimationPointToPoint())
     return reg_p2p.transformation
+
+class GFT:
+    def __init__(self, segmentation_map, n_triangles=100, plot_boundary=False):
+        self.seg_map = segmentation_map
+        self.seg_map = self.seg_map.astype(np.uint8)
+        self.G, vertices = self.seg_to_graph(n_triangles, plot_boundary)
+
+        # Each row in gft_signals is a gft along 1 dim of the signal. ie for (x,y) #rows = 2, for (x,y,z) #rows = 3
+        L = nx.normalized_laplacian_matrix(self.G).todense()
+        self.eigen_vals, self.eigen_vecs  = linalg.eigh(L)
+        self.vertices, self.og_gft_signals = self.graph_fourier_transform(vertices, igft=False)
+        # plt.scatter(*self.og_gft_signals)
+        # plt.show()
+
+        pos = {i: vertices[i] for i in range(vertices.shape[0])}
+        labels = {node: f'({x:.2f},{y:.2f})' for node, (x, y) in pos.items()}
+        plt.figure(figsize=(12,9))
+        nx.draw_networkx(self.G, pos=pos, labels=labels, node_size=20)
+        plt.show()
+        
+    def seg_to_graph(self, n_triangles=100, plot_boundary=False):
+        """
+        This function 
+        1. Takes a seg mask
+        2. Finds the largest contour
+        3. Computes a delaunay triangular mesh
+        4. Decimates the mesh to n_triangles
+        5. returns a graph
+        """
+        contours,_= cv2.findContours(self.seg_map,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+        max_contour = contours[0]
+        for contour in contours:
+            if cv2.contourArea(contour)>cv2.contourArea(max_contour):
+                max_contour=contour
+        boundary = max_contour.copy()
+        boundary.resize(boundary.shape[0], boundary.shape[-1])
+        if plot_boundary:
+            plt.scatter(boundary[:,0], boundary[:,1])
+            plt.show()
+        
+        segments = np.array(list(zip(np.arange(len(boundary)), np.roll(np.arange(len(boundary)), shift=-1))))
+        t = tr.triangulate({'vertices': boundary, 'segments': segments}, 'p')
+
+        mesh = o3d.geometry.TriangleMesh()
+        mesh.vertices = o3d.utility.Vector3dVector(np.hstack([boundary, np.zeros((boundary.shape[0], 1))]))
+        mesh.triangles = o3d.utility.Vector3iVector(t['triangles'])
+        # o3d.visualization.draw_geometries([mesh])
+        simplified_mesh = mesh.simplify_quadric_decimation(target_number_of_triangles=n_triangles)
+
+        vertices = np.asarray(simplified_mesh.vertices)[:,:2]
+        triangles = np.asarray(simplified_mesh.triangles)
+        # print(vertices.shape, triangles.shape)
+            
+        G = nx.Graph()
+        for ts in triangles:
+            for i in range(3):
+                start, end = ts[i], ts[(i+1)%3]
+                G.add_edge(start, end)
+        return G, vertices
+
+    def graph_fourier_transform(self, signal, igft = False):
+        gft_signals, inverse_gfts = [], []
+        for i in range(signal.shape[1]):
+            gft_signal = self.eigen_vecs.T@signal[:,i]
+            gft_signals.append(gft_signal)
+
+        if igft:
+            for gft_sig in gft_signals:
+                inverse_gfts.append(self.eigen_vecs@gft_sig)
+            return np.vstack(inverse_gfts).T, np.vstack(gft_signals)
+        else:
+            return None, np.vstack(gft_signals)
+
+    def translated_gft(self, translation):
+        tx_vertices = self.vertices + translation
+        _, gft_signals = self.graph_fourier_transform(tx_vertices)
+        return gft_signals
+
+    def rotated_gft(self, rot_matrix):
+        rx_vertices = self.vertices @ rot_matrix
+        _, gft_signals = self.graph_fourier_transform(rx_vertices)
+        return gft_signals
+
+    def generate_tx_data(self):
+        # Translation along x-axis
+        for i in np.arange(-200, 200):
+            tx_signal = self.translated_gft(np.array((i,0)))
+            residual = tx_signal - self.og_gft_signals
+            plt.scatter(*np.mean(residual, axis=1))
+
+        # Translation along y-axis
+        for i in np.arange(-200, 200):
+            tx_signal = self.translated_gft(np.array((0,i)))
+            residual = tx_signal - self.og_gft_signals
+            plt.scatter(*np.mean(residual, axis=1))
+        plt.show()
+
+    def generate_rx_data(self):
+        # Rotation from 0 to 360 degrees
+        angles = np.arange(0, 361, 10)
+        for angle in angles:
+            rx_signal = self.rotated_gft(R.from_euler('z', angle, degrees=True).as_matrix()[:2, :2])
+            residual = rx_signal - self.og_gft_signals
+            plt.scatter(*np.mean(residual, axis=1))
+        plt.show()

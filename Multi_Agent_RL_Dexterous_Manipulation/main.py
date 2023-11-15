@@ -81,15 +81,15 @@ class DeltaArraySimEnvironment():
             }
 
         if self.train_or_test=="train":
-            logger_kwargs = setup_logger_kwargs("ddpg_expt_0", 69420, data_dir="./data/rl_data")
+            logger_kwargs = setup_logger_kwargs("sac_expt_0", 69420, data_dir="./data/rl_data")
         # self.agent = ddpg.DDPG(env_dict, self.hp_dict, logger_kwargs)
         # self.agent = reinforce.REINFORCE(env_dict, 3e-3)
         self.grasping_agent = sac.SAC(env_dict, self.hp_dict, logger_kwargs)
-        self.grasping_agent.load_saved_policy('Visual_Servoing/models/trained_models/SAC_1_agent_stochastic/pyt_save/model.pt')
+        self.grasping_agent.load_saved_policy('./models/trained_models/SAC_1_agent_stochastic/pyt_save/model.pt')
 
         self.pushing_agent = sac.SAC(env_dict, self.hp_dict, logger_kwargs)
         if self.train_or_test=="test":
-            self.pushing_agent.load_saved_policy('Visual_Servoing/models/trained_models/SAC_2_agent_stochastic/pyt_save/model.pt')
+            self.pushing_agent.load_saved_policy('./models/trained_models/SAC_2_agent_stochastic/pyt_save/model.pt')
         
         self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.obj_name, self.model, self.transform, [self.grasping_agent, self.pushing_agent], num_tips = [8,8])
         self.cam = GymCamera(self.scene, cam_props = self.cfg['camera'])
@@ -181,7 +181,7 @@ class DeltaArrayRealEnvironment():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Args for sim/real test/train")
 
-    parser.add_argument("-r", "--real", action="store_true", help="True for Real Robot")
+    parser.add_argument("-r", "--real", action="store_true", help="True for Real Robot Expt")
     parser.add_argument("-t", "--test", action="store_true", help="True for Test")
     args = parser.parse_args()
     train_or_test = "test" if args.test else "train"
