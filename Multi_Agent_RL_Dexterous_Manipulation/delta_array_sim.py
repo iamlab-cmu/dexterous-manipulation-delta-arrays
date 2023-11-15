@@ -335,12 +335,12 @@ class DeltaArraySim:
         if self.ep_len==0:
             # Call the pretrained policy for all NN robots and set attractor
             if t_step == 0:
-                self.get_state_and_nn_robots(env_idx, t_step, self.pretrained_agent)
+                self.get_state_and_nn_robots(env_idx, t_step, self.pretrained_agent) #Store Goal Pose
                 self.set_block_pose(env_idx) # Reset block to current initial pose
             elif t_step == 1:
-                self.get_state_and_nn_robots(env_idx, t_step, self.pretrained_agent)
+                self.get_state_and_nn_robots(env_idx, t_step, self.pretrained_agent) #Store Init Pose
             elif (t_step == 2) and self.dont_skip_episode:
-                self.ep_len += 1
+                self.ep_len = 1
                 env_ptr = self.scene.env_ptrs[env_idx]
                 self.set_attractor_target(env_idx, t_step, env_ptr)
             elif not self.dont_skip_episode:
