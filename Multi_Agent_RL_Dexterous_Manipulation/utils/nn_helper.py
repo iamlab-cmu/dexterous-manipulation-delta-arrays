@@ -37,14 +37,14 @@ class NNHelper:
         """
         Returns the minimum distance between the boundary points and the robot positions, and the closest boundary point
         """
-        min_dists = {}
-        xys = {}
+        min_dists = []
+        xys = []
         for idx in active_idxs:
             tgt_pt = self.robot_positions[idx] + actions[idx]
             distances = np.linalg.norm(tgt_pt - boundary_pts, axis=1)
-            min_dists[idx] = np.min(distances)
-            xys[idx] = boundary_pts[np.argmin(distances)]
-        return min_dists, xys
+            min_dists.append(np.min(distances))
+            xys.append(boundary_pts[np.argmin(distances)])
+        return min_dists, np.array(xys)
 
     def expand_hull(self, hull):
         """

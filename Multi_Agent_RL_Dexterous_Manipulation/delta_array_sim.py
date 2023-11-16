@@ -84,6 +84,8 @@ class DeltaArraySim:
         self.active_idxs = {}
         self.active_IDs = set()
         self.actions = {} 
+        for env_idx in range(self.scene.n_envs):
+            self.actions[env_idx] = {}
         self.KMeans = KMeans(n_clusters=64, random_state=69, n_init='auto')
 
         """ Sim Util Vars """
@@ -212,21 +214,15 @@ class DeltaArraySim:
             self.bd_pts[env_idx] = cluster_centers
             # self.bd_pts[env_idx] = boundary_pts
             idxs, neg_idxs = self.nn_helper.get_nn_robots(self.bd_pts[env_idx])
-            self.active_idxs[env_idx] = list(idxs)
-            for idx in self.active_idxs[env_idx]:
-                self.actions[env_idx][idx] = np.array((0,0))
-            
-            
-            idxs = np.array(list(idxs))
-            # min_idx = tuple(idxs[np.lexsort((idxs[:, 0], idxs[:, 1]))][0])
-            min_idx = tuple(random.choice(tuple(idxs)))
             
             """ Single Robot Experiment. Change this to include entire neighborhood """
             if not final:
-                self.active_idxs[env_idx] = {min_idx: np.array((0,0))} # Store the action vector as value here later :)
+                self.active_idxs[env_idx] = list(idxs)
+                for idx in self.active_idxs[env_idx]:
+                    self.actions[env_idx][idx] = np.array((0,0))
             else:
-                # Use the same robot that was chosen initially.
-                min_idx = tuple(self.active_idxs[env_idx].keys())[0]
+                # do nothing
+                pass
 
             # [self.active_idxs[idx]=np.array((0,0)) for idx in idxs]
 
@@ -243,8 +239,13 @@ class DeltaArraySim:
             #     state = self.model(crop)
             # return state.detach().cpu().squeeze()
 
-            min_dist, xy = self.nn_helper.get_min_dist(self.bd_pts[env_idx], self.active_idxs[env_idx])
-            xy = torch.FloatTensor(np.array([xy[0]/1080, xy[1]/1920, self.nn_helper.robot_positions[min_idx][0]/1080, self.nn_helper.robot_positions[min_idx][1]/1920]))
+            min_dists, bd_pts = self.nn_helper.get_min_dist(self.bd_pts[env_idx], self.active_idxs[env_idx], self.actions[env_idx])
+            bd_pts = bd_pts/np.array((1080, 1920))
+            bd_pts = bd_pts.flatten()
+
+            """ How to represent state vector for MA system? """ 
+            # xy = torch.FloatTensor(np.array([[xy[0]/1080, xy[1]/1920] for i in xys] + 
+            #                         [self.nn_helper.robot_positions[min_idx][0]/1080, self.nn_helper.robot_positions[min_idx][1]/1920]))
             return min_dist, xy
 
     def reward_helper(self, env_idx, t_step):

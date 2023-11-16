@@ -84,7 +84,7 @@ class DeltaArraySimEnvironment():
             logger_kwargs = setup_logger_kwargs("sac_expt_0", 69420, data_dir="./data/rl_data")
         # self.agent = ddpg.DDPG(env_dict, self.hp_dict, logger_kwargs)
         # self.agent = reinforce.REINFORCE(env_dict, 3e-3)
-        self.grasping_agent = sac.SAC(env_dict, self.hp_dict, logger_kwargs, train_or_test="test")
+        self.grasping_agent = sac.SAC(env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
         self.grasping_agent.load_saved_policy('./models/trained_models/SAC_1_agent_stochastic/pyt_save/model.pt')
 
         self.pushing_agent = sac.SAC(env_dict, self.hp_dict, logger_kwargs, train_or_test="test")
@@ -171,7 +171,7 @@ class DeltaArrayRealEnvironment():
         self.agent = sac.SAC(env_dict, self.hp_dict, logger_kwargs=logger_kwargs, train_or_test=self.train_or_test)
         # self.agent = reinforce.REINFORCE(env_dict, 3e-3)
         if self.train_or_test=="test":
-            self.agent.load_saved_policy('Visual_Servoing/models/trained_models/SAC_1_agent_stochastic/pyt_save/model.pt')
+            self.agent.load_saved_policy('./models/trained_models/SAC_1_agent_stochastic/pyt_save/model.pt')
         self.delta_array = delta_array_real.DeltaArrayReal(None, None, agent=self.agent)
 
     def run(self):
