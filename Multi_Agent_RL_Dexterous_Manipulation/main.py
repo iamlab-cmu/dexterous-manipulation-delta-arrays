@@ -14,7 +14,7 @@ from isaacgym_utils.draw import draw_transforms, draw_contacts, draw_camera
 
 import torch
 import torchvision.transforms as transforms
-from torchvision.models import resnet18, ResNet18_Weights
+from torchvision.models import resnet18
 from scipy.spatial.distance import cosine
 
 import delta_array_sim
@@ -58,7 +58,7 @@ class DeltaArraySimEnvironment():
         #                     rb_props=self.cfg['fiducial']['rb_props'],
         #                     asset_options=self.cfg['fiducial']['asset_options'])
         
-        self.model = resnet18(weights=ResNet18_Weights.DEFAULT)
+        self.model = resnet18(weights="ResNet18_Weights.DEFAULT")
         self.model = torch.nn.Sequential(*list(self.model.children())[:-1])
         self.model.eval()
         self.model = self.model.to(device)
@@ -84,10 +84,10 @@ class DeltaArraySimEnvironment():
             logger_kwargs = setup_logger_kwargs("sac_expt_0", 69420, data_dir="./data/rl_data")
         # self.agent = ddpg.DDPG(env_dict, self.hp_dict, logger_kwargs)
         # self.agent = reinforce.REINFORCE(env_dict, 3e-3)
-        self.grasping_agent = sac.SAC(env_dict, self.hp_dict, logger_kwargs)
+        self.grasping_agent = sac.SAC(env_dict, self.hp_dict, logger_kwargs, train_or_test="test")
         self.grasping_agent.load_saved_policy('./models/trained_models/SAC_1_agent_stochastic/pyt_save/model.pt')
 
-        self.pushing_agent = sac.SAC(env_dict, self.hp_dict, logger_kwargs)
+        self.pushing_agent = sac.SAC(env_dict, self.hp_dict, logger_kwargs, train_or_test="test")
         if self.train_or_test=="test":
             self.pushing_agent.load_saved_policy('./models/trained_models/SAC_2_agent_stochastic/pyt_save/model.pt')
         

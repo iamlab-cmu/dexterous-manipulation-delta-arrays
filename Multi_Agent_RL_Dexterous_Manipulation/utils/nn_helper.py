@@ -9,15 +9,21 @@ import networkx as nx
 import pandas as pd
 
 class NNHelper:
-    def __init__(self, plane_size):
+    def __init__(self, plane_size, real_or_sim="real"):
         self.robot_positions = np.zeros((8,8,2))
         self.kdtree_positions = np.zeros((64, 2))
         for i in range(8):
             for j in range(8):
-                if i%2!=0:
-                    finger_pos = np.array((i*3.75, -j*4.3301 + 2.165))
+                if real_or_sim=="real":
+                    if i%2!=0:
+                        finger_pos = np.array((i*3.75, -j*4.3301 + 2.165))
+                    else:
+                        finger_pos = np.array((i*3.75, -j*4.3301))
                 else:
-                    finger_pos = np.array((i*3.75, -j*4.3301))
+                    if i%2!=0:
+                        finger_pos = np.array((i*37.5, j*43.301 - 21.65))
+                    else:
+                        finger_pos = np.array((i*37.5, j*43.301))
         
                 finger_pos[0] = (finger_pos[0] - plane_size[0][0])/(plane_size[1][0]-plane_size[0][0])*1080 - 0
                 finger_pos[1] = 1920 - (finger_pos[1] - plane_size[0][1])/(plane_size[1][1]-plane_size[0][1])*1920
@@ -31,14 +37,14 @@ class NNHelper:
         """
         Returns the minimum distance between the boundary points and the robot positions, and the closest boundary point
         """
-        min_dists = []
-        xys = []
+        min_dists = {}
+        xys = {}
         for idx in active_idxs:
             tgt_pt = self.robot_positions[idx] + actions[idx]
             distances = np.linalg.norm(tgt_pt - boundary_pts, axis=1)
-            min_dists.append(np.min(distances))
-            xys.append(boundary_pts[np.argmin(distances)])
-        return min_dists, np.array(xys)
+            min_dists[idx] = np.min(distances)
+            xys[idx] = boundary_pts[np.argmin(distances)]
+        return min_dists, xys
 
     def expand_hull(self, hull):
         """

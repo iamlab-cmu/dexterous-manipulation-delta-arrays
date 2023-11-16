@@ -49,7 +49,7 @@ class DeltaArrayReal:
         self.lower_green_filter = np.array([30, 5, 5])
         self.upper_green_filter = np.array([90, 255, 255])
         self.plane_size = np.array([(1.8, 1.9),(23.125, -36.225)])
-        self.nn_helper = helper.NNHelper(self.plane_size)
+        self.nn_helper = helper.NNHelper(self.plane_size, real_or_sim="real")
         
         """ Fingertip Vars """
         self.finger_positions_cm = np.zeros((8,8,2))

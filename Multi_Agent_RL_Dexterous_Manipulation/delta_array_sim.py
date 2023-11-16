@@ -67,7 +67,7 @@ class DeltaArraySim:
         self.lower_green_filter = np.array([35, 50, 50])
         self.upper_green_filter = np.array([85, 255, 255])
         self.plane_size = 1000*np.array([(0 - 0.063, 0 - 0.2095), (0.2625 + 0.063, 0.303107 + 0.1865)]) # 1000*np.array([(0.13125-0.025, 0.1407285-0.055),(0.13125+0.025, 0.1407285+0.055)])
-        self.nn_helper = helper.NNHelper(self.plane_size)
+        self.nn_helper = helper.NNHelper(self.plane_size, real_or_sim="sim")
         # self.save_iters = 0
         
         """ Fingertip Vars """
@@ -82,6 +82,8 @@ class DeltaArraySim:
         self.attraction_error = np.zeros((8,8))
         self.finga_q = gymapi.Quat(0, 0.707, 0, 0.707)
         self.active_idxs = {}
+        self.active_IDs = set()
+        self.actions = {} 
         self.KMeans = KMeans(n_clusters=64, random_state=69, n_init='auto')
 
         """ Sim Util Vars """
@@ -202,8 +204,7 @@ class DeltaArraySim:
             self.dont_skip_episode = False
             return None, None
         else:
-            obj_gft = GFT(seg_map)
-
+            # obj_gft = GFT(seg_map)
             kmeans = self.KMeans.fit(boundary_pts)
             cluster_centers = kmeans.cluster_centers_
             
@@ -211,6 +212,11 @@ class DeltaArraySim:
             self.bd_pts[env_idx] = cluster_centers
             # self.bd_pts[env_idx] = boundary_pts
             idxs, neg_idxs = self.nn_helper.get_nn_robots(self.bd_pts[env_idx])
+            self.active_idxs[env_idx] = list(idxs)
+            for idx in self.active_idxs[env_idx]:
+                self.actions[env_idx][idx] = np.array((0,0))
+            
+            
             idxs = np.array(list(idxs))
             # min_idx = tuple(idxs[np.lexsort((idxs[:, 0], idxs[:, 1]))][0])
             min_idx = tuple(random.choice(tuple(idxs)))

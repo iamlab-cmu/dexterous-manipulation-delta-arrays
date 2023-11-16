@@ -116,7 +116,7 @@ class SAC:
         return self.ac.act(torch.as_tensor(o, dtype=torch.float32), deterministic)
 
     def load_saved_policy(self, path):
-        self.ac.load_state_dict(torch.load('./data/rl_data/ddpg_expt_0/ddpg_expt_0_s69420/pyt_save/model.pt'))
+        self.ac.load_state_dict(torch.load('./data/rl_data/backup/ddpg_expt_0_s69420/pyt_save/model.pt'))
 
     def test_policy(self, o):
         with torch.no_grad():

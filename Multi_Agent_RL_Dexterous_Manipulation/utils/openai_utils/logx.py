@@ -153,6 +153,7 @@ class Logger:
         if self.exp_name is not None:
             config_json['exp_name'] = self.exp_name
         if proc_id()==0:
+            print(config_json)
             output = json.dumps(config_json, separators=(',',':\t'), indent=4, sort_keys=True)
             print(colorize('Saving config:\n', color='cyan', bold=True))
             print(output)
