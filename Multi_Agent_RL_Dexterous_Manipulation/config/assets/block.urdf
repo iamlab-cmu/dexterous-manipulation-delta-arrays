@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<robot name="block">
+  <link name="block">
+    <visual>
+      <origin xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="config/assets/block.obj"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="config/assets/block.obj"/>
+      </geometry>
+    </collision>
+    <!-- <inertial>
+      <mass value="0.068"/>
+      <inertia ixx="0.0001" ixy="0.0" ixz="0.0" iyy="0.0001" iyz="0.0" izz="0.0001"/>
+    </inertial> -->
+  </link>
+</robot>

@@ -28,23 +28,23 @@ def icp(a, b, icp_radius = 200):
     return reg_p2p.transformation
 
 class GFT:
-    def __init__(self, segmentation_map, n_triangles=100, plot_boundary=False):
-        self.seg_map = segmentation_map
-        self.seg_map = self.seg_map.astype(np.uint8)
+    def __init__(self, boundary, n_triangles=100, plot_boundary=False):
+        self.boundary = boundary
+        # self.seg_map = self.seg_map.astype(np.uint8)
         self.G, vertices = self.seg_to_graph(n_triangles, plot_boundary)
 
         # Each row in gft_signals is a gft along 1 dim of the signal. ie for (x,y) #rows = 2, for (x,y,z) #rows = 3
         L = nx.normalized_laplacian_matrix(self.G).todense()
         self.eigen_vals, self.eigen_vecs  = linalg.eigh(L)
-        self.vertices, self.og_gft_signals = self.graph_fourier_transform(vertices, igft=False)
+        self.vertices, self.gft = self.graph_fourier_transform(vertices, igft=False)
         # plt.scatter(*self.og_gft_signals)
         # plt.show()
 
-        pos = {i: vertices[i] for i in range(vertices.shape[0])}
-        labels = {node: f'({x:.2f},{y:.2f})' for node, (x, y) in pos.items()}
-        plt.figure(figsize=(12,9))
-        nx.draw_networkx(self.G, pos=pos, labels=labels, node_size=20)
-        plt.show()
+        # pos = {i: vertices[i] for i in range(vertices.shape[0])}
+        # labels = {node: f'({x:.2f},{y:.2f})' for node, (x, y) in pos.items()}
+        # plt.figure(figsize=(12,9))
+        # nx.draw_networkx(self.G, pos=pos, labels=labels, node_size=20)
+        # plt.show()
         
     def seg_to_graph(self, n_triangles=100, plot_boundary=False):
         """
@@ -55,22 +55,22 @@ class GFT:
         4. Decimates the mesh to n_triangles
         5. returns a graph
         """
-        contours,_= cv2.findContours(self.seg_map,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
-        max_contour = contours[0]
-        for contour in contours:
-            if cv2.contourArea(contour)>cv2.contourArea(max_contour):
-                max_contour=contour
-        boundary = max_contour.copy()
-        boundary.resize(boundary.shape[0], boundary.shape[-1])
+        # contours,_= cv2.findContours(self.boundary,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+        # max_contour = contours[0]
+        # for contour in contours:
+        #     if cv2.contourArea(contour)>cv2.contourArea(max_contour):
+        #         max_contour=contour
+        # boundary = max_contour.copy()
+        # boundary.resize(boundary.shape[0], boundary.shape[-1])
         if plot_boundary:
-            plt.scatter(boundary[:,0], boundary[:,1])
+            plt.scatter(self.boundary[:,0], self.boundary[:,1])
             plt.show()
         
-        segments = np.array(list(zip(np.arange(len(boundary)), np.roll(np.arange(len(boundary)), shift=-1))))
-        t = tr.triangulate({'vertices': boundary, 'segments': segments}, 'p')
+        segments = np.array(list(zip(np.arange(len(self.boundary)), np.roll(np.arange(len(self.boundary)), shift=-1))))
+        t = tr.triangulate({'vertices': self.boundary, 'segments': segments}, 'p')
 
         mesh = o3d.geometry.TriangleMesh()
-        mesh.vertices = o3d.utility.Vector3dVector(np.hstack([boundary, np.zeros((boundary.shape[0], 1))]))
+        mesh.vertices = o3d.utility.Vector3dVector(np.hstack([self.boundary, np.zeros((self.boundary.shape[0], 1))]))
         mesh.triangles = o3d.utility.Vector3iVector(t['triangles'])
         # o3d.visualization.draw_geometries([mesh])
         simplified_mesh = mesh.simplify_quadric_decimation(target_number_of_triangles=n_triangles)
@@ -108,6 +108,12 @@ class GFT:
         rx_vertices = self.vertices @ rot_matrix
         _, gft_signals = self.graph_fourier_transform(rx_vertices)
         return gft_signals
+
+    def plot_embeddings(self, og_gft, tf_gfts):
+        for tf_gft in tf_gfts:
+            embed = np.linalg.norm(og_gft - tf_gft, axis=1)
+            plt.scatter(*embed)
+        plt.show()
 
     def generate_tx_data(self):
         # Translation along x-axis

@@ -109,6 +109,9 @@ class DeltaArraySim:
         else:
             self.pretrained_agent = agents[0]
             self.agent = agents[1]
+
+        self.og_gft = None
+        self.new_gft = []
         self.init_state = {}
         self.goal_state = {}
         self.action = {}
@@ -179,6 +182,21 @@ class DeltaArraySim:
         frames = self.cam.frames(env_idx, self.cam_name)
         self.current_scene_frame[env_idx] = frames
 
+    def get_camera_image(self, env_idx):
+        self.scene.render_cameras()
+        frames = self.cam.frames(env_idx, self.cam_name)
+        return frames['color'].data.astype(np.uint8)
+
+    def get_boundary_pts(self, img):
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(hsv, self.lower_green_filter, self.upper_green_filter)
+        seg_map = cv2.bitwise_and(img, img, mask = mask)
+        seg_map = cv2.cvtColor(seg_map, cv2.COLOR_BGR2GRAY)
+
+        boundary = cv2.Canny(seg_map,100,200)
+        boundary_pts = np.array(np.where(boundary==255)).T
+        return seg_map, boundary_pts
+
     def get_nearest_robot_and_state(self, env_idx, final=False):
         """ 
         A helper function to get the nearest robot to the block and crop the image around it 
@@ -188,20 +206,9 @@ class DeltaArraySim:
 
         Returns nearest boundary distance and state of the MDP
         """
-        # plt.figure(figsize=(6.6667,11.85))
-        self.scene.render_cameras()
-        frames = self.cam.frames(env_idx, self.cam_name)
-        img = frames['color'].data.astype(np.uint8)
-        # plt.imshow(img)
-        # plt.show()
+        img = self.get_camera_image(env_idx)
+        seg_map, boundary_pts = self.get_boundary_pts(img)
         
-        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        mask = cv2.inRange(hsv, self.lower_green_filter, self.upper_green_filter)
-        seg_map = cv2.bitwise_and(img, img, mask = mask)
-        seg_map = cv2.cvtColor(seg_map, cv2.COLOR_BGR2GRAY)
-
-        boundary = cv2.Canny(seg_map,100,200)
-        boundary_pts = np.array(np.where(boundary==255)).T
         if len(boundary_pts) < 64:
             self.dont_skip_episode = False
             return None, None
@@ -215,7 +222,6 @@ class DeltaArraySim:
             # self.bd_pts[env_idx] = boundary_pts
             idxs, neg_idxs = self.nn_helper.get_nn_robots(self.bd_pts[env_idx])
             
-            """ Single Robot Experiment. Change this to include entire neighborhood """
             if not final:
                 self.active_idxs[env_idx] = list(idxs)
                 for idx in self.active_idxs[env_idx]:
@@ -322,11 +328,37 @@ class DeltaArraySim:
             
             self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][idx[0]][idx[1]], gymapi.Transform(p=self.finger_positions[idx[0]][idx[1]] + gymapi.Vec3(self.action[env_idx][0], self.action[env_idx][1], -0.47), r=self.finga_q)) 
 
-    def sim_test(self, env_idx, t_step, env_ptr):
+    def sim_test(self, scene, env_idx, t_step, _):
         """ Call this function to visualize the scene without taking any action """
-        for i in range(self.num_tips[0]):
-            for j in range(self.num_tips[1]):
-                self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.43), r=self.finga_q)) 
+        env_ptr = self.scene.env_ptrs[env_idx]
+        t_step = t_step % self.time_horizon
+        if t_step == 0:
+            if self.og_gft is not None:
+                self.og_gft.plot_embeddings(self.og_gft, self.new_gft)
+            self.og_gft = None
+            del self.new_gft
+            self.new_gft = []
+            for i in range(self.num_tips[0]):
+                for j in range(self.num_tips[1]):
+                    self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.43), r=self.finga_q)) 
+        elif t_step == 1:
+            img = self.get_camera_image(env_idx)
+            seg_map, boundary_pts = self.get_boundary_pts(img)
+            kmeans = self.KMeans.fit(boundary_pts)
+            cluster_centers = kmeans.cluster_centers_
+            self.og_gft = GFT(seg_map)
+        elif t_step % 2 == 0:
+            # 0.0, -0.02165, 0.2625, 0.303107
+            block_p = gymapi.Vec3(0 + 0.2625*t_step/time_horizon, 0.1407285, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
+            self.object.set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p)])
+        else:
+            img = self.get_camera_image(env_idx)
+            seg_map, boundary_pts = self.get_boundary_pts(img)
+            kmeans = self.KMeans.fit(boundary_pts)
+            cluster_centers = kmeans.cluster_centers_
+            self.new_gft.append(GFT(seg_map))
+
+
 
     def log_data(self, env_idx, t_step, agent):
         """ Store data about training progress in systematic data structures """

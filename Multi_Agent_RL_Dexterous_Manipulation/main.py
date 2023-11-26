@@ -9,7 +9,7 @@ from isaacgym import gymapi
 from isaacgym_utils.scene import GymScene
 from isaacgym_utils.assets import GymBoxAsset, GymCapsuleAsset, GymURDFAsset
 from isaacgym_utils.camera import GymCamera
-from isaacgym_utils.math_utils import RigidTransform_to_transform
+from isaacgym_utils.math_utils import RigidTransform_to_transform, rpy_to_quat
 from isaacgym_utils.draw import draw_transforms, draw_contacts, draw_camera
 
 import torch
@@ -37,10 +37,16 @@ class DeltaArraySimEnvironment():
             os.makedirs('./data/manip_data')
 
         self.obj_name = "block"
-        self.object = GymBoxAsset(self.scene, **self.cfg['block']['dims'], 
+        # self.object = GymBoxAsset(self.scene, **self.cfg['block']['dims'], 
+        #                     shape_props=self.cfg['block']['shape_props'], 
+        #                     rb_props=self.cfg['block']['rb_props'],
+        #                     asset_options=self.cfg['block']['asset_options'])
+        
+        self.object = GymURDFAsset(self.cfg['block']['urdf_path'], self.scene, 
                             shape_props=self.cfg['block']['shape_props'], 
                             rb_props=self.cfg['block']['rb_props'],
-                            asset_options=self.cfg['block']['asset_options'])
+                            asset_options=self.cfg['block']['asset_options'],
+                            assets_root=Path('config'))
 
         self.table = GymURDFAsset(self.cfg['table']['urdf_path'], self.scene,
                         asset_options=self.cfg['table']['asset_options'],
@@ -124,8 +130,9 @@ class DeltaArraySimEnvironment():
         for i in self.scene.env_idxs:
             self.fingers.set_attractor_handles(i)
 
-        object_p = gymapi.Vec3(0.13125, 0.1407285, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
-        object_transforms = [gymapi.Transform(p=object_p) for _ in range(self.scene.n_envs)]
+        object_p = gymapi.Vec3(0.13125, 0.2407285, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
+        object_r = gymapi.Quat(0.5, 0.5, 0.5, 0.5)
+        object_transforms = [gymapi.Transform(p=object_p, r=object_r) for _ in range(self.scene.n_envs)]
         table_transforms = [gymapi.Transform(p=gymapi.Vec3(0,0,0.5)) for _ in range(self.scene.n_envs)]
         # fiducial_rb = [gymapi.Transform(p=gymapi.Vec3(-0.2035, -0.06, 1.0052)) for _ in range(self.scene.n_envs)]
         # fiducial_lt = [gymapi.Transform(p=gymapi.Vec3(0.303107 + 0.182, 0.2625 + 0.06, 1.0052)) for _ in range(self.scene.n_envs)]
@@ -143,10 +150,11 @@ class DeltaArraySimEnvironment():
             # self.fiducial_rb.set_rb_transforms(env_idx, "fiducial_rb", [fiducial_rb[env_idx]])
 
     def run(self):
-        if self.train_or_test=="train":
-            self.scene.run(policy=self.fingers.visual_servoing)
-        else:
-            self.scene.run(policy=self.fingers.test_learned_policy)
+        self.scene.run(policy=self.fingers.sim_test)
+        # if self.train_or_test=="train":
+        #     self.scene.run(policy=self.fingers.visual_servoing)
+        # else:
+        #     self.scene.run(policy=self.fingers.test_learned_policy)
 
 class DeltaArrayRealEnvironment():
     def __init__(self, train_or_test="test"):
