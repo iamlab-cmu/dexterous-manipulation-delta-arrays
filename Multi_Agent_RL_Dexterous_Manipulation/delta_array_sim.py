@@ -126,6 +126,17 @@ class DeltaArraySim:
 
         self.start_time = time.time()
 
+        # Traj testing code for GFT debugging
+        corners = np.array([[0, 0], [0.2625, 0], [0.2625, 0.2414], [0, 0.2414], [0, 0]])
+        num_steps = 77
+        steps_per_side = num_steps // 4
+        self.traj = []
+        for i in range(4):
+            side_points = np.linspace(corners[i], corners[i+1], steps_per_side, endpoint=False)
+            self.traj.extend(side_points)
+        self.traj.append([0, 0])
+        self.traj = np.array(self.traj[:num_steps])
+
     def set_attractor_handles(self, env_idx):
         """ Creates an attractor handle for each fingertip """
         env_ptr = self.scene.env_ptrs[env_idx]
@@ -340,23 +351,27 @@ class DeltaArraySim:
             self.new_gft = []
             for i in range(self.num_tips[0]):
                 for j in range(self.num_tips[1]):
-                    self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.43), r=self.finga_q)) 
+                    self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
         elif t_step == 1:
             img = self.get_camera_image(env_idx)
             seg_map, boundary_pts = self.get_boundary_pts(img)
             kmeans = self.KMeans.fit(boundary_pts)
             cluster_centers = kmeans.cluster_centers_
-            self.og_gft = GFT(seg_map)
+            pkl.dump(cluster_centers, open(f"cluster_centers.pkl", "wb"))
+            self.og_gft = GFT(cluster_centers)
         elif t_step % 2 == 0:
             # 0.0, -0.02165, 0.2625, 0.303107
-            block_p = gymapi.Vec3(0 + 0.2625*t_step/time_horizon, 0.1407285, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
-            self.object.set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p)])
+            # block_p = gymapi.Vec3(0 + 0.2625*t_step/self.time_horizon, 0.1407285, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
+            xy = self.traj[(t_step-2)//2]
+            block_p = gymapi.Vec3(*xy, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
+            block_r = gymapi.Quat(0.5, 0.5, 0.5, 0.5)
+            self.object.set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p, r=block_r)])
         else:
             img = self.get_camera_image(env_idx)
             seg_map, boundary_pts = self.get_boundary_pts(img)
             kmeans = self.KMeans.fit(boundary_pts)
             cluster_centers = kmeans.cluster_centers_
-            self.new_gft.append(GFT(seg_map))
+            self.new_gft.append(GFT(cluster_centers))
 
 
 

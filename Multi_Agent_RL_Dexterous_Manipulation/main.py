@@ -130,7 +130,7 @@ class DeltaArraySimEnvironment():
         for i in self.scene.env_idxs:
             self.fingers.set_attractor_handles(i)
 
-        object_p = gymapi.Vec3(0.13125, 0.2407285, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
+        object_p = gymapi.Vec3(0.13125, 0.1407285, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
         object_r = gymapi.Quat(0.5, 0.5, 0.5, 0.5)
         object_transforms = [gymapi.Transform(p=object_p, r=object_r) for _ in range(self.scene.n_envs)]
         table_transforms = [gymapi.Transform(p=gymapi.Vec3(0,0,0.5)) for _ in range(self.scene.n_envs)]

@@ -2,6 +2,7 @@ import numpy as np
 import time
 import matplotlib.pyplot as plt
 import cv2
+from matplotlib.colors import LinearSegmentedColormap
 
 import open3d as o3d
 import networkx as nx
@@ -28,10 +29,11 @@ def icp(a, b, icp_radius = 200):
     return reg_p2p.transformation
 
 class GFT:
-    def __init__(self, boundary, n_triangles=100, plot_boundary=False):
+    def __init__(self, boundary, n_triangles=60, plot_boundary=False):
         self.boundary = boundary
         # self.seg_map = self.seg_map.astype(np.uint8)
         self.G, vertices = self.seg_to_graph(n_triangles, plot_boundary)
+        
 
         # Each row in gft_signals is a gft along 1 dim of the signal. ie for (x,y) #rows = 2, for (x,y,z) #rows = 3
         L = nx.normalized_laplacian_matrix(self.G).todense()
@@ -46,7 +48,7 @@ class GFT:
         # nx.draw_networkx(self.G, pos=pos, labels=labels, node_size=20)
         # plt.show()
         
-    def seg_to_graph(self, n_triangles=100, plot_boundary=False):
+    def seg_to_graph(self, n_triangles=60, plot_boundary=False):
         """
         This function 
         1. Takes a seg mask
@@ -66,27 +68,33 @@ class GFT:
             plt.scatter(self.boundary[:,0], self.boundary[:,1])
             plt.show()
         
-        segments = np.array(list(zip(np.arange(len(self.boundary)), np.roll(np.arange(len(self.boundary)), shift=-1))))
-        t = tr.triangulate({'vertices': self.boundary, 'segments': segments}, 'p')
+        # segments = np.array(list(zip(np.arange(len(self.boundary)), np.roll(np.arange(len(self.boundary)), shift=-1))))
+        t = tr.triangulate({'vertices': self.boundary})
 
-        mesh = o3d.geometry.TriangleMesh()
-        mesh.vertices = o3d.utility.Vector3dVector(np.hstack([self.boundary, np.zeros((self.boundary.shape[0], 1))]))
-        mesh.triangles = o3d.utility.Vector3iVector(t['triangles'])
+        # mesh = o3d.geometry.TriangleMesh()
+        # mesh.vertices = o3d.utility.Vector3dVector(np.hstack([self.boundary, np.zeros((self.boundary.shape[0], 1))]))
+        # mesh.triangles = o3d.utility.Vector3iVector(t['triangles'])
         # o3d.visualization.draw_geometries([mesh])
-        simplified_mesh = mesh.simplify_quadric_decimation(target_number_of_triangles=n_triangles)
+        # simplified_mesh = mesh.simplify_quadric_decimation(target_number_of_triangles=n_triangles)
 
-        vertices = np.asarray(simplified_mesh.vertices)[:,:2]
-        triangles = np.asarray(simplified_mesh.triangles)
-        # print(vertices.shape, triangles.shape)
+        vertices = np.array(t['vertices'])
+        triangles = np.array(t['triangles'])
             
         G = nx.Graph()
-        for ts in triangles:
+        for triangle in triangles:
             for i in range(3):
-                start, end = ts[i], ts[(i+1)%3]
+                start, end = triangle[i], triangle[(i+1)%3]
                 G.add_edge(start, end)
+        
+        # pos = {i: vertices[i] for i in range(vertices.shape[0])}
+        # labels = {node: f'({x:.2f},{y:.2f})' for node, (x, y) in pos.items()}
+        # plt.figure(figsize=(12,9))
+        # nx.draw_networkx(G, pos=pos, labels=labels, node_size=20)
+        # plt.show()
         return G, vertices
 
     def graph_fourier_transform(self, signal, igft = False):
+        # Compute GFT along each dimension of the graph x,y,z
         gft_signals, inverse_gfts = [], []
         for i in range(signal.shape[1]):
             gft_signal = self.eigen_vecs.T@signal[:,i]
@@ -110,9 +118,12 @@ class GFT:
         return gft_signals
 
     def plot_embeddings(self, og_gft, tf_gfts):
+        n = np.arange(len(tf_gfts))
+        embeds = []
         for tf_gft in tf_gfts:
-            embed = np.linalg.norm(og_gft - tf_gft, axis=1)
-            plt.scatter(*embed)
+            embeds.append(np.linalg.norm(og_gft.gft - tf_gft.gft, axis=1))
+        embeds = np.vstack(embeds).T
+        plt.scatter(*embeds ,c=n, cmap="Blues")
         plt.show()
 
     def generate_tx_data(self):
