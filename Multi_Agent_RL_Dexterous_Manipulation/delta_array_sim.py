@@ -126,6 +126,8 @@ class DeltaArraySim:
 
         self.start_time = time.time()
 
+        self.state = np.zeros((self.scene.n_envs, 36))
+
         # Traj testing code for GFT debugging
         corners = np.array([[0, 0], [0.2625, 0], [0.2625, 0.2414], [0, 0.2414], [0, 0]])
         num_steps = 77

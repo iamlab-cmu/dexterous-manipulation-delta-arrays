@@ -121,7 +121,7 @@ class GFT:
         n = np.arange(len(tf_gfts))
         embeds = []
         for tf_gft in tf_gfts:
-            embeds.append(np.linalg.norm(og_gft.gft - tf_gft.gft, axis=1))
+            embeds.append(np.mean(og_gft.gft - tf_gft.gft, axis=1))
         embeds = np.vstack(embeds).T
         plt.scatter(*embeds ,c=n, cmap="Blues")
         plt.show()
