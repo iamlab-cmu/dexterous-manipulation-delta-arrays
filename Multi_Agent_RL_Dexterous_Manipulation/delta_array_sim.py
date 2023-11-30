@@ -36,11 +36,11 @@ import utils.log_utils as log_utils
 import utils.rl_utils as rl_utils
 # import utils.SAC.sac as sac
 # import utils.SAC.reinforce as reinforce
-from utils.geometric_utils import icp, GFT
+import utils.geometric_utils as geom_utils
 device = torch.device("cuda:0")
 
 class DeltaArraySim:
-    def __init__(self, scene, cfg, obj, obj_name, img_embed_model, transform, agents, num_tips = [8,8]):
+    def __init__(self, scene, cfg, obj, obj_name, img_embed_model, transform, agents, num_tips = [8,8], max_agents=15):
         """ Main Vars """
         self.scene = scene
         self.cfg = cfg
@@ -59,6 +59,7 @@ class DeltaArraySim:
                     asset_options=cfg['capsule']['asset_options']
                 ))
         """ Data Collection Vars """
+        self.img_size = np.array((1080, 1920))
         self.envs_done = 0
         self.block_com = np.zeros((self.scene.n_envs, 2, 2))
         cols = ['com_x1', 'com_y1', 'com_x2', 'com_y2'] + [f'robotx_{i}' for i in range(64)] + [f'roboty_{i}' for i in range(64)]
@@ -110,10 +111,8 @@ class DeltaArraySim:
             self.pretrained_agent = agents[0]
             self.agent = agents[1]
 
-        self.og_gft = None
-        self.new_gft = []
-        self.init_state = {}
-        self.goal_state = {}
+        self.init_state = np.zeros((self.scene.n_envs, max_agents, 38))
+        self.final_state = np.zeros((self.scene.n_envs, max_agents, 38))
         self.action = {}
         self.log_pi = {}
 
@@ -126,9 +125,9 @@ class DeltaArraySim:
 
         self.start_time = time.time()
 
-        self.state = np.zeros((self.scene.n_envs, 36))
-
         # Traj testing code for GFT debugging
+        self.og_gft = None
+        self.new_gft = []
         corners = np.array([[0, 0], [0.2625, 0], [0.2625, 0.2414], [0, 0.2414], [0, 0]])
         num_steps = 77
         steps_per_side = num_steps // 4
@@ -210,7 +209,7 @@ class DeltaArraySim:
         boundary_pts = np.array(np.where(boundary==255)).T
         return seg_map, boundary_pts
 
-    def get_nearest_robot_and_state(self, env_idx, final=False):
+    def get_nearest_robot_and_state(self, env_idx, final=False, init_bd_pts=None):
         """ 
         A helper function to get the nearest robot to the block and crop the image around it 
         Get camera image -> Segment it -> Convert boundary to cartesian coordinate space in mm ->
@@ -226,70 +225,53 @@ class DeltaArraySim:
             self.dont_skip_episode = False
             return None, None
         else:
-            # obj_gft = GFT(seg_map)
             kmeans = self.KMeans.fit(boundary_pts)
-            cluster_centers = kmeans.cluster_centers_
+            bd_cluster_centers = kmeans.cluster_centers_
             
-            # This array stores the boundary points of the object
-            self.bd_pts[env_idx] = cluster_centers
-            # self.bd_pts[env_idx] = boundary_pts
-            idxs, neg_idxs = self.nn_helper.get_nn_robots(self.bd_pts[env_idx])
+            self.bd_pts[env_idx] = boundary_pts
+
+            # Get indices of nearest robots to the boundary. We are not using neg_idxs for now. 
+            idxs, neg_idxs = self.nn_helper.get_nn_robots(bd_cluster_centers)
             
             if not final:
                 self.active_idxs[env_idx] = list(idxs)
                 for idx in self.active_idxs[env_idx]:
                     self.actions[env_idx][idx] = np.array((0,0))
+                
+                # We are not using min_dists for now.
+                min_dists, self.nn_bd_pts = self.nn_helper.get_min_dist(bd_cluster_centers, self.active_idxs[env_idx], self.actions[env_idx])
+                self.nn_bd_pts = self.nn_bd_pts/self.img_size
+
             else:
-                # do nothing
-                pass
+                obj_2d_tf = geom_utils.get_transform(init_bd_pts/self.img_size, self.bd_pts[env_idx]/self.img_size)
+                self.nn_bd_pts = geom_utils.transform_pts(self.nn_bd_pts, obj_2d_tf)
 
-            # [self.active_idxs[idx]=np.array((0,0)) for idx in idxs]
+            nn_bd_pt_pad = np.zeros((30))
+            # *2 cos 2D points. For 3D case, *3. 
+            nn_bd_pt_pad[:self.nn_bd_pts.shape[0]*2] = self.nn_bd_pts.flatten()
 
-            # finger_pos = self.nn_helper.robot_positions[min_idx].astype(np.int32)
-            # crop = seg_map[finger_pos[0]-112:finger_pos[0]+112, finger_pos[1]-112:finger_pos[1]+112]
-            # plt.imshow(crop)
-            # plt.show()
-            # # crop = cv2.resize(crop, (224,224))
-            # cols = np.random.rand(3)
-            # crop = np.dstack((crop, crop, crop))*cols
-            # crop = Image.fromarray(np.uint8(crop*255))
-            # crop = self.transform(crop).unsqueeze(0).to(device)
-            # with torch.no_grad():
-            #     state = self.model(crop)
-            # return state.detach().cpu().squeeze()
+            for n, agent_idx in enumerate(self.active_idxs[env_idx]):
+                self.init_state[env_idx][n][6:36] = nn_bd_pt_pad
+                self.init_state[env_idx][n][36:38] =  self.nn_helper.robot_positions[agent_idx]/self.img_size
 
-            min_dists, bd_pts = self.nn_helper.get_min_dist(self.bd_pts[env_idx], self.active_idxs[env_idx], self.actions[env_idx])
-            bd_pts = bd_pts/np.array((1080, 1920))
-            bd_pts = bd_pts.flatten()
-
-            """ How to represent state vector for MA system? """ 
-            # xy = torch.FloatTensor(np.array([[xy[0]/1080, xy[1]/1920] for i in xys] + 
-            #                         [self.nn_helper.robot_positions[min_idx][0]/1080, self.nn_helper.robot_positions[min_idx][1]/1920]))
+            """ VERIFY THIS CODE IS CORRECT and MOVE ON TO MASAC """
             return min_dist, xy
 
-    def reward_helper(self, env_idx, t_step):
+    def compute_reward(self, env_idx, t_step):
         """ 
         Computes the reward for the quasi-static phase
-        1. Shortest distance between the robot and the block boundary
-        2. ICP output transformation matrix to get delta_xy, and abs(theta)
+            1. Shortest distance between the robot and the block boundary
+            2. ICP output transformation matrix to get delta_xy, and abs(theta)
         Combine both to compute the final reward
         """
+        # This function is utterly incomplete. Fix it before running final init expt
         init_bd_pts = self.bd_pts[env_idx]
-        min_dist, self.final_state = self.get_nearest_robot_and_state(env_idx, final=True)
+        min_dist, self.final_state, tf_loss = self.get_nearest_robot_and_state(env_idx, final=True, init_bd_pts=init_bd_pts)
         
-        return tf_loss, min_dist
-
-    def compute_reward(self, env_idx, t_step):
-        """ Computes reward, saves it in ep_reward variable and returns True if the action was successful """
-        init_bd_pts = self.bd_pts[env_idx]
-        min_dist, self.final_state = self.get_nearest_robot_and_state(env_idx, final=True)
         
-        tf_loss = rl_utils.reward_helper(init_bd_pts, self.bd_pts[env_idx])
-        
-        tf_loss, nn_dist_loss = self.reward_helper(env_idx, t_step)
-        self.ep_reward[env_idx] += -nn_dist_loss[0]
+        self.ep_reward[env_idx] += -min_dist
         self.ep_reward[env_idx] += -tf_loss*0.6
-        return True 
+        return True
 
     def terminate(self, env_idx, t_step, agent):
         """ Update the replay buffer and reset the env """
@@ -309,7 +291,7 @@ class DeltaArraySim:
         self.set_all_fingers_pose(env_idx, pos_high=True)
 
     def reset(self, env_idx, t_step):
-        """ Terminate state when block degenerately collides with robot. This is due to an artifact of the simulation. """
+        """ Normal reset OR Alt-terminate state when block degenerately collides with robot. This is due to an artifact of the simulation. """
         self.active_idxs[env_idx].clear()
         self.set_all_fingers_pose(env_idx, pos_high=True)
         for i in range(self.num_tips[0]):
@@ -317,11 +299,11 @@ class DeltaArraySim:
                 self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
         self.ep_reward[env_idx] = 0
 
-    def get_state_and_nn_robots(self, env_idx, t_step, agent):
+    def initial_setup(self, env_idx, t_step, agent):
         if (self.ep_len == 0) and (t_step == 0):
-            _, self.goal_state[env_idx] = self.get_nearest_robot_and_state(env_idx, final=False)
+            _, self.init_state[env_idx][3:6] = self.get_nearest_robot_and_state(env_idx, final=False)
         else:
-            _, self.init_state[env_idx] = self.get_nearest_robot_and_state(env_idx, final=False)
+            _, self.init_state[env_idx][0:3] = self.get_nearest_robot_and_state(env_idx, final=False)
             if t_step == 1:
                 self.set_nn_fingers_pose_low(env_idx, self.active_idxs[env_idx].keys())
 
@@ -341,42 +323,6 @@ class DeltaArraySim:
             
             self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][idx[0]][idx[1]], gymapi.Transform(p=self.finger_positions[idx[0]][idx[1]] + gymapi.Vec3(self.action[env_idx][0], self.action[env_idx][1], -0.47), r=self.finga_q)) 
 
-    def sim_test(self, scene, env_idx, t_step, _):
-        """ Call this function to visualize the scene without taking any action """
-        env_ptr = self.scene.env_ptrs[env_idx]
-        t_step = t_step % self.time_horizon
-        if t_step == 0:
-            if self.og_gft is not None:
-                self.og_gft.plot_embeddings(self.og_gft, self.new_gft)
-            self.og_gft = None
-            del self.new_gft
-            self.new_gft = []
-            for i in range(self.num_tips[0]):
-                for j in range(self.num_tips[1]):
-                    self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
-        elif t_step == 1:
-            img = self.get_camera_image(env_idx)
-            seg_map, boundary_pts = self.get_boundary_pts(img)
-            kmeans = self.KMeans.fit(boundary_pts)
-            cluster_centers = kmeans.cluster_centers_
-            pkl.dump(cluster_centers, open(f"cluster_centers.pkl", "wb"))
-            self.og_gft = GFT(cluster_centers)
-        elif t_step % 2 == 0:
-            # 0.0, -0.02165, 0.2625, 0.303107
-            # block_p = gymapi.Vec3(0 + 0.2625*t_step/self.time_horizon, 0.1407285, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
-            xy = self.traj[(t_step-2)//2]
-            block_p = gymapi.Vec3(*xy, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
-            block_r = gymapi.Quat(0.5, 0.5, 0.5, 0.5)
-            self.object.set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p, r=block_r)])
-        else:
-            img = self.get_camera_image(env_idx)
-            seg_map, boundary_pts = self.get_boundary_pts(img)
-            kmeans = self.KMeans.fit(boundary_pts)
-            cluster_centers = kmeans.cluster_centers_
-            self.new_gft.append(GFT(cluster_centers))
-
-
-
     def log_data(self, env_idx, t_step, agent):
         """ Store data about training progress in systematic data structures """
         log_utils.log_data(agent.logger, self.ep_rewards, self.current_episode, self.start_time)
@@ -391,17 +337,17 @@ class DeltaArraySim:
                 pass # Kill the pipeline somehow?
             
         if self.ep_len==0:
-            # Call the pretrained policy for all NN robots and set attractor
+            # Call the pretrained policy for all NN robots and set attractors
             if t_step == 0:
-                self.get_state_and_nn_robots(env_idx, t_step, self.pretrained_agent) #Store Goal Pose
+                self.initial_setup(env_idx, t_step, self.pretrained_agent) #Store Goal Pose
                 self.set_block_pose(env_idx) # Reset block to current initial pose
             elif t_step == 1:
-                self.get_state_and_nn_robots(env_idx, t_step, self.pretrained_agent) #Store Init Pose
+                self.initial_setup(env_idx, t_step, self.pretrained_agent) #Store Init Pose
             elif (t_step == 2) and self.dont_skip_episode:
-                self.set_block_pose(env_idx, goal=True) # Remove this after GFT Debugging
-                self.ep_len = 0                         # Change this later to 1.
                 env_ptr = self.scene.env_ptrs[env_idx]
                 self.set_attractor_target(env_idx, t_step, env_ptr)
+            elif (t_step == self.time_horizon-1) and self.dont_skip_episode:
+                self.ep_len = 1
             elif not self.dont_skip_episode:
                 self.ep_len = 0
                 self.reset(env_idx, t_step)
@@ -409,7 +355,7 @@ class DeltaArraySim:
         else:
             # Gen actions from new policy and set attractor until max episodes            
             if (t_step == 0) and self.dont_skip_episode:
-                self.get_state_and_nn_robots(env_idx, t_step, self.agent)
+                self.initial_setup(env_idx, t_step, self.agent)
             elif (t_step == self.time_horizon-2) and self.dont_skip_episode:
                 # Update policy
                 self.compute_reward(env_idx, t_step)
@@ -426,9 +372,6 @@ class DeltaArraySim:
             
             
             
-
-
-
     def test_step(self, env_idx, t_step, env_ptr):
         """ 
         Test_step has 3 functions
@@ -466,3 +409,40 @@ class DeltaArraySim:
         elif t_step == self.time_horizon-1:
             self.compute_reward(env_idx, t_step)
             print(f"Action: {self.action[env_idx]},Reward: {self.ep_reward[env_idx]}")
+
+    def sim_test(self, scene, env_idx, t_step, _):
+        """ Call this function to visualize the scene without taking any action """
+        env_ptr = self.scene.env_ptrs[env_idx]
+        t_step = t_step % self.time_horizon
+        if t_step == 0:
+            if self.og_gft is not None:
+                self.og_gft.plot_embeddings(self.og_gft, self.new_gft)
+            self.og_gft = None
+            del self.new_gft
+            self.new_gft = []
+            for i in range(self.num_tips[0]):
+                for j in range(self.num_tips[1]):
+                    self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
+        elif t_step == 1:
+            img = self.get_camera_image(env_idx)
+            seg_map, boundary_pts = self.get_boundary_pts(img)
+            kmeans = self.KMeans.fit(boundary_pts)
+            cluster_centers = kmeans.cluster_centers_
+            pkl.dump(cluster_centers, open(f"cluster_centers.pkl", "wb"))
+            self.og_gft = geom_utils.GFT(cluster_centers)
+        elif t_step % 2 == 0:
+            # 0.0, -0.02165, 0.2625, 0.303107
+            # block_p = gymapi.Vec3(0 + 0.2625*t_step/self.time_horizon, 0.1407285, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
+            xy = self.traj[(t_step-2)//2]
+            block_p = gymapi.Vec3(*xy, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
+            block_r = gymapi.Quat(0.5, 0.5, 0.5, 0.5)
+            self.object.set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p, r=block_r)])
+        else:
+            img = self.get_camera_image(env_idx)
+            seg_map, boundary_pts = self.get_boundary_pts(img)
+            kmeans = self.KMeans.fit(boundary_pts)
+            cluster_centers = kmeans.cluster_centers_
+            self.new_gft.append(geom_utils.GFT(cluster_centers))
+
+
+

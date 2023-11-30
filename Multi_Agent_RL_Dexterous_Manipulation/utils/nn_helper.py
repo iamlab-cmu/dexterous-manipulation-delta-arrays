@@ -46,25 +46,6 @@ class NNHelper:
             xys.append(boundary_pts[np.argmin(distances)])
         return min_dists, np.array(xys)
 
-    def expand_hull(self, hull):
-        """
-        Expands the convex hull by the radius of the robot
-        """
-        robot_radius = 30
-        expanded_hull_vertices = []
-        for simplex in hull.simplices:
-            v1, v2 = hull.points[simplex]
-            
-            edge_vector = v2 - v1
-            normal_vector = np.array([-edge_vector[1], edge_vector[0]])
-            normal_vector /= np.linalg.norm(normal_vector)
-            
-            expanded_v1 = v1 + robot_radius * normal_vector
-            expanded_v2 = v2 + robot_radius * normal_vector
-            expanded_hull_vertices.extend([expanded_v1, expanded_v2])
-
-        return ConvexHull(expanded_hull_vertices)
-
     def get_nn_robots(self, boundary_pts):
         """
         Returns the indices of the robots that are closest to the boundary points
@@ -95,6 +76,25 @@ class NNHelper:
         
         return idxs, neg_idxs
 
+    def expand_hull(self, hull):
+        """
+        Expands the convex hull by the radius of the robot
+        """
+        robot_radius = 30
+        expanded_hull_vertices = []
+        for simplex in hull.simplices:
+            v1, v2 = hull.points[simplex]
+            
+            edge_vector = v2 - v1
+            normal_vector = np.array([-edge_vector[1], edge_vector[0]])
+            normal_vector /= np.linalg.norm(normal_vector)
+            
+            expanded_v1 = v1 + robot_radius * normal_vector
+            expanded_v2 = v2 + robot_radius * normal_vector
+            expanded_hull_vertices.extend([expanded_v1, expanded_v2])
+
+        return ConvexHull(expanded_hull_vertices)
+        
     def get_nn_robots_and_graph(self, boundary_pts, num_clusters=16):
         # kmeans = KMeans(n_clusters=num_clusters, random_state=0).fit(boundary_pts)
         # self.cluster_centers = np.flip(np.sort(kmeans.cluster_centers_))

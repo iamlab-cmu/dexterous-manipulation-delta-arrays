@@ -80,7 +80,7 @@ class DeltaArrayEnvironment():
         # self.agent = sac.SACAgent(env_dict, self.hp_dict, wandb_bool = False)
         # self.agent = reinforce.REINFORCE(env_dict, 3e-3)
         if self.train_or_test=="test":
-            self.agent.load_saved_policy('Visual_Servoing/data/rl_data/ddpg_expt_0/ddpg_expt_0_s69420/pyt_save/model.pt')
+            self.agent.load_saved_policy('./data/rl_data/ddpg_expt_0/ddpg_expt_0_s69420/pyt_save/model.pt')
         self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.obj_name, self.model, self.transform, self.agent, num_tips = [8,8])
 
         self.cam = GymCamera(self.scene, cam_props = self.cfg['camera'])

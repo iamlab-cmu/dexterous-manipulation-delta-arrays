@@ -3,13 +3,17 @@ import numpy as np
 import torch
 from torch.optim import Adam
 import time
-import utils.SAC.core as core
+import utils.MASAC.core as core
 from utils.openai_utils.logx import EpochLogger
-from utils.SAC.replay_buffer import ReplayBuffer
+from utils.MASAC.replay_buffer import ReplayBuffer
 import itertools
 
-class SAC:
+class MASAC:
     def __init__(self, env_dict, hp_dict, logger_kwargs=dict(), train_or_test="train"):
+        if train_or_test == "train":
+            self.logger = EpochLogger(**logger_kwargs)
+            self.logger.save_config(locals())
+
         self.train_or_test = train_or_test
         # torch.manual_seed(hp_dict['seed'])
         # np.random.seed(hp_dict['seed'])
@@ -30,15 +34,15 @@ class SAC:
 
         # Count variables (protip: try to get a feel for how different size networks behave!)
         var_counts = tuple(core.count_vars(module) for module in [self.ac.pi, self.ac.q1, self.ac.q2])
+        if self.train_or_test == "train":
+            self.logger.log('\nNumber of parameters: \t pi: %d, \t q1: %d, \t q2: %d\n'%var_counts)
+
         self.q_params = itertools.chain(self.ac.q1.parameters(), self.ac.q2.parameters())
         self.pi_optimizer = Adam(self.ac.pi.parameters(), lr=hp_dict['pi_lr'])
         self.q_optimizer = Adam(self.q_params, lr=hp_dict['q_lr'])
 
         # Set up model saving
         if self.train_or_test == "train":
-            self.logger = EpochLogger(**logger_kwargs)
-            self.logger.save_config(locals())
-            self.logger.log('\nNumber of parameters: \t pi: %d, \t q1: %d, \t q2: %d\n'%var_counts)
             self.logger.setup_pytorch_saver(self.ac)
 
     def compute_q_loss(self, data):
@@ -116,7 +120,7 @@ class SAC:
         return self.ac.act(torch.as_tensor(o, dtype=torch.float32), deterministic)
 
     def load_saved_policy(self, path):
-        self.ac.load_state_dict(torch.load('./data/rl_data/ddpg_expt_0/ddpg_expt_0_s69420/pyt_save/model.pt'))
+        self.ac.load_state_dict(torch.load('./data/rl_data/backup/ddpg_expt_0_s69420/pyt_save/model.pt'))
 
     def test_policy(self, o):
         with torch.no_grad():

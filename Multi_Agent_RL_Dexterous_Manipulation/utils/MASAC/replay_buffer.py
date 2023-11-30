@@ -7,10 +7,10 @@ import torch
 import utils.DDPG.core as core
 
 class ReplayBuffer:
-    def __init__(self, obs_dim, act_dim, size):
-        self.obs_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
-        self.obs2_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
-        self.act_buf = np.zeros(core.combined_shape(size, act_dim), dtype=np.float32)
+    def __init__(self, obs_dim, act_dim, size, max_agents):
+        self.obs_buf = np.zeros(core.combined_shape(size, max_agents, obs_dim), dtype=np.float32)
+        self.obs2_buf = np.zeros(core.combined_shape(size, max_agents, obs_dim), dtype=np.float32)
+        self.act_buf = np.zeros(core.combined_shape(size, max_agents, act_dim), dtype=np.float32)
         self.rew_buf = np.zeros(size, dtype=np.float32)
         self.done_buf = np.zeros(size, dtype=np.float32)
         self.ptr, self.size, self.max_size = 0, 0, size
