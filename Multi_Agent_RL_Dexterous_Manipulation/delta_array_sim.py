@@ -252,9 +252,10 @@ class DeltaArraySim:
 
             for n, agent_idx in enumerate(self.active_idxs[env_idx]):
                 self.init_state[env_idx][n][6:36] = nn_bd_pt_pad
-                self.init_state[env_idx][n][36:38] =  self.nn_helper.robot_positions[agent_idx]/self.img_size
+                self.init_state[env_idx][n][36:38] = self.nn_helper.robot_positions[agent_idx]/self.img_size
 
             """ VERIFY THIS CODE IS CORRECT and MOVE ON TO MASAC """
+            
             return min_dist, xy
 
     def compute_reward(self, env_idx, t_step):
