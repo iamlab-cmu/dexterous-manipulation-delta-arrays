@@ -251,8 +251,8 @@ class DeltaArraySim:
             nn_bd_pt_pad[:self.nn_bd_pts.shape[0]*2] = self.nn_bd_pts.flatten()
 
             for n, agent_idx in enumerate(self.active_idxs[env_idx]):
-                self.init_state[env_idx][n][6:36] = nn_bd_pt_pad
-                self.init_state[env_idx][n][36:38] =  self.nn_helper.robot_positions[agent_idx]/self.img_size
+                self.init_state[env_idx, n, 6:36] = nn_bd_pt_pad
+                self.init_state[env_idx, n, 36:38] =  self.nn_helper.robot_positions[agent_idx]/self.img_size
 
             """ VERIFY THIS CODE IS CORRECT and MOVE ON TO MASAC """
             return min_dist, xy
