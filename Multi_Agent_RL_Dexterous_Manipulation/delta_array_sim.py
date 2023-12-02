@@ -302,9 +302,9 @@ class DeltaArraySim:
 
     def initial_setup(self, env_idx, t_step, agent):
         if (self.ep_len == 0) and (t_step == 0):
-            _, self.init_state[env_idx][3:6] = self.get_nearest_robot_and_state(env_idx, final=False)
+            _, self.init_state[env_idx, :, 3:6] = self.get_nearest_robot_and_state(env_idx, final=False)
         else:
-            _, self.init_state[env_idx][0:3] = self.get_nearest_robot_and_state(env_idx, final=False)
+            _, self.init_state[env_idx, :, 0:3] = self.get_nearest_robot_and_state(env_idx, final=False)
             if t_step == 1:
                 self.set_nn_fingers_pose_low(env_idx, self.active_idxs[env_idx].keys())
 
