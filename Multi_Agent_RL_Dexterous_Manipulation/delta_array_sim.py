@@ -41,6 +41,7 @@ device = torch.device("cuda:0")
 
 class DeltaArraySim:
     def __init__(self, scene, cfg, obj, obj_name, img_embed_model, transform, agents, num_tips = [8,8], max_agents=15):
+        print("Ye Init kitni baar bula raha hai?")
         """ Main Vars """
         self.scene = scene
         self.cfg = cfg
@@ -49,6 +50,7 @@ class DeltaArraySim:
         self.cam = 0
         self.object = obj
         self.obj_name = obj_name
+        self.max_agents = max_agents
         
         # Introduce delta robot EE in the env
         for i in range(self.num_tips[0]):
@@ -84,9 +86,7 @@ class DeltaArraySim:
         self.finga_q = gymapi.Quat(0, 0.707, 0, 0.707)
         self.active_idxs = {}
         self.active_IDs = set()
-        self.actions = {} 
-        for env_idx in range(self.scene.n_envs):
-            self.actions[env_idx] = {}
+        
         self.KMeans = KMeans(n_clusters=64, random_state=69, n_init='auto')
 
         """ Sim Util Vars """
@@ -113,8 +113,7 @@ class DeltaArraySim:
 
         self.init_state = np.zeros((self.scene.n_envs, max_agents, 10))
         self.final_state = np.zeros((self.scene.n_envs, max_agents, 10))
-        self.action = {}
-        self.log_pi = {}
+        self.actions = np.zeros((self.scene.n_envs, max_agents, 2))
 
         self.ep_rewards = []
         self.ep_reward = np.zeros(self.scene.n_envs)
@@ -225,7 +224,12 @@ class DeltaArraySim:
         Get nearest robot to the boundary -> Crop the image around the robot -> Resize to 224x224 ->
         Randomize the colors to get rgb image.
 
-        Returns nearest boundary distance and state of the MDP
+        Sets appropriate values for the following class variables:
+        self.active_idxs
+        self.actions
+        self.init_state
+        self.final_state
+        self.bd_pts
         """
         img = self.get_camera_image(env_idx)
         seg_map, boundary_pts = self.get_boundary_pts(img)
@@ -245,7 +249,7 @@ class DeltaArraySim:
             if not final:
                 self.active_idxs[env_idx] = list(idxs)
                 for n, idx in enumerate(self.active_idxs[env_idx]):
-                    self.actions[env_idx][idx] = np.array((0,0))
+                    self.actions[env_idx][n] = np.array((0,0))
                 
                 # We are not using min_dists for now.
                 min_dists, self.nn_bd_pts = self.nn_helper.get_min_dist(bd_cluster_centers, self.active_idxs[env_idx], self.actions[env_idx])
@@ -307,7 +311,7 @@ class DeltaArraySim:
             self.ep_rewards.append(self.ep_reward[env_idx])
             agent.logger.store(EpRet=self.ep_reward[env_idx], EpLen=self.ep_len)
             # if env_idx == (self.scene.n_envs-1):
-            print(f"Iter: {self.current_episode}, Action: {self.action[env_idx]},Mean Reward: {np.mean(self.ep_rewards[-20:])}, Current Reward: {self.ep_reward[env_idx]}")
+            print(f"Iter: {self.current_episode}, Mean Reward: {np.mean(self.ep_rewards[-50:])}, Current Reward: {self.ep_reward[env_idx]}")
         self.active_idxs[env_idx].clear()
         self.set_all_fingers_pose(env_idx, pos_high=True)
 
@@ -328,18 +332,23 @@ class DeltaArraySim:
         if not self.dont_skip_episode:
             return
 
-        if (self.current_episode > self.exploration_cutoff) or (self.ep_len == 0):
-            self.action[env_idx] = agent.get_action(self.init_state[env_idx])
+        if self.ep_len == 0:
+            """ extract i, j, u, v for each robot """
+            for i in range(len(self.active_idxs[env_idx])):
+                grasping_state = self.init_state[env_idx, i, 6:]
+                self.actions[env_idx][i] = agent.get_action(grasping_state) # For pretrained grasping policy, single state -> 2D action var
+        elif (self.current_episode > self.exploration_cutoff):
+            self.actions[env_idx] = agent.get_actions(self.init_state[env_idx]) # For MARL policy, multiple states -> 3D action var
         else:
-            self.action[env_idx] = np.random.uniform(-0.03, 0.03, size=(2,))
+            self.actions[env_idx] = np.random.uniform(-0.03, 0.03, size=(self.max_agents, 2))
 
     def set_attractor_target(self, env_idx, t_step, env_ptr):
-        for idx in self.active_idxs[env_idx].keys():
+        for n, idx in enumerate(self.active_idxs[env_idx]):
             # Convert action to mm
-            self.active_idxs[env_idx][idx][0] = self.action[env_idx][0]/(self.plane_size[1][0]-self.plane_size[0][0])*1080
-            self.active_idxs[env_idx][idx][1] = -1*self.action[env_idx][1]/(self.plane_size[1][1]-self.plane_size[0][1])*1920
+            self.actions[env_idx, n, 0] = self.actions[env_idx, n, 0]/(self.plane_size[1][0]-self.plane_size[0][0])*1080
+            self.actions[env_idx, n, 1] = -1*self.actions[env_idx, n, 1]/(self.plane_size[1][1]-self.plane_size[0][1])*1920
             
-            self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][idx[0]][idx[1]], gymapi.Transform(p=self.finger_positions[idx[0]][idx[1]] + gymapi.Vec3(self.action[env_idx][0], self.action[env_idx][1], -0.47), r=self.finga_q)) 
+            self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][idx[0]][idx[1]], gymapi.Transform(p=self.finger_positions[idx[0]][idx[1]] + gymapi.Vec3(*self.actions[env_idx, n], -0.47), r=self.finga_q)) 
 
     def log_data(self, env_idx, t_step, agent):
         """ Store data about training progress in systematic data structures """
@@ -391,6 +400,8 @@ class DeltaArraySim:
             
     def test_step(self, env_idx, t_step, env_ptr):
         """ 
+        TODO: Update this whole thing
+
         Test_step has 3 functions
         1. Setup the env, get the initial state, query action from policy, and set_attractor_pose of the robot.
         2. Execute the action on the robot by set_attractor_target.

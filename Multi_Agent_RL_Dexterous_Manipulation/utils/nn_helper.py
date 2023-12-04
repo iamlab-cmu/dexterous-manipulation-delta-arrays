@@ -39,8 +39,8 @@ class NNHelper:
         """
         min_dists = []
         xys = []
-        for idx in active_idxs:
-            tgt_pt = self.robot_positions[idx] + actions[idx]
+        for n, idx in enumerate(active_idxs):
+            tgt_pt = self.robot_positions[idx] + actions[n]
             distances = np.linalg.norm(tgt_pt - boundary_pts, axis=1)
             min_dists.append(np.min(distances))
             xys.append(boundary_pts[np.argmin(distances)])

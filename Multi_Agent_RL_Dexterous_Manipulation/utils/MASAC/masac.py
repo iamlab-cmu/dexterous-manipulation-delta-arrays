@@ -116,7 +116,7 @@ class MASAC:
                 p_targ.data.mul_(1 - self.hp_dict['tau'])
                 p_targ.data.add_(self.hp_dict['tau'] * p.data)
 
-    def get_action(self, o, deterministic=False):
+    def get_actions(self, o, deterministic=False):
         return self.ac.act(torch.as_tensor(o, dtype=torch.float32), deterministic)
 
     def load_saved_policy(self, path):
