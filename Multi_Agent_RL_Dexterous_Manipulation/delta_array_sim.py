@@ -67,7 +67,7 @@ class DeltaArraySim:
 
         self.lower_green_filter = np.array([35, 50, 50])
         self.upper_green_filter = np.array([85, 255, 255])
-        self.plane_size = 1000*np.array([(0 - 0.063, 0 - 0.2095), (0.2625 + 0.063, 0.303107 + 0.1865)]) # 1000*np.array([(0.13125-0.025, 0.1407285-0.055),(0.13125+0.025, 0.1407285+0.055)])
+        self.plane_size = np.array([(0 - 0.063, 0 - 0.2095), (0.2625 + 0.063, 0.303107 + 0.1865)]) # 1000*np.array([(0.13125-0.025, 0.1407285-0.055),(0.13125+0.025, 0.1407285+0.055)])
         self.nn_helper = helper.NNHelper(self.plane_size, real_or_sim="sim")
         # self.save_iters = 0
         
@@ -111,8 +111,8 @@ class DeltaArraySim:
             self.pretrained_agent = agents[0]
             self.agent = agents[1]
 
-        self.init_state = np.zeros((self.scene.n_envs, max_agents, 38))
-        self.final_state = np.zeros((self.scene.n_envs, max_agents, 38))
+        self.init_state = np.zeros((self.scene.n_envs, max_agents, 10))
+        self.final_state = np.zeros((self.scene.n_envs, max_agents, 10))
         self.action = {}
         self.log_pi = {}
 
@@ -175,18 +175,27 @@ class DeltaArraySim:
             self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.49), r=self.finga_q)])
 
     def set_block_pose(self, env_idx, goal=False):
-        """ Set the block pose to a random pose """
+        """ 
+            Set the block pose to a random pose
+            Store 2d goal pose in final and init state and 2d init pose in init state
+        """
         # T = [0.13125, 0.1407285]
         # 0.0, -0.02165, 0.2625, 0.303107
+        object_r = gymapi.Quat(0.5, 0.5, 0.5, 0.5)
+        yaw = np.arctan2(2*(object_r.w*object_r.z + object_r.x*object_r.y), 1 - 2*(object_r.x**2 + object_r.y**2))
+
         if goal:
             self.block_com[env_idx][0] = np.array([np.random.uniform(0.009, 0.21), np.random.uniform(0.005, 0.25)])
             T = tuple(self.block_com[env_idx][0])
+            self.init_state[env_idx, :, 3:6] = np.array([block_p.x, block_p.y, yaw])
+            self.final_state[env_idx, :, 3:6] = np.array([block_p.x, block_p.y, yaw])
         else:
             self.block_com[env_idx][1] = self.block_com[env_idx][0] + np.array([0.01, 0])
             T = tuple(self.block_com[env_idx][1])
+            self.init_state[env_idx, :, 0:3] = np.array([*T, yaw])
 
         block_p = gymapi.Vec3(*T, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
-        self.object.set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p)])
+        self.object.set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p, r=object_r)])
 
     def get_scene_image(self, env_idx):
         """ Render a camera image """
@@ -209,7 +218,7 @@ class DeltaArraySim:
         boundary_pts = np.array(np.where(boundary==255)).T
         return seg_map, boundary_pts
 
-    def get_nearest_robot_and_state(self, env_idx, final=False, init_bd_pts=None):
+    def get_nearest_robots_and_state(self, env_idx, final=False, init_bd_pts=None):
         """ 
         A helper function to get the nearest robot to the block and crop the image around it 
         Get camera image -> Segment it -> Convert boundary to cartesian coordinate space in mm ->
@@ -235,26 +244,38 @@ class DeltaArraySim:
             
             if not final:
                 self.active_idxs[env_idx] = list(idxs)
-                for idx in self.active_idxs[env_idx]:
+                for n, idx in enumerate(self.active_idxs[env_idx]):
                     self.actions[env_idx][idx] = np.array((0,0))
                 
                 # We are not using min_dists for now.
                 min_dists, self.nn_bd_pts = self.nn_helper.get_min_dist(bd_cluster_centers, self.active_idxs[env_idx], self.actions[env_idx])
                 self.nn_bd_pts = self.nn_bd_pts/self.img_size
+                self.init_state[env_idx, :, 6:8] = self.nn_bd_pts
 
             else:
                 obj_2d_tf = geom_utils.get_transform(init_bd_pts/self.img_size, self.bd_pts[env_idx]/self.img_size)
                 self.nn_bd_pts = geom_utils.transform_pts(self.nn_bd_pts, obj_2d_tf)
+                self.init_state[env_idx, :, 6:8] = self.nn_bd_pts
 
-            nn_bd_pt_pad = np.zeros((30))
-            # *2 cos 2D points. For 3D case, *3. 
-            nn_bd_pt_pad[:self.nn_bd_pts.shape[0]*2] = self.nn_bd_pts.flatten()
+            self.init_state[env_idx, :len(self.active_idxs[env_idx]), 8:10] = self.nn_helper.robot_positions[self.active_idxs[env_idx]]/self.img_size
+            self.final_state[env_idx, :len(self.active_idxs[env_idx]), 8:10] = self.nn_helper.robot_positions[self.active_idxs[env_idx]]/self.img_size
 
-            for n, agent_idx in enumerate(self.active_idxs[env_idx]):
-                self.init_state[env_idx, n, 6:36] = nn_bd_pt_pad
-                self.init_state[env_idx, n, 36:38] =  self.nn_helper.robot_positions[agent_idx]/self.img_size
+            # nn_bd_pt_pad = np.zeros((30))
+            # # *2 cos 2D points. For 3D case, *3. 
+            # nn_bd_pt_pad[:self.nn_bd_pts.shape[0]*2] = self.nn_bd_pts.flatten()
+
+            # if not final:
+
+            #     for n, agent_idx in enumerate(self.active_idxs[env_idx]):
+            #         self.init_state[env_idx, n, 6:36] = nn_bd_pt_pad
+            #         self.init_state[env_idx, n, 36:38] = self.nn_helper.robot_positions[agent_idx]/self.img_size
+            # else:
+            #     for n, agent_idx in enumerate(self.active_idxs[env_idx]):
+            #         self.final_state[env_idx, n, 6:36] = nn_bd_pt_pad
+            #         self.final_state[env_idx, n, 36:38] = self.nn_helper.robot_positions[agent_idx]/self.img_size
 
             """ VERIFY THIS CODE IS CORRECT and MOVE ON TO MASAC """
+            
             return min_dist, xy
 
     def compute_reward(self, env_idx, t_step):
@@ -266,7 +287,7 @@ class DeltaArraySim:
         """
         # This function is utterly incomplete. Fix it before running final init expt
         init_bd_pts = self.bd_pts[env_idx]
-        min_dist, self.final_state, tf_loss = self.get_nearest_robot_and_state(env_idx, final=True, init_bd_pts=init_bd_pts)
+        min_dist, self.final_state, tf_loss = self.get_nearest_robots_and_state(env_idx, final=True, init_bd_pts=init_bd_pts)
         
         
         self.ep_reward[env_idx] += -min_dist
@@ -277,12 +298,12 @@ class DeltaArraySim:
         """ Update the replay buffer and reset the env """
         # agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
         if self.ep_reward[env_idx] > -180:
-            if agent.replay_buffer.size > self.batch_size:
+            if agent.ma_replay_buffer.size > self.batch_size:
                 self.log_data(env_idx, t_step)
 
             #normalize the reward for easier training
             self.ep_reward[env_idx] = (self.ep_reward[env_idx] - -45)/90
-            agent.replay_buffer.store(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
+            agent.ma_replay_buffer.store(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
             self.ep_rewards.append(self.ep_reward[env_idx])
             agent.logger.store(EpRet=self.ep_reward[env_idx], EpLen=self.ep_len)
             # if env_idx == (self.scene.n_envs-1):
@@ -300,12 +321,9 @@ class DeltaArraySim:
         self.ep_reward[env_idx] = 0
 
     def initial_setup(self, env_idx, t_step, agent):
-        if (self.ep_len == 0) and (t_step == 0):
-            _, self.init_state[env_idx][3:6] = self.get_nearest_robot_and_state(env_idx, final=False)
-        else:
-            _, self.init_state[env_idx][0:3] = self.get_nearest_robot_and_state(env_idx, final=False)
-            if t_step == 1:
-                self.set_nn_fingers_pose_low(env_idx, self.active_idxs[env_idx].keys())
+        if (self.ep_len == 0) and (t_step == 1):
+            self.get_nearest_robots_and_state(env_idx, final=False)
+            self.set_nn_fingers_pose_low(env_idx, self.active_idxs[env_idx].keys())
 
         if not self.dont_skip_episode:
             return
@@ -318,8 +336,8 @@ class DeltaArraySim:
     def set_attractor_target(self, env_idx, t_step, env_ptr):
         for idx in self.active_idxs[env_idx].keys():
             # Convert action to mm
-            self.active_idxs[env_idx][idx][0] = 1000*self.action[env_idx][0]/(self.plane_size[1][0]-self.plane_size[0][0])*1080
-            self.active_idxs[env_idx][idx][1] = -1000*self.action[env_idx][1]/(self.plane_size[1][1]-self.plane_size[0][1])*1920
+            self.active_idxs[env_idx][idx][0] = self.action[env_idx][0]/(self.plane_size[1][0]-self.plane_size[0][0])*1080
+            self.active_idxs[env_idx][idx][1] = -1*self.action[env_idx][1]/(self.plane_size[1][1]-self.plane_size[0][1])*1920
             
             self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][idx[0]][idx[1]], gymapi.Transform(p=self.finger_positions[idx[0]][idx[1]] + gymapi.Vec3(self.action[env_idx][0], self.action[env_idx][1], -0.47), r=self.finga_q)) 
 
@@ -339,7 +357,6 @@ class DeltaArraySim:
         if self.ep_len==0:
             # Call the pretrained policy for all NN robots and set attractors
             if t_step == 0:
-                self.initial_setup(env_idx, t_step, self.pretrained_agent) #Store Goal Pose
                 self.set_block_pose(env_idx) # Reset block to current initial pose
             elif t_step == 1:
                 self.initial_setup(env_idx, t_step, self.pretrained_agent) #Store Init Pose
@@ -355,11 +372,11 @@ class DeltaArraySim:
         else:
             # Gen actions from new policy and set attractor until max episodes            
             if (t_step == 0) and self.dont_skip_episode:
-                self.initial_setup(env_idx, t_step, self.agent)
+                self.initial_setup(env_idx, t_step, self.agent) # Only Store Actions from MARL Policy
             elif (t_step == self.time_horizon-2) and self.dont_skip_episode:
                 # Update policy
                 self.compute_reward(env_idx, t_step)
-                if self.agent.replay_buffer.size > self.batch_size:
+                if self.agent.ma_replay_buffer.size > self.batch_size:
                     self.agent.update(self.batch_size)
                 self.terminate(env_idx, t_step)
             elif (t_step == self.time_horizon-2):
@@ -367,7 +384,7 @@ class DeltaArraySim:
                 self.dont_skip_episode = True
             elif t_step == self.time_horizon - 1:
                 # Terminate episode
-                self.set_block_pose(env_idx, goal=True) # Set block to next goal pose
+                self.set_block_pose(env_idx, goal=True) # Set block to next goal pose & Store Goal Pose for both states
                 self.ep_len = 0
             
             
@@ -389,13 +406,13 @@ class DeltaArraySim:
                 for j in range(self.num_tips[1]):
                     self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
             
-            _, self.init_state[env_idx] = self.get_nearest_robot_and_state(env_idx, final=False)
+            _, self.init_state[env_idx] = self.get_nearest_robots_and_state(env_idx, final=False)
             self.action[env_idx] = self.agent.test_policy(self.init_state[env_idx])
             self.set_nn_fingers_pose_low(env_idx, self.active_idxs[env_idx].keys())
         elif t_step == 1:
             for idx in self.active_idxs[env_idx].keys():
-                self.active_idxs[env_idx][idx][0] = 1000*self.action[env_idx][0]/(self.plane_size[1][0]-self.plane_size[0][0])*1080
-                self.active_idxs[env_idx][idx][1] = -1000*self.action[env_idx][1]/(self.plane_size[1][1]-self.plane_size[0][1])*1920
+                self.active_idxs[env_idx][idx][0] = self.action[env_idx][0]/(self.plane_size[1][0]-self.plane_size[0][0])*1080
+                self.active_idxs[env_idx][idx][1] = -1*self.action[env_idx][1]/(self.plane_size[1][1]-self.plane_size[0][1])*1920
                 self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][idx[0]][idx[1]], gymapi.Transform(p=self.finger_positions[idx[0]][idx[1]] + gymapi.Vec3(self.action[env_idx][0], self.action[env_idx][1], -0.47), r=self.finga_q)) 
         elif t_step == self.time_horizon-2:
             self.set_all_fingers_pose(env_idx, pos_high=True)

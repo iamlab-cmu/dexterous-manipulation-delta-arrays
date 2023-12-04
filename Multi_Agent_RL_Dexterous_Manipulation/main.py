@@ -85,7 +85,7 @@ class DeltaArraySimEnvironment():
                 "pi_lr"       :1e-4,
                 "alpha"       :0.2,
                 "replay_size" :100000,
-                'seed'        :3
+                'seed'        :69420
             }
 
         if self.train_or_test=="train":

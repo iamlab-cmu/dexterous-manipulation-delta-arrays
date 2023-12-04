@@ -21,9 +21,9 @@ class NNHelper:
                         finger_pos = np.array((i*3.75, -j*4.3301))
                 else:
                     if i%2!=0:
-                        finger_pos = np.array((i*37.5, j*43.301 - 21.65))
+                        finger_pos = np.array((i*0.0375, j*0.043301 - 0.02165))
                     else:
-                        finger_pos = np.array((i*37.5, j*43.301))
+                        finger_pos = np.array((i*0.0375, j*0.043301))
         
                 finger_pos[0] = (finger_pos[0] - plane_size[0][0])/(plane_size[1][0]-plane_size[0][0])*1080 - 0
                 finger_pos[1] = 1920 - (finger_pos[1] - plane_size[0][1])/(plane_size[1][1]-plane_size[0][1])*1920

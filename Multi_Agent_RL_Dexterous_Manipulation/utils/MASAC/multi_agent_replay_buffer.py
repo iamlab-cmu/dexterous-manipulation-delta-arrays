@@ -6,7 +6,7 @@ import torch
 
 import utils.DDPG.core as core
 
-class ReplayBuffer:
+class MultiAgentReplayBuffer:
     def __init__(self, obs_dim, act_dim, size, max_agents):
         self.obs_buf = np.zeros(core.combined_shape(size, max_agents, obs_dim), dtype=np.float32)
         self.obs2_buf = np.zeros(core.combined_shape(size, max_agents, obs_dim), dtype=np.float32)
