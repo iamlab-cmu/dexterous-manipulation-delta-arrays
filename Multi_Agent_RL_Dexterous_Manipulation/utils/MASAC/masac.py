@@ -119,8 +119,8 @@ class MASAC:
     def get_actions(self, o, deterministic=False):
         return self.ac.act(torch.as_tensor(o, dtype=torch.float32), deterministic)
 
-    def load_saved_policy(self, path):
-        self.ac.load_state_dict(torch.load('./data/rl_data/backup/ddpg_expt_0_s69420/pyt_save/model.pt'))
+    def load_saved_policy(self, path='./data/rl_data/backup/sac_expt_grasp/pyt_save/model.pt'):
+        self.ac.load_state_dict(torch.load(path))
 
     def test_policy(self, o):
         with torch.no_grad():

@@ -27,7 +27,7 @@ class NNHelper:
         
                 finger_pos[0] = (finger_pos[0] - plane_size[0][0])/(plane_size[1][0]-plane_size[0][0])*1080 - 0
                 finger_pos[1] = 1920 - (finger_pos[1] - plane_size[0][1])/(plane_size[1][1]-plane_size[0][1])*1920
-                finger_pos = finger_pos.astype(np.int32)
+                # finger_pos = finger_pos.astype(np.int32)
                 self.robot_positions[i,j] = finger_pos
                 self.kdtree_positions[i*8 + j, :] = self.robot_positions[i,j]
         

@@ -163,6 +163,9 @@ class DeltaArraySim:
             for j in range(self.num_tips[1]):
                 if pos_high:
                     self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)])
+                    for i in range(self.num_tips[0]):
+                        for j in range(self.num_tips[1]):
+                            self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
                 elif (i,j) in self.neighborhood_fingers[env_idx][1]:
                     self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.45), r=self.finga_q)])
                 else:
@@ -240,29 +243,27 @@ class DeltaArraySim:
         else:
             kmeans = self.KMeans.fit(boundary_pts)
             bd_cluster_centers = kmeans.cluster_centers_
-            
             self.bd_pts[env_idx] = boundary_pts
-
-            # Get indices of nearest robots to the boundary. We are not using neg_idxs for now. 
-            idxs, neg_idxs = self.nn_helper.get_nn_robots(bd_cluster_centers)
             
-            if not final:
+            if final:
+                obj_2d_tf = geom_utils.get_transform(init_bd_pts, self.bd_pts[env_idx])
+                self.nn_bd_pts = geom_utils.transform_pts(self.nn_bd_pts, obj_2d_tf)
+                self.final_state[env_idx, :self.n_idxs, 6:8] = self.nn_bd_pts/self.img_size
+                return obj_2d_tf
+            else:
+                # Get indices of nearest robots to the boundary. We are not using neg_idxs for now. 
+                idxs, neg_idxs = self.nn_helper.get_nn_robots(bd_cluster_centers)
                 self.active_idxs[env_idx] = list(idxs)
-                for n, idx in enumerate(self.active_idxs[env_idx]):
-                    self.actions[env_idx][n] = np.array((0,0))
+                self.n_idxs = len(self.active_idxs[env_idx])
+                # for n, idx in enumerate(self.active_idxs[env_idx]):
+                self.actions[env_idx, :self.n_idxs] = np.array((0,0))
                 
                 # We are not using min_dists for now.
                 min_dists, self.nn_bd_pts = self.nn_helper.get_min_dist(bd_cluster_centers, self.active_idxs[env_idx], self.actions[env_idx])
-                self.nn_bd_pts = self.nn_bd_pts/self.img_size
-                self.init_state[env_idx, :, 6:8] = self.nn_bd_pts
+                self.init_state[env_idx, :self.n_idxs, 6:8] = self.nn_bd_pts/self.img_size
 
-            else:
-                obj_2d_tf = geom_utils.get_transform(init_bd_pts/self.img_size, self.bd_pts[env_idx]/self.img_size)
-                self.nn_bd_pts = geom_utils.transform_pts(self.nn_bd_pts, obj_2d_tf)
-                self.init_state[env_idx, :, 6:8] = self.nn_bd_pts
-
-            self.init_state[env_idx, :len(self.active_idxs[env_idx]), 8:10] = self.nn_helper.robot_positions[self.active_idxs[env_idx]]/self.img_size
-            self.final_state[env_idx, :len(self.active_idxs[env_idx]), 8:10] = self.nn_helper.robot_positions[self.active_idxs[env_idx]]/self.img_size
+            self.init_state[env_idx, :self.n_idxs, 8:10] = self.nn_helper.robot_positions[self.active_idxs[env_idx]]/self.img_size
+            self.final_state[env_idx, :self.n_idxs, 8:10] = self.nn_helper.robot_positions[self.active_idxs[env_idx]]/self.img_size
 
             # nn_bd_pt_pad = np.zeros((30))
             # # *2 cos 2D points. For 3D case, *3. 
@@ -277,10 +278,7 @@ class DeltaArraySim:
             #     for n, agent_idx in enumerate(self.active_idxs[env_idx]):
             #         self.final_state[env_idx, n, 6:36] = nn_bd_pt_pad
             #         self.final_state[env_idx, n, 36:38] = self.nn_helper.robot_positions[agent_idx]/self.img_size
-
-            """ VERIFY THIS CODE IS CORRECT and MOVE ON TO MASAC """
-            
-            return min_dist, xy
+            return True
 
     def compute_reward(self, env_idx, t_step):
         """ 
@@ -291,11 +289,11 @@ class DeltaArraySim:
         """
         # This function is utterly incomplete. Fix it before running final init expt
         init_bd_pts = self.bd_pts[env_idx]
-        min_dist, self.final_state, tf_loss = self.get_nearest_robots_and_state(env_idx, final=True, init_bd_pts=init_bd_pts)
+        delta_2d_pose = self.get_nearest_robots_and_state(env_idx, final=True, init_bd_pts=init_bd_pts)
         
         
-        self.ep_reward[env_idx] += -min_dist
-        self.ep_reward[env_idx] += -tf_loss*0.6
+        self.ep_reward[env_idx] += -np.linalg.norm(delta_2d_pose)
+        # self.ep_reward[env_idx] += -tf_loss*0.6
         return True
 
     def terminate(self, env_idx, t_step, agent):
@@ -312,17 +310,16 @@ class DeltaArraySim:
             agent.logger.store(EpRet=self.ep_reward[env_idx], EpLen=self.ep_len)
             # if env_idx == (self.scene.n_envs-1):
             print(f"Iter: {self.current_episode}, Mean Reward: {np.mean(self.ep_rewards[-50:])}, Current Reward: {self.ep_reward[env_idx]}")
-        self.active_idxs[env_idx].clear()
-        self.set_all_fingers_pose(env_idx, pos_high=True)
+        self.reset(env_idx)
 
-    def reset(self, env_idx, t_step):
+    def reset(self, env_idx):
         """ Normal reset OR Alt-terminate state when block degenerately collides with robot. This is due to an artifact of the simulation. """
         self.active_idxs[env_idx].clear()
         self.set_all_fingers_pose(env_idx, pos_high=True)
-        for i in range(self.num_tips[0]):
-            for j in range(self.num_tips[1]):
-                self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
         self.ep_reward[env_idx] = 0
+        self.init_state = np.zeros((self.scene.n_envs, max_agents, 10))
+        self.final_state = np.zeros((self.scene.n_envs, max_agents, 10))
+        self.actions = np.zeros((self.scene.n_envs, max_agents, 2))
 
     def initial_setup(self, env_idx, t_step, agent):
         if (self.ep_len == 0) and (t_step == 1):
@@ -376,12 +373,15 @@ class DeltaArraySim:
                 self.ep_len = 1
             elif not self.dont_skip_episode:
                 self.ep_len = 0
-                self.reset(env_idx, t_step)
+                self.reset(env_idx)
 
         else:
             # Gen actions from new policy and set attractor until max episodes            
             if (t_step == 0) and self.dont_skip_episode:
                 self.initial_setup(env_idx, t_step, self.agent) # Only Store Actions from MARL Policy
+            elif (t_step == 2) and self.dont_skip_episode:
+                env_ptr = self.scene.env_ptrs[env_idx]
+                self.set_attractor_target(env_idx, t_step, env_ptr)
             elif (t_step == self.time_horizon-2) and self.dont_skip_episode:
                 # Update policy
                 self.compute_reward(env_idx, t_step)
@@ -389,7 +389,7 @@ class DeltaArraySim:
                     self.agent.update(self.batch_size)
                 self.terminate(env_idx, t_step)
             elif (t_step == self.time_horizon-2):
-                self.alt_terminate(env_idx, t_step)
+                self.reset(env_idx)
                 self.dont_skip_episode = True
             elif t_step == self.time_horizon - 1:
                 # Terminate episode
