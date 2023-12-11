@@ -21,6 +21,7 @@ class MASAC:
         self.env_dict = env_dict
         self.obs_dim = self.env_dict['observation_space']['dim']
         self.act_dim = self.env_dict['action_space']['dim']
+        self.n_agents = self.env_dict['max_agents']
 
         self.act_limit = self.env_dict['action_space']['high']
 
@@ -82,11 +83,11 @@ class MASAC:
         pi_info = dict(LogPi=logp_pi.detach().numpy())
         return loss_pi, pi_info
 
-    def update(self, batch_size):
+    def update(self, batch_size, n_agents):
         data = self.ma_replay_buffer.sample_batch(batch_size)
         # First run one gradient descent step for Q.
         self.q_optimizer.zero_grad()
-        loss_q, q_info = self.compute_q_loss(data)
+        loss_q, q_info = self.compute_q_loss(data, n_agents)
         loss_q.backward()
         self.q_optimizer.step()
         # Record things
@@ -99,7 +100,7 @@ class MASAC:
 
         # Next run one gradient descent step for pi.
         self.pi_optimizer.zero_grad()
-        loss_pi, pi_info = self.compute_pi_loss(data)
+        loss_pi, pi_info = self.compute_pi_loss(data, n_agents)
         loss_pi.backward()
         self.pi_optimizer.step()
 

@@ -180,6 +180,7 @@ class DeltaArraySim:
         """ 
             Set the block pose to a random pose
             Store 2d goal pose in final and init state and 2d init pose in init state
+            State dimensions are scaled by normalized pixel distance values. i.e state (mm) -> pixel / (1920,1080)
         """
         # T = [0.13125, 0.1407285]
         # 0.0, -0.02165, 0.2625, 0.303107
@@ -189,12 +190,12 @@ class DeltaArraySim:
         if goal:
             self.block_com[env_idx][0] = np.array([np.random.uniform(0.009, 0.21), np.random.uniform(0.005, 0.25)])
             T = tuple(self.block_com[env_idx][0])
-            self.init_state[env_idx, :, 3:6] = np.array([block_p.x, block_p.y, yaw])
-            self.final_state[env_idx, :, 3:6] = np.array([block_p.x, block_p.y, yaw])
+            self.init_state[env_idx, :, 3:6] = np.array([(block_p.x - plane_size[0][0])/(plane_size[1][0]-plane_size[0][0]), 1 - (block_p.y - plane_size[0][1])/(plane_size[1][1]-plane_size[0][1]), yaw])
+            self.final_state[env_idx, :, 3:6] = np.array([(block_p.x - plane_size[0][0])/(plane_size[1][0]-plane_size[0][0]), 1 - (block_p.y - plane_size[0][1])/(plane_size[1][1]-plane_size[0][1]), yaw])
         else:
             self.block_com[env_idx][1] = self.block_com[env_idx][0] + np.array([0.01, 0])
             T = tuple(self.block_com[env_idx][1])
-            self.init_state[env_idx, :, 0:3] = np.array([*T, yaw])
+            self.init_state[env_idx, :, 0:3] = np.array([(T[0] - plane_size[0][0])/(plane_size[1][0]-plane_size[0][0]), 1 - (T[1]- plane_size[0][1])/(plane_size[1][1]-plane_size[0][1]), yaw])
 
         block_p = gymapi.Vec3(*T, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
         self.object.set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p, r=object_r)])
@@ -246,6 +247,8 @@ class DeltaArraySim:
             self.bd_pts[env_idx] = boundary_pts
             
             if final:
+                # We are not using min_dists for now. Try expt to see if it helps. 
+                min_dists, _ = self.nn_helper.get_min_dist(bd_cluster_centers, self.active_idxs[env_idx], self.actions[env_idx])
                 obj_2d_tf = geom_utils.get_transform(init_bd_pts, self.bd_pts[env_idx])
                 self.nn_bd_pts = geom_utils.transform_pts(self.nn_bd_pts, obj_2d_tf)
                 self.final_state[env_idx, :self.n_idxs, 6:8] = self.nn_bd_pts/self.img_size
@@ -258,8 +261,7 @@ class DeltaArraySim:
                 # for n, idx in enumerate(self.active_idxs[env_idx]):
                 self.actions[env_idx, :self.n_idxs] = np.array((0,0))
                 
-                # We are not using min_dists for now.
-                min_dists, self.nn_bd_pts = self.nn_helper.get_min_dist(bd_cluster_centers, self.active_idxs[env_idx], self.actions[env_idx])
+                _, self.nn_bd_pts = self.nn_helper.get_min_dist(bd_cluster_centers, self.active_idxs[env_idx], self.actions[env_idx])
                 self.init_state[env_idx, :self.n_idxs, 6:8] = self.nn_bd_pts/self.img_size
 
             self.init_state[env_idx, :self.n_idxs, 8:10] = self.nn_helper.robot_positions[self.active_idxs[env_idx]]/self.img_size
@@ -304,8 +306,8 @@ class DeltaArraySim:
                 self.log_data(env_idx, t_step)
 
             #normalize the reward for easier training
-            self.ep_reward[env_idx] = (self.ep_reward[env_idx] - -45)/90
-            agent.ma_replay_buffer.store(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
+            # self.ep_reward[env_idx] = (self.ep_reward[env_idx] - -45)/90
+            agent.ma_replay_buffer.store(self.init_state[env_idx], self.actions[env_idx], self.ep_reward[env_idx], self.final_state, True)
             self.ep_rewards.append(self.ep_reward[env_idx])
             agent.logger.store(EpRet=self.ep_reward[env_idx], EpLen=self.ep_len)
             # if env_idx == (self.scene.n_envs-1):
@@ -335,17 +337,18 @@ class DeltaArraySim:
                 grasping_state = self.init_state[env_idx, i, 6:]
                 self.actions[env_idx][i] = agent.get_action(grasping_state) # For pretrained grasping policy, single state -> 2D action var
         elif (self.current_episode > self.exploration_cutoff):
-            self.actions[env_idx] = agent.get_actions(self.init_state[env_idx]) # For MARL policy, multiple states -> 3D action var
+            self.actions[env_idx, :self.n_idxs] = agent.get_actions(self.init_state[env_idx], self.n_idxs) # For MARL policy, multiple states -> 3D action var
         else:
-            self.actions[env_idx] = np.random.uniform(-0.03, 0.03, size=(self.max_agents, 2))
+            self.actions[env_idx, :self.n_idxs] = np.random.uniform(-0.03, 0.03, size=(self.n_idxs, 2))
 
     def set_attractor_target(self, env_idx, t_step, env_ptr):
         for n, idx in enumerate(self.active_idxs[env_idx]):
-            # Convert action to mm
+            self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][idx[0]][idx[1]], gymapi.Transform(p=self.finger_positions[idx[0]][idx[1]] + gymapi.Vec3(*self.actions[env_idx, n], -0.47), r=self.finga_q)) 
+            
+            # Convert action to pix
             self.actions[env_idx, n, 0] = self.actions[env_idx, n, 0]/(self.plane_size[1][0]-self.plane_size[0][0])*1080
             self.actions[env_idx, n, 1] = -1*self.actions[env_idx, n, 1]/(self.plane_size[1][1]-self.plane_size[0][1])*1920
             
-            self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][idx[0]][idx[1]], gymapi.Transform(p=self.finger_positions[idx[0]][idx[1]] + gymapi.Vec3(*self.actions[env_idx, n], -0.47), r=self.finga_q)) 
 
     def log_data(self, env_idx, t_step, agent):
         """ Store data about training progress in systematic data structures """
