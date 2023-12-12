@@ -25,12 +25,6 @@ class MASAC:
         self.max_agents = self.env_dict['max_agents']
 
         self.act_limit = self.env_dict['action_space']['high']
-    def __init__(self, obs_dim, act_dim, hidden_sizes, activation):
-        super().__init__()
-        self.q = mlp([obs_dim + act_dim] + list(hidden_sizes) + [1], activation)
-
-    def forward(self, obs, act):
-        q = self.q(torch.cat([obs, act], dim=-1))
 
         self.ac = core.MLPActorCritic(self.pi_obs_dim, self.q_obs_dim, self.act_dim, self.act_dim*self.max_agents, self.act_limit)
         self.ac_targ = deepcopy(self.ac)
@@ -38,7 +32,7 @@ class MASAC:
         # Freeze target networks with respect to optimizers (only update via polyak averaging)
         for p in self.ac_targ.parameters():
             p.requires_grad = False
-        self.ma_replay_buffer = MultiAgentReplayBuffer(obs_dim=self.obs_dim, act_dim=self.act_dim, size=hp_dict['replay_size'])
+        self.ma_replay_buffer = MultiAgentReplayBuffer(obs_dim=self.pi_obs_dim, act_dim=self.act_dim, size=hp_dict['replay_size'])
 
         # Count variables (protip: try to get a feel for how different size networks behave!)
         var_counts = tuple(core.count_vars(module) for module in [self.ac.pi, self.ac.q1, self.ac.q2])
