@@ -77,7 +77,7 @@ class MLPQFunction(nn.Module):
 
 class MLPActorCritic(nn.Module):
 
-    def __init__(self, pi_obs_dim, q_obs_dim, pi_act_dim, q_act_dim, act_limit, hidden_sizes=[128, 128], activation=nn.LeakyReLU(0.2)):
+    def __init__(self, pi_obs_dim, q_obs_dim, pi_act_dim, q_act_dim, act_limit, hidden_sizes=[128, 128], activation=nn.LeakyReLU):
         super().__init__()
         # build policy and value functions
         self.pi = SquashedGaussianMLPActor(pi_obs_dim, pi_act_dim, hidden_sizes, activation, act_limit)

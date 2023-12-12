@@ -157,11 +157,11 @@ class DeltaArraySimEnvironment():
             # self.fiducial_rb.set_rb_transforms(env_idx, "fiducial_rb", [fiducial_rb[env_idx]])
 
     def run(self):
-        self.scene.run(policy=self.fingers.sim_test)
-        # if self.train_or_test=="train":
-        #     self.scene.run(policy=self.fingers.visual_servoing)
-        # else:
-        #     self.scene.run(policy=self.fingers.test_learned_policy)
+        # self.scene.run(policy=self.fingers.sim_test)
+        if self.train_or_test=="train":
+            self.scene.run(policy=self.fingers.visual_servoing)
+        else:
+            self.scene.run(policy=self.fingers.test_learned_policy)
 
 class DeltaArrayRealEnvironment():
     def __init__(self, train_or_test="test"):

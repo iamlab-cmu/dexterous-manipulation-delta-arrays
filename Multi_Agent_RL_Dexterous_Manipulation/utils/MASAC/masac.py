@@ -8,6 +8,8 @@ from utils.openai_utils.logx import EpochLogger
 from utils.MASAC.multi_agent_replay_buffer import MultiAgentReplayBuffer
 import itertools
 
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 class MASAC:
     def __init__(self, env_dict, hp_dict, logger_kwargs=dict(), train_or_test="train"):
         if train_or_test == "train":
@@ -19,20 +21,22 @@ class MASAC:
         # np.random.seed(hp_dict['seed'])
         self.hp_dict = hp_dict
         self.env_dict = env_dict
-        self.pi_obs_dim = self.env_dict['pi_obs_dim']['dim']
-        self.q_obs_dim = self.env_dict['pi_obs_dim']['dim']
+        self.pi_obs_dim = self.env_dict['pi_obs_space']['dim']
+        self.q_obs_dim = self.env_dict['pi_obs_space']['dim']
         self.act_dim = self.env_dict['action_space']['dim']
         self.max_agents = self.env_dict['max_agents']
 
         self.act_limit = self.env_dict['action_space']['high']
 
         self.ac = core.MLPActorCritic(self.pi_obs_dim, self.q_obs_dim, self.act_dim, self.act_dim*self.max_agents, self.act_limit)
+        self.ac = self.ac.to(device)
         self.ac_targ = deepcopy(self.ac)
+        self.ac_targ = self.ac_targ.to(device)
 
         # Freeze target networks with respect to optimizers (only update via polyak averaging)
         for p in self.ac_targ.parameters():
             p.requires_grad = False
-        self.ma_replay_buffer = MultiAgentReplayBuffer(obs_dim=self.pi_obs_dim, act_dim=self.act_dim, size=hp_dict['replay_size'])
+        self.ma_replay_buffer = MultiAgentReplayBuffer(obs_dim=self.pi_obs_dim, act_dim=self.act_dim, size=hp_dict['replay_size'], max_agents=self.max_agents)
 
         # Count variables (protip: try to get a feel for how different size networks behave!)
         var_counts = tuple(core.count_vars(module) for module in [self.ac.pi, self.ac.q1, self.ac.q2])
@@ -49,6 +53,7 @@ class MASAC:
 
     def compute_q_loss(self, data):
         o, a, r, o2, d = data['obs'], data['act'], data['rew'], data['obs2'], data['done']
+        o, a, r, o2, d = o.to(device), a.to(device), r.to(device), o2.to(device), d.to(device)
         q1 = self.ac.q1(o,a)
         q2 = self.ac.q2(o,a)
 
@@ -74,6 +79,7 @@ class MASAC:
 
     def compute_pi_loss(self, data):
         o = data['obs']
+        o = o.to(device)
         pi, logp_pi = self.ac.pi(o)
         q1_pi = self.ac.q1(o, pi)
         q2_pi = self.ac.q2(o, pi)
