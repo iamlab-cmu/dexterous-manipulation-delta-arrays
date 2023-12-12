@@ -19,13 +19,20 @@ class MASAC:
         # np.random.seed(hp_dict['seed'])
         self.hp_dict = hp_dict
         self.env_dict = env_dict
-        self.obs_dim = self.env_dict['observation_space']['dim']
+        self.pi_obs_dim = self.env_dict['pi_obs_dim']['dim']
+        self.q_obs_dim = self.env_dict['pi_obs_dim']['dim']
         self.act_dim = self.env_dict['action_space']['dim']
-        self.n_agents = self.env_dict['max_agents']
+        self.max_agents = self.env_dict['max_agents']
 
         self.act_limit = self.env_dict['action_space']['high']
+    def __init__(self, obs_dim, act_dim, hidden_sizes, activation):
+        super().__init__()
+        self.q = mlp([obs_dim + act_dim] + list(hidden_sizes) + [1], activation)
 
-        self.ac = core.MLPActorCritic(self.obs_dim, self.act_dim, self.act_limit)
+    def forward(self, obs, act):
+        q = self.q(torch.cat([obs, act], dim=-1))
+
+        self.ac = core.MLPActorCritic(self.pi_obs_dim, self.q_obs_dim, self.act_dim, self.act_dim*self.max_agents, self.act_limit)
         self.ac_targ = deepcopy(self.ac)
 
         # Freeze target networks with respect to optimizers (only update via polyak averaging)

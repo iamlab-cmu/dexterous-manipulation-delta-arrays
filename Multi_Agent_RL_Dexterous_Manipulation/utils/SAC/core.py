@@ -77,12 +77,12 @@ class MLPQFunction(nn.Module):
 
 class MLPActorCritic(nn.Module):
 
-    def __init__(self, obs_dim, act_dim, act_limit, hidden_sizes=[128, 128], activation=nn.ReLU):
+    def __init__(self, pi_obs_dim, q_obs_dim, pi_act_dim, q_act_dim, act_limit, hidden_sizes=[128, 128], activation=nn.LeakyReLU(0.2)):
         super().__init__()
         # build policy and value functions
-        self.pi = SquashedGaussianMLPActor(obs_dim, act_dim, hidden_sizes, activation, act_limit)
-        self.q1 = MLPQFunction(obs_dim, act_dim, hidden_sizes, activation)
-        self.q2 = MLPQFunction(obs_dim, act_dim, hidden_sizes, activation)
+        self.pi = SquashedGaussianMLPActor(pi_obs_dim, pi_act_dim, hidden_sizes, activation, act_limit)
+        self.q1 = MLPQFunction(q_obs_dim, q_act_dim, hidden_sizes, activation)
+        self.q2 = MLPQFunction(q_obs_dim, q_act_dim, hidden_sizes, activation)
 
     def act(self, obs, deterministic=False):
         with torch.no_grad():
