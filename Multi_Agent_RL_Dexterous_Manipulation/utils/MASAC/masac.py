@@ -99,21 +99,29 @@ class MASAC:
         o = data['obs']
         o = o.to(device)
         ma_loss_pi = None
-        for i in range(n_agents): 
+
+        ma_o = torch.zeros((self.batch_size, self.q_obs_dim))
+        ma_o[:, 6:] = o[:, :, 6:].reshape(self.batch_size, -1)
+        ma_o[:, :6] = o[:, 0, :6]
+
+        ma_a = torch.zeros((self.batch_size, self.act_dim*self.max_agents))
+        for i in range(n_agents):
             pi, logp_pi = self.ac.pi(o[i])
-            q1_pi = self.ac.q1(o[i], pi)
-            q2_pi = self.ac.q2(o[i], pi)
-            q_pi = torch.min(q1_pi, q2_pi)
-            # Entropy-regularized policy loss
-            loss_pi = (self.hp_dict['alpha'] * logp_pi - q_pi).mean()
-            loss_pi.backward()
 
 
-            grads = [param.grad for param in self.ac.pi.parameters() if param.grad is not None]
-            if ma_loss_pi is None:
-                ma_loss_pi = grads
-            else:
-                ma_loss_pi = [total_grad + grad for total_grad, grad in zip(ma_loss_pi, grads)]
+        q1_pi = self.ac.q1(o[i], pi)
+        q2_pi = self.ac.q2(o[i], pi)
+        q_pi = torch.min(q1_pi, q2_pi)
+        # Entropy-regularized policy loss
+        loss_pi = (self.hp_dict['alpha'] * logp_pi - q_pi).mean()
+        loss_pi.backward()
+
+
+        grads = [param.grad for param in self.ac.pi.parameters() if param.grad is not None]
+        if ma_loss_pi is None:
+            ma_loss_pi = grads
+        else:
+            ma_loss_pi = [total_grad + grad for total_grad, grad in zip(ma_loss_pi, grads)]
 
         avg_grads = [total_grad / n_agents for total_grad in ma_loss_pi]
 
