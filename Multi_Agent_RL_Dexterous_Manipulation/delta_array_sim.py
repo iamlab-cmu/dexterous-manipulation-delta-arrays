@@ -40,8 +40,7 @@ import utils.geometric_utils as geom_utils
 device = torch.device("cuda:0")
 
 class DeltaArraySim:
-    def __init__(self, scene, cfg, obj, obj_name, img_embed_model, transform, agents, num_tips = [8,8], max_agents=15):
-        print("Ye Init kitni baar bula raha hai?")
+    def __init__(self, scene, cfg, obj, obj_name, img_embed_model, transform, agents, hp_dict, num_tips = [8,8], max_agents=15):
         """ Main Vars """
         self.scene = scene
         self.cfg = cfg
@@ -69,6 +68,8 @@ class DeltaArraySim:
         self.lower_green_filter = np.array([35, 50, 50])
         self.upper_green_filter = np.array([85, 255, 255])
         self.plane_size = np.array([(0 - 0.063, 0 - 0.2095), (0.2625 + 0.063, 0.303107 + 0.1865)]) # 1000*np.array([(0.13125-0.025, 0.1407285-0.055),(0.13125+0.025, 0.1407285+0.055)])
+        self.delta_plane_x = self.plane_size[1][0] - self.plane_size[0][0]
+        self.delta_plane_y = self.plane_size[1][1] - self.plane_size[0][1]
         self.nn_helper = helper.NNHelper(self.plane_size, real_or_sim="sim")
         # self.save_iters = 0
         
@@ -99,8 +100,8 @@ class DeltaArraySim:
         """ Visual Servoing and RL Vars """
         self.bd_pts = {}
         self.current_scene_frame = {}
-        self.batch_size = 128
-        self.exploration_cutoff = 250
+        self.batch_size = hp_dict['batch_size']
+        self.exploration_cutoff = hp_dict['exploration_cutoff']
         
         self.model = img_embed_model
         self.transform = transform
@@ -113,13 +114,11 @@ class DeltaArraySim:
         self.init_state = np.zeros((self.scene.n_envs, self.max_agents, 10))
         self.final_state = np.zeros((self.scene.n_envs, self.max_agents, 10))
         self.actions = np.zeros((self.scene.n_envs, self.max_agents, 2))
+        self.act_pix = np.zeros((self.scene.n_envs, self.max_agents, 2))
 
         self.ep_rewards = []
         self.ep_reward = np.zeros(self.scene.n_envs)
         self.ep_len = 0
-
-        self.optimal_reward = 30
-        self.ep_since_optimal_reward = 0
 
         self.start_time = time.time()
 
@@ -184,7 +183,6 @@ class DeltaArraySim:
         r = R.from_euler('xyz', [90, 0, 0], degrees=True)
         object_r = gymapi.Quat(*r.as_quat())
         yaw = np.arctan2(2*(object_r.w*object_r.z + object_r.x*object_r.y), 1 - 2*(object_r.x**2 + object_r.y**2))
-
         if goal:
             T = (np.random.uniform(0.009, 0.21), np.random.uniform(0.005, 0.25))
             self.init_state[env_idx, :, 3:6] = np.array([(T[0] - self.plane_size[0][0])/(self.plane_size[1][0]-self.plane_size[0][0]), 1 - (T[1] - self.plane_size[0][1])/(self.plane_size[1][1]-self.plane_size[0][1]), yaw])
@@ -244,18 +242,7 @@ class DeltaArraySim:
             bd_cluster_centers = kmeans.cluster_centers_
             self.bd_pts[env_idx] = boundary_pts
             
-            if final:
-                # We are not using min_dists for now. Try expt to see if it helps. 
-                min_dists, _ = self.nn_helper.get_min_dist(bd_cluster_centers, self.active_idxs[env_idx], self.actions[env_idx])
-                obj_2d_tf = geom_utils.get_transform(init_bd_pts, self.bd_pts[env_idx])
-                self.nn_bd_pts = geom_utils.transform_pts(self.nn_bd_pts, obj_2d_tf)
-                self.final_state[env_idx, :self.n_idxs, 6:8] = self.nn_bd_pts/self.img_size
-
-                # TODO: Add actions to robot positions. 
-                self.init_state[env_idx, :self.n_idxs, 8:10] += self.actions[env_idx, :self.n_idxs]
-                self.final_state[env_idx, :self.n_idxs, 8:10] += self.actions[env_idx, :self.n_idxs]
-                return obj_2d_tf
-            else:
+            if not final:
                 # Get indices of nearest robots to the boundary. We are not using neg_idxs for now. 
                 idxs, neg_idxs = self.nn_helper.get_nn_robots(bd_cluster_centers)
                 self.active_idxs[env_idx] = list(idxs)
@@ -267,7 +254,23 @@ class DeltaArraySim:
                 self.init_state[env_idx, :self.n_idxs, 6:8] = self.nn_bd_pts/self.img_size
                 self.init_state[env_idx, :self.n_idxs, 8:10] = self.nn_helper.robot_positions[tuple(zip(*self.active_idxs[env_idx]))]/self.img_size
                 self.final_state[env_idx, :self.n_idxs, 8:10] = self.nn_helper.robot_positions[tuple(zip(*self.active_idxs[env_idx]))]/self.img_size
-            return True
+                
+            else:
+                # We are not using min_dists for now. Try expt to see if it helps. 
+                self.act_pix[env_idx, :self.n_idxs, 0] = self.actions[env_idx, :self.n_idxs, 0]/(self.plane_size[1][0]-self.plane_size[0][0])*1080
+                self.act_pix[env_idx, :self.n_idxs, 1] = self.actions[env_idx, :self.n_idxs, 1]/(self.plane_size[1][1]-self.plane_size[0][1])*1920
+                # print(self.actions[env_idx, 0], self.act_pix[env_idx, 0])
+
+                min_dists, _ = self.nn_helper.get_min_dist(bd_cluster_centers, self.active_idxs[env_idx], self.act_pix[env_idx])
+                obj_2d_tf = geom_utils.get_transform(init_bd_pts, self.bd_pts[env_idx])
+                self.nn_bd_pts = geom_utils.transform_pts(self.nn_bd_pts, obj_2d_tf)
+                self.final_state[env_idx, :self.n_idxs, 6:8] = self.nn_bd_pts/self.img_size
+
+                # Convert action to normalized pixel values
+                self.actions[env_idx, :self.n_idxs] = self.act_pix[env_idx, self.n_idxs]/self.img_size
+
+                self.init_state[env_idx, :self.n_idxs, 8:10] += self.actions[env_idx, :self.n_idxs]
+                self.final_state[env_idx, :self.n_idxs, 8:10] += self.actions[env_idx, :self.n_idxs]
 
     def compute_reward(self, env_idx, t_step):
         """ 
@@ -277,10 +280,15 @@ class DeltaArraySim:
         Combine both to compute the final reward
         """
         # This function is utterly incomplete. Fix it before running final init expt
-        init_bd_pts = self.bd_pts[env_idx]
-        delta_2d_pose = self.get_nearest_robots_and_state(env_idx, final=True, init_bd_pts=init_bd_pts)
+        init_bd_pts = self.bd_pts[env_idx].copy()
+        self.get_nearest_robots_and_state(env_idx, final=True, init_bd_pts=init_bd_pts)
+
+        com = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
+        yaw = R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')[2]
+        T = (com.p.x - self.plane_size[0][0])/self.delta_plane_x, 1 - (com.p.y - self.plane_size[0][1])/self.delta_plane_y
+        delta_2d_pose = [T[0] - self.init_state[env_idx, 0, 3], T[1] - self.init_state[env_idx, 0, 4], yaw - self.init_state[env_idx, 0, 5]]
         
-        print(delta_2d_pose)
+        # print(delta_2d_pose)
         self.ep_reward[env_idx] += -np.linalg.norm(delta_2d_pose)
         # self.ep_reward[env_idx] += -tf_loss*0.6
         return True
@@ -288,7 +296,7 @@ class DeltaArraySim:
     def terminate(self, env_idx, t_step, agent):
         """ Update the replay buffer and reset the env """
         # agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
-        if self.ep_reward[env_idx] > -180:
+        if self.ep_reward[env_idx] > -0.25:
             if agent.ma_replay_buffer.size > self.batch_size:
                 self.log_data(env_idx, t_step)
 
@@ -306,9 +314,9 @@ class DeltaArraySim:
         self.active_idxs[env_idx].clear()
         self.set_all_fingers_pose(env_idx, pos_high=True)
         self.ep_reward[env_idx] = 0
-        self.init_state = np.zeros((self.scene.n_envs, self.max_agents, 10))
-        self.final_state = np.zeros((self.scene.n_envs, self.max_agents, 10))
-        self.actions = np.zeros((self.scene.n_envs, self.max_agents, 2))
+        self.init_state[env_idx] = np.zeros((self.max_agents, 10))
+        self.final_state[env_idx] = np.zeros((self.max_agents, 10))
+        self.actions[env_idx] = np.zeros((self.max_agents, 2))
 
     def env_step(self, env_idx, t_step, agent):
         if (self.ep_len == 0) and (t_step == 1):
@@ -322,12 +330,13 @@ class DeltaArraySim:
             """ extract i, j, u, v for each robot """
             for i in range(len(self.active_idxs[env_idx])):
                 self.actions[env_idx][i] = agent.get_action(self.init_state[env_idx, i, 6:]) # For pretrained grasping policy, single state -> 2D action var
+            # print(self.actions[env_idx, :2])
         elif (self.current_episode > self.exploration_cutoff):
             self.actions[env_idx, :self.n_idxs] = agent.get_actions(self.init_state[env_idx], self.n_idxs) # For MARL policy, multiple states -> 3D action var
         else:
             # self.actions[env_idx, :self.n_idxs] = np.random.uniform(-0.03, 0.03, size=(self.n_idxs, 2))
-            print("HAKUNA")
-            self.actions[env_idx, :self.n_idxs] += np.ones((self.n_idxs, 2))*np.array((0.01, 0))
+            # print(self.actions[env_idx, :2])
+            self.actions[env_idx, :self.n_idxs] += np.ones((self.n_idxs, 2))*np.array((-0.01, 0))
             self.actions[env_idx, :self.n_idxs] = np.clip(self.actions[env_idx, :self.n_idxs], -0.03, 0.03)
 
     def set_attractor_target(self, env_idx, t_step, all_zeros=False):
@@ -339,12 +348,7 @@ class DeltaArraySim:
         else:
             for n, idx in enumerate(self.active_idxs[env_idx]):
                 self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][idx[0]][idx[1]], gymapi.Transform(p=self.finger_positions[idx[0]][idx[1]] + gymapi.Vec3(self.actions[env_idx, n, 0], self.actions[env_idx, n, 1], -0.47), r=self.finga_q)) 
-                
-                # Convert action to pix
-                self.actions[env_idx, n, 0] = self.actions[env_idx, n, 0]/(self.plane_size[1][0]-self.plane_size[0][0])
-                self.actions[env_idx, n, 1] = -1*self.actions[env_idx, n, 1]/(self.plane_size[1][1]-self.plane_size[0][1])
             
-
     def log_data(self, env_idx, t_step, agent):
         """ Store data about training progress in systematic data structures """
         log_utils.log_data(agent.logger, self.ep_rewards, self.current_episode, self.start_time)

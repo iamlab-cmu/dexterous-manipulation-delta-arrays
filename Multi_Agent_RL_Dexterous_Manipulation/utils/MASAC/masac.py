@@ -25,6 +25,10 @@ class MASAC:
         self.q_obs_dim = self.env_dict['pi_obs_space']['dim']
         self.act_dim = self.env_dict['action_space']['dim']
         self.max_agents = self.env_dict['max_agents']
+        self.batch_size = self.hp_dict['batch_size']
+        self.ma_o = torch.zeros((self.batch_size, self.q_obs_dim))
+        self.ma_a = torch.zeros((self.batch_size, self.act_dim*self.max_agents))
+
 
         self.act_limit = self.env_dict['action_space']['high']
 
@@ -51,11 +55,22 @@ class MASAC:
         if self.train_or_test == "train":
             self.logger.setup_pytorch_saver(self.ac)
 
-    def compute_q_loss(self, data):
+    def compute_q_loss(self, data, n_agents):
         o, a, r, o2, d = data['obs'], data['act'], data['rew'], data['obs2'], data['done']
-        o, a, r, o2, d = o.to(device), a.to(device), r.to(device), o2.to(device), d.to(device)
-        q1 = self.ac.q1(o,a)
-        q2 = self.ac.q2(o,a)
+        # Make a 0 vector of size n_agents*len(o) in torch
+        ma_o = torch.zeros((self.batch_size, self.q_obs_dim))
+        ma_o[:, :6] = o[:, 0, :6]
+        ma_o[:, 6:] = o[:, :, 6:].reshape(self.batch_size, -1)
+        ma_a = a.reshape(self.batch_size, -1)
+        ma_o = ma_o.to(device)
+        ma_a = ma_a.to(device)
+        
+        r, o2, d = r.to(device), o2.to(device), d.to(device)
+
+
+
+        q1 = self.ac.q1(ma_o,ma_a)
+        q2 = self.ac.q2(ma_o,ma_a)
 
         # Bellman backup for Q function. For 1 step quasi static policy, this is just reward value. No discounted returns.``
         with torch.no_grad():
@@ -73,19 +88,40 @@ class MASAC:
         loss_q2 = ((q2 - backup)**2).mean()
         loss_q = loss_q1 + loss_q2
 
+        loss_q.backward()
+        self.q_optimizer.step()
         q_info = dict(Q1Vals=q1.detach().numpy(),
                         Q2Vals=q2.detach().numpy())
         return loss_q, q_info
 
-    def compute_pi_loss(self, data):
+    def compute_pi_loss(self, data, n_agents):
+        """ TODO: This is all wrong. Fix MASAC training """
         o = data['obs']
         o = o.to(device)
-        pi, logp_pi = self.ac.pi(o)
-        q1_pi = self.ac.q1(o, pi)
-        q2_pi = self.ac.q2(o, pi)
-        q_pi = torch.min(q1_pi, q2_pi)
-        # Entropy-regularized policy loss
-        loss_pi = (self.hp_dict['alpha'] * logp_pi - q_pi).mean()
+        ma_loss_pi = None
+        for i in range(n_agents): 
+            pi, logp_pi = self.ac.pi(o[i])
+            q1_pi = self.ac.q1(o[i], pi)
+            q2_pi = self.ac.q2(o[i], pi)
+            q_pi = torch.min(q1_pi, q2_pi)
+            # Entropy-regularized policy loss
+            loss_pi = (self.hp_dict['alpha'] * logp_pi - q_pi).mean()
+            loss_pi.backward()
+
+
+            grads = [param.grad for param in self.ac.pi.parameters() if param.grad is not None]
+            if ma_loss_pi is None:
+                ma_loss_pi = grads
+            else:
+                ma_loss_pi = [total_grad + grad for total_grad, grad in zip(ma_loss_pi, grads)]
+
+        avg_grads = [total_grad / n_agents for total_grad in ma_loss_pi]
+
+        # Apply averaged gradients
+        for param, grad in zip(self.ac.pi.parameters(), avg_grads):
+            param.grad = grad
+
+        self.pi_optimizer.step()
         # Useful info for logging
         pi_info = dict(LogPi=logp_pi.detach().numpy())
         return loss_pi, pi_info
@@ -95,8 +131,6 @@ class MASAC:
         # First run one gradient descent step for Q.
         self.q_optimizer.zero_grad()
         loss_q, q_info = self.compute_q_loss(data, n_agents)
-        loss_q.backward()
-        self.q_optimizer.step()
         # Record things
         self.logger.store(LossQ=loss_q.item(), **q_info)
 
@@ -108,8 +142,6 @@ class MASAC:
         # Next run one gradient descent step for pi.
         self.pi_optimizer.zero_grad()
         loss_pi, pi_info = self.compute_pi_loss(data, n_agents)
-        loss_pi.backward()
-        self.pi_optimizer.step()
 
         # Unfreeze Q-network so you can optimize it at next DDPG step.
         for p in self.q_params:
