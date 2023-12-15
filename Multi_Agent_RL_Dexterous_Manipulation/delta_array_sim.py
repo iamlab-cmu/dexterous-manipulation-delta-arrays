@@ -106,7 +106,7 @@ class DeltaArraySim:
         self.model = img_embed_model
         self.transform = transform
         if len(agents) == 1:
-            self.agent = agent[0]
+            self.agent = agents[0]
         else:
             self.pretrained_agent = agents[0]
             self.agent = agents[1]
@@ -116,9 +116,9 @@ class DeltaArraySim:
         self.actions = np.zeros((self.scene.n_envs, self.max_agents, 2))
         self.act_pix = np.zeros((self.scene.n_envs, self.max_agents, 2))
 
-        self.ep_rewards = []
+        # self.ep_rewards = []
         self.ep_reward = np.zeros(self.scene.n_envs)
-        self.ep_len = 0
+        self.ep_len = np.zeros(self.scene.n_envs)
 
         self.start_time = time.time()
 
@@ -302,11 +302,11 @@ class DeltaArraySim:
 
             #normalize the reward for easier training
             # self.ep_reward[env_idx] = (self.ep_reward[env_idx] - -45)/90
-            agent.ma_replay_buffer.store(self.init_state[env_idx], self.actions[env_idx], self.ep_reward[env_idx], self.final_state, True)
-            self.ep_rewards.append(self.ep_reward[env_idx])
-            agent.logger.store(EpRet=self.ep_reward[env_idx], EpLen=self.ep_len)
+            agent.ma_replay_buffer.store(self.init_state[env_idx], self.actions[env_idx], self.ep_reward[env_idx], self.final_state[env_idx], True)
+            # self.ep_rewards.append(self.ep_reward[env_idx])
+            agent.logger.store(EpRet=self.ep_reward[env_idx], EpLen=self.ep_len[env_idx])
             # if env_idx == (self.scene.n_envs-1):
-            print(f"Iter: {self.current_episode}, Mean Reward: {np.mean(self.ep_rewards[-50:])}, Current Reward: {self.ep_reward[env_idx]}")
+            print(f"Iter: {self.current_episode}, Current Reward: {self.ep_reward[env_idx]}")
         self.reset(env_idx)
 
     def reset(self, env_idx):
@@ -319,14 +319,14 @@ class DeltaArraySim:
         self.actions[env_idx] = np.zeros((self.max_agents, 2))
 
     def env_step(self, env_idx, t_step, agent):
-        if (self.ep_len == 0) and (t_step == 1):
+        if (self.ep_len[env_idx] == 0) and (t_step == 1):
             self.get_nearest_robots_and_state(env_idx, final=False)
             self.set_nn_fingers_pose_low(env_idx, self.active_idxs[env_idx])
 
         if not self.dont_skip_episode:
             return
 
-        if self.ep_len == 0:
+        if self.ep_len[env_idx] == 0:
             """ extract i, j, u, v for each robot """
             for i in range(len(self.active_idxs[env_idx])):
                 self.actions[env_idx][i] = agent.get_action(self.init_state[env_idx, i, 6:]) # For pretrained grasping policy, single state -> 2D action var
@@ -351,18 +351,18 @@ class DeltaArraySim:
             
     def log_data(self, env_idx, t_step, agent):
         """ Store data about training progress in systematic data structures """
-        log_utils.log_data(agent.logger, self.ep_rewards, self.current_episode, self.start_time)
+        log_utils.log_data(agent.logger, self.ep_reward[env_idx], self.current_episode, self.start_time)
 
     def visual_servoing(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
 
-        if (t_step == 0) and (self.ep_len == 0):
+        if (t_step == 0) and (self.ep_len[env_idx] == 0):
             if self.current_episode < self.max_episodes:
                 self.current_episode += 1
             else:
                 pass # Kill the pipeline somehow?
             
-        if self.ep_len==0:
+        if self.ep_len[env_idx]==0:
             # Call the pretrained policy for all NN robots and set attractors
             if t_step == 0:
                 self.set_block_pose(env_idx) # Reset block to current initial pose
@@ -373,9 +373,9 @@ class DeltaArraySim:
             elif (t_step == 2) and self.dont_skip_episode:
                 self.set_attractor_target(env_idx, t_step)
             elif (t_step == self.time_horizon-1) and self.dont_skip_episode:
-                self.ep_len = 1
+                self.ep_len[env_idx] = 1
             elif not self.dont_skip_episode:
-                self.ep_len = 0
+                self.ep_len[env_idx] = 0
                 self.reset(env_idx)
 
         else:
@@ -393,7 +393,7 @@ class DeltaArraySim:
             elif t_step == self.time_horizon - 1:
                 # Terminate episode
                 self.set_block_pose(env_idx, goal=True) # Set block to next goal pose & Store Goal Pose for both states
-                self.ep_len = 0
+                self.ep_len[env_idx] = 0
             
             
             
