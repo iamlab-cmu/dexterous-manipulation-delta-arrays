@@ -8,7 +8,7 @@ from utils.openai_utils.logx import EpochLogger
 from utils.MASAC.multi_agent_replay_buffer import MultiAgentReplayBuffer
 import itertools
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class MASAC:
     def __init__(self, env_dict, hp_dict, logger_kwargs=dict(), train_or_test="train"):

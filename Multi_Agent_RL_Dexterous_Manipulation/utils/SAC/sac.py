@@ -8,6 +8,8 @@ from utils.openai_utils.logx import EpochLogger
 from utils.SAC.replay_buffer import ReplayBuffer
 import itertools
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 class SAC:
     def __init__(self, env_dict, hp_dict, logger_kwargs=dict(), train_or_test="train"):
         if train_or_test == "train":
@@ -117,10 +119,11 @@ class SAC:
                 p_targ.data.add_(self.hp_dict['tau'] * p.data)
 
     def get_action(self, o, deterministic=False):
-        return self.ac.act(torch.as_tensor(o, dtype=torch.float32), deterministic)
+        return self.ac.act(torch.as_tensor(torch.tensor(o, dtype=torch.float32).to(device), dtype=torch.float32), deterministic)
 
     def load_saved_policy(self, path):
         self.ac.load_state_dict(torch.load(path))
+        self.ac.to(device)
 
     def test_policy(self, o):
         with torch.no_grad():

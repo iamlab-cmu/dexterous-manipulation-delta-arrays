@@ -16,11 +16,11 @@
     "exp_name":	"masac_expt_0",
     "hp_dict":	{
         "alpha":	0.2,
-        "batch_size":	2,
-        "exploration_cutoff":	3,
+        "batch_size":	128,
+        "exploration_cutoff":	256,
         "gamma":	0.99,
-        "pi_lr":	0.0001,
-        "q_lr":	0.0001,
+        "pi_lr":	0.001,
+        "q_lr":	0.001,
         "replay_size":	100000,
         "seed":	69420,
         "tau":	0.005
@@ -30,9 +30,9 @@
         "output_dir":	"./data/rl_data/masac_expt_0/masac_expt_0_s69420"
     },
     "self":	{
-        "<utils.MASAC.masac.MASAC object at 0x7f3f7127b5b0>":	{
+        "<utils.MASAC.masac.MASAC object at 0x7f35b04b1c70>":	{
             "logger":	{
-                "<utils.openai_utils.logx.EpochLogger object at 0x7f3f71269460>":	{
+                "<utils.openai_utils.logx.EpochLogger object at 0x7f35b04b1df0>":	{
                     "epoch_dict":	{},
                     "exp_name":	"masac_expt_0",
                     "first_row":	true,
