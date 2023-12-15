@@ -22,7 +22,7 @@ class MASAC:
         self.hp_dict = hp_dict
         self.env_dict = env_dict
         self.pi_obs_dim = self.env_dict['pi_obs_space']['dim']
-        self.q_obs_dim = self.env_dict['pi_obs_space']['dim']
+        self.q_obs_dim = self.env_dict['q_obs_space']['dim']
         self.act_dim = self.env_dict['action_space']['dim']
         self.max_agents = self.env_dict['max_agents']
         self.batch_size = self.hp_dict['batch_size']
@@ -61,28 +61,40 @@ class MASAC:
         ma_o = torch.zeros((self.batch_size, self.q_obs_dim))
         ma_o[:, :6] = o[:, 0, :6]
         ma_o[:, 6:] = o[:, :, 6:].reshape(self.batch_size, -1)
+
+        ma_o2 = torch.zeros((self.batch_size, self.q_obs_dim))
+        ma_o2[:, :6] = o2[:, 0, :6]
+        ma_o2[:, 6:] = o2[:, :, 6:].reshape(self.batch_size, -1)
+
         ma_a = a.reshape(self.batch_size, -1)
+
         ma_o = ma_o.to(device)
+        ma_o2 = ma_o2.to(device)
         ma_a = ma_a.to(device)
         
         r, o2, d = r.to(device), o2.to(device), d.to(device)
 
-
-
         q1 = self.ac.q1(ma_o,ma_a)
         q2 = self.ac.q2(ma_o,ma_a)
 
-        # Bellman backup for Q function. For 1 step quasi static policy, this is just reward value. No discounted returns.``
-        with torch.no_grad():
-            # q_pi_targ = self.ac_targ.q(o2, self.ac_targ.pi(o2))
-            # backup = r + gamma * (1 - d) * q_pi_targ
-            a2, logp_a2 = self.ac.pi(o2)
-            # Target Q-values
-            q1_pi_targ = self.ac_targ.q1(o2, a2)
-            q2_pi_targ = self.ac_targ.q2(o2, a2)
-            q_pi_targ = torch.min(q1_pi_targ, q2_pi_targ)
-            backup = r + self.hp_dict['gamma'] * (1 - d) * (q_pi_targ - self.hp_dict['alpha'] * logp_a2)
+        # Bellman backup for Q function. For 1 step quasi static policy, this is just reward value. No discounted returns.
+        # with torch.no_grad():
+        #     ma_a2 = torch.zeros((self.batch_size, self.act_dim*self.max_agents)).to(device)
+        #     log_probs = []
+        #     for i in range(n_agents):
+        #         pi, logp_pi = self.ac.pi(o[:, i])
+        #         ma_a[:, i*self.act_dim:(i+1)*self.act_dim] = pi
+        #         log_probs.append(logp_pi)
+            
+        #     # Target Q-values
+        #     q1_pi_targ = self.ac_targ.q1(ma_o2, ma_a2)
+        #     q2_pi_targ = self.ac_targ.q2(ma_o2, ma_a2)
+        #     q_pi_targ = torch.min(q1_pi_targ, q2_pi_targ)
+        #     backup = r + self.hp_dict['gamma'] * (1 - d) * (q_pi_targ - self.hp_dict['alpha'] * torch.mean(torch.stack(logp_pi), dim=0))
         
+        # For a Bandit setting, Bellman Backup is just the reward
+        backup = r
+
         # MSE loss against Bellman backup
         loss_q1 = ((q1 - backup)**2).mean()
         loss_q2 = ((q2 - backup)**2).mean()
@@ -90,48 +102,38 @@ class MASAC:
 
         loss_q.backward()
         self.q_optimizer.step()
-        q_info = dict(Q1Vals=q1.detach().numpy(),
-                        Q2Vals=q2.detach().numpy())
+        q_info = dict(Q1Vals=q1.detach().cpu().numpy(),
+                        Q2Vals=q2.detach().cpu().numpy())
         return loss_q, q_info
 
     def compute_pi_loss(self, data, n_agents):
         """ TODO: This is all wrong. Fix MASAC training """
         o = data['obs']
         o = o.to(device)
-        ma_loss_pi = None
 
-        ma_o = torch.zeros((self.batch_size, self.q_obs_dim))
+        ma_o = torch.zeros((self.batch_size, self.q_obs_dim)).to(device)
+        ma_a = torch.zeros((self.batch_size, self.act_dim*self.max_agents)).to(device)
+
         ma_o[:, 6:] = o[:, :, 6:].reshape(self.batch_size, -1)
         ma_o[:, :6] = o[:, 0, :6]
-
-        ma_a = torch.zeros((self.batch_size, self.act_dim*self.max_agents))
+        log_probs = []
         for i in range(n_agents):
-            pi, logp_pi = self.ac.pi(o[i])
+            pi, logp_pi = self.ac.pi(o[:, i])
+            # print(ma_a[:, i*self.act_dim:(i+1)*self.act_dim], pi)
+            ma_a[:, i*self.act_dim:(i+1)*self.act_dim] = pi
+            log_probs.append(logp_pi)
 
-
-        q1_pi = self.ac.q1(o[i], pi)
-        q2_pi = self.ac.q2(o[i], pi)
+        q1_pi = self.ac.q1(ma_o, ma_a)
+        q2_pi = self.ac.q2(ma_o, ma_a)
         q_pi = torch.min(q1_pi, q2_pi)
         # Entropy-regularized policy loss
-        loss_pi = (self.hp_dict['alpha'] * logp_pi - q_pi).mean()
+        loss_pi = (self.hp_dict['alpha'] * torch.mean(torch.stack(log_probs), dim=0) - q_pi).mean()
         loss_pi.backward()
 
-
-        grads = [param.grad for param in self.ac.pi.parameters() if param.grad is not None]
-        if ma_loss_pi is None:
-            ma_loss_pi = grads
-        else:
-            ma_loss_pi = [total_grad + grad for total_grad, grad in zip(ma_loss_pi, grads)]
-
-        avg_grads = [total_grad / n_agents for total_grad in ma_loss_pi]
-
-        # Apply averaged gradients
-        for param, grad in zip(self.ac.pi.parameters(), avg_grads):
-            param.grad = grad
+        # Useful info for logging
+        pi_info = dict(LogPi=torch.mean(torch.stack(log_probs), dim=0).detach().cpu().numpy())
 
         self.pi_optimizer.step()
-        # Useful info for logging
-        pi_info = dict(LogPi=logp_pi.detach().numpy())
         return loss_pi, pi_info
 
     def update(self, batch_size, n_agents):
@@ -164,15 +166,19 @@ class MASAC:
                 p_targ.data.mul_(1 - self.hp_dict['tau'])
                 p_targ.data.add_(self.hp_dict['tau'] * p.data)
 
-    def get_actions(self, o, deterministic=False):
-        return self.ac.act(torch.as_tensor(o, dtype=torch.float32), deterministic)
+    def get_actions(self, o, n_idxs, deterministic=False):
+        o = torch.tensor(o, dtype=torch.float32).to(device)
+        actions = np.zeros((n_idxs,2))
+        for i in range(n_idxs):
+            actions[i] = self.ac.act(torch.as_tensor(o[i], dtype=torch.float32), deterministic)
+        return actions
 
     def load_saved_policy(self, path='./data/rl_data/backup/sac_expt_grasp/pyt_save/model.pt'):
         self.ac.load_state_dict(torch.load(path))
 
     def test_policy(self, o):
         with torch.no_grad():
-            a = self.ac.act(torch.as_tensor(o, dtype=torch.float32), True) # Generate deterministic policies
+            a = self.ac.act(torch.as_tensor(o.to(device), dtype=torch.float32), True) # Generate deterministic policies
         return np.clip(a, -self.act_limit, self.act_limit)
         
         

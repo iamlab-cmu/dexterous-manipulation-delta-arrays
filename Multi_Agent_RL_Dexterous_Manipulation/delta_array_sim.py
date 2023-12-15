@@ -298,7 +298,7 @@ class DeltaArraySim:
         # agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
         if self.ep_reward[env_idx] > -0.25:
             if agent.ma_replay_buffer.size > self.batch_size:
-                self.log_data(env_idx, t_step)
+                self.log_data(env_idx, t_step, agent)
 
             #normalize the reward for easier training
             # self.ep_reward[env_idx] = (self.ep_reward[env_idx] - -45)/90
@@ -388,7 +388,7 @@ class DeltaArraySim:
                 # Update policy
                 self.compute_reward(env_idx, t_step)
                 if self.agent.ma_replay_buffer.size > self.batch_size:
-                    self.agent.update(self.batch_size)
+                    self.agent.update(self.batch_size, self.max_agents)
                 self.terminate(env_idx, t_step, self.agent)
             elif t_step == self.time_horizon - 1:
                 # Terminate episode

@@ -90,8 +90,8 @@ class DeltaArraySimEnvironment():
                 "alpha"       :0.2,
                 "replay_size" :100000,
                 'seed'        :69420,
-                "batch_size"  :128,
-                "exploration_cutoff": 1000,
+                "batch_size"  :2,
+                "exploration_cutoff": 3,
                 
             }
 
@@ -107,7 +107,7 @@ class DeltaArraySimEnvironment():
             pass
             # self.pushing_agent.load_saved_policy('./models/trained_models/SAC_1_agent_stochastic/pyt_save/model.pt')
         
-        self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.obj_name, self.model, self.transform, [self.grasping_agent, self.pushing_agent], hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
+        self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.obj_name, self.model, self.transform, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
         self.cam = GymCamera(self.scene, cam_props = self.cfg['camera'])
         # print(RigidTransform.x_axis_rotation(np.deg2rad(180)))
         rot = RigidTransform.x_axis_rotation(np.deg2rad(0))@RigidTransform.z_axis_rotation(np.deg2rad(-90))
