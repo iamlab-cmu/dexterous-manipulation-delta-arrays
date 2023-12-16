@@ -311,6 +311,7 @@ class DeltaArraySim:
 
     def reset(self, env_idx):
         """ Normal reset OR Alt-terminate state when block degenerately collides with robot. This is due to an artifact of the simulation. """
+        self.dont_skip_episode = True
         self.active_idxs[env_idx].clear()
         self.set_all_fingers_pose(env_idx, pos_high=True)
         self.ep_reward[env_idx] = 0
@@ -356,11 +357,10 @@ class DeltaArraySim:
     def visual_servoing(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
 
-        if (t_step == 0) and (self.ep_len[env_idx] == 0):
-            if self.current_episode < self.max_episodes:
-                self.current_episode += 1
-            else:
-                pass # Kill the pipeline somehow?
+        # if (t_step == 0) and (self.ep_len[env_idx] == 0):
+        #     if self.current_episode < self.max_episodes:
+        #     else:
+        #         pass # Kill the pipeline somehow?
             
         if self.ep_len[env_idx]==0:
             # Call the pretrained policy for all NN robots and set attractors
@@ -390,6 +390,8 @@ class DeltaArraySim:
                 if self.agent.ma_replay_buffer.size > self.batch_size:
                     self.agent.update(self.batch_size, self.max_agents)
                 self.terminate(env_idx, t_step, self.agent)
+
+                self.current_episode += 1
             elif t_step == self.time_horizon - 1:
                 # Terminate episode
                 self.set_block_pose(env_idx, goal=True) # Set block to next goal pose & Store Goal Pose for both states

@@ -30,9 +30,9 @@
         "output_dir":	"./data/rl_data/masac_expt_0/masac_expt_0_s69420"
     },
     "self":	{
-        "<utils.MASAC.masac.MASAC object at 0x7fe42c4c7df0>":	{
+        "<utils.MASAC.masac.MASAC object at 0x7f89a83cfd60>":	{
             "logger":	{
-                "<utils.openai_utils.logx.EpochLogger object at 0x7fe437ff81c0>":	{
+                "<utils.openai_utils.logx.EpochLogger object at 0x7f89a843d2e0>":	{
                     "epoch_dict":	{},
                     "exp_name":	"masac_expt_0",
                     "first_row":	true,
