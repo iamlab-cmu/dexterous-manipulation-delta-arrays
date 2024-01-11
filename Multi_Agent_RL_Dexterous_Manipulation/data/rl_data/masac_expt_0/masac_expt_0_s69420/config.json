@@ -19,8 +19,8 @@
         "batch_size":	128,
         "exploration_cutoff":	256,
         "gamma":	0.99,
-        "pi_lr":	0.001,
-        "q_lr":	0.001,
+        "pi_lr":	0.0003,
+        "q_lr":	0.0003,
         "replay_size":	100000,
         "seed":	69420,
         "tau":	0.005
@@ -30,9 +30,9 @@
         "output_dir":	"./data/rl_data/masac_expt_0/masac_expt_0_s69420"
     },
     "self":	{
-        "<utils.MASAC.masac.MASAC object at 0x7f89a83cfd60>":	{
+        "<utils.MASAC.masac.MASAC object at 0x7fe6e2acfdf0>":	{
             "logger":	{
-                "<utils.openai_utils.logx.EpochLogger object at 0x7f89a843d2e0>":	{
+                "<utils.openai_utils.logx.EpochLogger object at 0x7fe6e2abf4c0>":	{
                     "epoch_dict":	{},
                     "exp_name":	"masac_expt_0",
                     "first_row":	true,

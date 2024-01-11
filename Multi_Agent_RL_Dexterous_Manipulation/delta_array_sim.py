@@ -269,7 +269,7 @@ class DeltaArraySim:
                 # Convert action to normalized pixel values
                 self.actions[env_idx, :self.n_idxs] = self.act_pix[env_idx, self.n_idxs]/self.img_size
 
-                self.init_state[env_idx, :self.n_idxs, 8:10] += self.actions[env_idx, :self.n_idxs]
+                # self.init_state[env_idx, :self.n_idxs, 8:10] += self.actions[env_idx, :self.n_idxs]
                 self.final_state[env_idx, :self.n_idxs, 8:10] += self.actions[env_idx, :self.n_idxs]
 
     def compute_reward(self, env_idx, t_step):
@@ -330,7 +330,7 @@ class DeltaArraySim:
         if self.ep_len[env_idx] == 0:
             """ extract i, j, u, v for each robot """
             for i in range(len(self.active_idxs[env_idx])):
-                self.actions[env_idx][i] = agent.get_action(self.init_state[env_idx, i, 6:]) # For pretrained grasping policy, single state -> 2D action var
+                self.actions[env_idx][i] = agent.get_action(self.init_state[env_idx, i, 6:], deterministic=True) # For pretrained grasping policy, single state -> 2D action var
             # print(self.actions[env_idx, :2])
         elif (self.current_episode > self.exploration_cutoff):
             self.actions[env_idx, :self.n_idxs] = agent.get_actions(self.init_state[env_idx], self.n_idxs) # For MARL policy, multiple states -> 3D action var

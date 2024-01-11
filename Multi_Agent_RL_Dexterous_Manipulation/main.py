@@ -85,8 +85,8 @@ class DeltaArraySimEnvironment():
         self.hp_dict = {
                 "tau"         :0.005,
                 "gamma"       :0.99,
-                "q_lr"        :1e-3,
-                "pi_lr"       :1e-3,
+                "q_lr"        :3e-4,
+                "pi_lr"       :3e-4,
                 "alpha"       :0.2,
                 "replay_size" :100000,
                 'seed'        :69420,

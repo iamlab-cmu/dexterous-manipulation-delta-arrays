@@ -1,0 +1,52 @@
+{
+    "env_dict":	{
+        "action_space":	{
+            "dim":	2,
+            "high":	0.03,
+            "low":	-0.03
+        },
+        "max_agents":	15,
+        "pi_obs_space":	{
+            "dim":	10
+        },
+        "q_obs_space":	{
+            "dim":	66
+        }
+    },
+    "exp_name":	"masac_expt_0",
+    "hp_dict":	{
+        "alpha":	0.2,
+        "batch_size":	128,
+        "exploration_cutoff":	256,
+        "gamma":	0.99,
+        "pi_lr":	0.001,
+        "q_lr":	0.001,
+        "replay_size":	100000,
+        "seed":	69420,
+        "tau":	0.005
+    },
+    "logger_kwargs":	{
+        "exp_name":	"masac_expt_0",
+        "output_dir":	"./data/rl_data/masac_expt_0/masac_expt_0_s69420"
+    },
+    "self":	{
+        "<utils.MASAC.masac.MASAC object at 0x7f89a83cfd60>":	{
+            "logger":	{
+                "<utils.openai_utils.logx.EpochLogger object at 0x7f89a843d2e0>":	{
+                    "epoch_dict":	{},
+                    "exp_name":	"masac_expt_0",
+                    "first_row":	true,
+                    "log_current_row":	{},
+                    "log_headers":	[],
+                    "output_dir":	"./data/rl_data/masac_expt_0/masac_expt_0_s69420",
+                    "output_file":	{
+                        "<_io.TextIOWrapper name='./data/rl_data/masac_expt_0/masac_expt_0_s69420/progress.txt' mode='w' encoding='UTF-8'>":	{
+                            "mode":	"w"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "train_or_test":	"train"
+}
