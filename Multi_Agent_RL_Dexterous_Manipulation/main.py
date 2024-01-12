@@ -65,23 +65,23 @@ class DeltaArraySimEnvironment():
         #                     rb_props=self.cfg['fiducial']['rb_props'],
         #                     asset_options=self.cfg['fiducial']['asset_options'])
         
-        self.model = resnet18(weights="ResNet18_Weights.DEFAULT")
-        self.model = torch.nn.Sequential(*list(self.model.children())[:-1])
-        self.model.eval()
-        self.model = self.model.to(device)
-        self.transform = transforms.Compose([
-            transforms.Resize(224),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
+        # self.model = resnet18(weights="ResNet18_Weights.DEFAULT")
+        # self.model = torch.nn.Sequential(*list(self.model.children())[:-1])
+        # self.model.eval()
+        # self.model = self.model.to(device)
+        # self.transform = transforms.Compose([
+        #     transforms.Resize(224),
+        #     transforms.ToTensor(),
+        #     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        # ])
 
 
         single_agent_env_dict = {'action_space': {'low': -0.03, 'high': 0.03, 'dim': 2},
                     'observation_space': {'dim': 4},}
         ma_env_dict = {'action_space': {'low': -0.03, 'high': 0.03, 'dim': 2},
-                    'pi_obs_space': {'dim': 10},
-                    'q_obs_space': {'dim': 66},
-                    "max_agents"    :15,}
+                    'pi_obs_space': {'dim': 6},
+                    'q_obs_space': {'dim': 6},
+                    "max_agents"    :64,}
         self.hp_dict = {
                 "tau"         :0.005,
                 "gamma"       :0.99,
@@ -97,31 +97,31 @@ class DeltaArraySimEnvironment():
 
         if self.train_or_test=="train":
             logger_kwargs = setup_logger_kwargs("masac_expt_0", 69420, data_dir="./data/rl_data")
+        else:
+            logger_kwargs = {}
         # self.agent = ddpg.DDPG(env_dict, self.hp_dict, logger_kwargs)
         # self.agent = reinforce.REINFORCE(env_dict, 3e-3)
         self.grasping_agent = sac.SAC(single_agent_env_dict, self.hp_dict, logger_kwargs, train_or_test="test")
         self.grasping_agent.load_saved_policy('./models/trained_models/SAC_1_agent_stochastic/pyt_save/model.pt')
 
         self.pushing_agent = masac.MASAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
+
         if self.train_or_test=="test":
-            pass
-            # self.pushing_agent.load_saved_policy('./models/trained_models/SAC_1_agent_stochastic/pyt_save/model.pt')
+            self.pushing_agent.load_saved_policy('./models/trained_models/MASAC_15_agents/pyt_save/model.pt')
         
-        self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.obj_name, self.model, self.transform, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
+        self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.obj_name, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
+        
+        
         self.cam = GymCamera(self.scene, cam_props = self.cfg['camera'])
-        # print(RigidTransform.x_axis_rotation(np.deg2rad(180)))
         rot = RigidTransform.x_axis_rotation(np.deg2rad(0))@RigidTransform.z_axis_rotation(np.deg2rad(-90))
-        # print(rot)
         self.cam_offset_transform = RigidTransform_to_transform(RigidTransform(
             rotation=rot,
             translation = np.array([0.13125, 0.1407285, 0.65])
         ))
         self.cam_name = 'hand_cam0'
-
         self.fingers.cam = self.cam 
         self.fingers.cam_name = self.cam_name
 
-            # scene.attach_camera(cam_name, cam, franka_name, 'panda_hand', offset_transform=cam_offset_transform)
         self.scene.setup_all_envs(self.setup_scene)
         self.setup_objects()
 
