@@ -22,6 +22,7 @@ import delta_array_real
 import utils.SAC.sac as sac
 import utils.DDPG.ddpg as ddpg
 import utils.MASAC.masac as masac
+import utils.MATSAC.matsac as matsac
 
 from utils.openai_utils.run_utils import setup_logger_kwargs
 device = torch.device("cuda:0")
@@ -85,18 +86,27 @@ class DeltaArraySimEnvironment():
         self.hp_dict = {
                 "tau"         :0.005,
                 "gamma"       :0.99,
-                "q_lr"        :3e-4,
-                "pi_lr"       :3e-4,
+                "q_lr"        :3e-3,
+                "pi_lr"       :3e-3,
                 "alpha"       :0.2,
-                "replay_size" :100000,
+                "replay_size" :500000,
                 'seed'        :69420,
-                "batch_size"  :128,
-                "exploration_cutoff": 256,
-                
+                "batch_size"  :2,
+                "exploration_cutoff": 2,
+
+                # Multi Agent Part Below:
+                'state_dim': 6,
+                "device": torch.device("cuda:0"),
+                "model_dim": 128,
+                "num_heads": 8,
+                "dim_ff": 128,
+                "n_layers_dict":{'encoder': 2, 'actor': 2, 'critic': 2},
+                "dropout": 0.1,
+                "delta_array_size": [8,8], 
             }
 
         if self.train_or_test=="train":
-            logger_kwargs = setup_logger_kwargs("masac_expt_0", 69420, data_dir="./data/rl_data")
+            logger_kwargs = setup_logger_kwargs("matsac_expt_0", 69420, data_dir="./data/rl_data")
         else:
             logger_kwargs = {}
         # self.agent = ddpg.DDPG(env_dict, self.hp_dict, logger_kwargs)
@@ -104,7 +114,8 @@ class DeltaArraySimEnvironment():
         self.grasping_agent = sac.SAC(single_agent_env_dict, self.hp_dict, logger_kwargs, train_or_test="test")
         self.grasping_agent.load_saved_policy('./models/trained_models/SAC_1_agent_stochastic/pyt_save/model.pt')
 
-        self.pushing_agent = masac.MASAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
+        # self.pushing_agent = masac.MASAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
+        self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
 
         if self.train_or_test=="test":
             self.pushing_agent.load_saved_policy('./models/trained_models/MASAC_15_agents/pyt_save/model.pt')
@@ -150,10 +161,12 @@ class DeltaArraySimEnvironment():
         # fiducial_lt = [gymapi.Transform(p=gymapi.Vec3(0.2625 + 0.062, 0.303107 + 0.1855, 1.0052)) for _ in range(self.scene.n_envs)]
         for env_idx in self.scene.env_idxs:
             self.table.set_rb_transforms(env_idx, 'table', [table_transforms[env_idx]])
-            if self.obj_name == 'block':
-                self.object.set_rb_transforms(env_idx, self.obj_name, [object_transforms[env_idx]])
-            elif self.obj_name == 'rope':
-                self.object.set_rb_transforms(env_idx, self.obj_name, [object_transforms[env_idx]])
+            
+            yaw = np.arctan2(2*(object_r.w*object_r.z + object_r.x*object_r.y), 1 - 2*(object_r.x**2 + object_r.y**2))
+            T = np.array((np.random.uniform(0.009, 0.21), np.random.uniform(0.005, 0.25)))
+            self.fingers.goal_pose[env_idx] = np.array([*T, yaw])
+            
+            self.object.set_rb_transforms(env_idx, self.obj_name, [object_transforms[env_idx]])
             self.fingers.set_all_fingers_pose(env_idx)
             # self.fingers.set_block_pose(env_idx)
             # self.fiducial_lt.set_rb_transforms(env_idx, "fiducial_lt", [fiducial_lt[env_idx]])

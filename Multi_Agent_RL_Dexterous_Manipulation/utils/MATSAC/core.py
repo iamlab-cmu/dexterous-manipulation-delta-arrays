@@ -10,6 +10,9 @@ import torch.nn.functional as F
 LOG_STD_MAX = 2
 LOG_STD_MIN = -20
 
+def count_vars(module):
+    return sum([np.prod(p.shape) for p in module.parameters()])
+
 class MultiHeadAttention(nn.Module):
     def __init__(self, model_dim, num_heads, max_agents, masked):
         super(MultiHeadAttention, self).__init__()
@@ -102,9 +105,9 @@ class CriticDecoderLayer(nn.Module):
         self.layer_norm1 = nn.LayerNorm(model_dim)
         self.layer_norm2 = nn.LayerNorm(model_dim)
 
-    def forward(self, x, decoder_output):
+    def forward(self, x, encoder_output):
         x = self.layer_norm1(x)
-        attn = self.cross_attention(x, decoder_output, decoder_output)
+        attn = self.cross_attention(x, encoder_output, encoder_output)
         x = self.layer_norm2(x + self.dropout(attn))
         ff_embed = self.feed_forward(x)
         x = x + self.dropout(ff_embed)
@@ -181,6 +184,7 @@ class ActorDecoder(nn.Module):
         self.decoder_layers = nn.ModuleList([ActorDecoderLayer(model_dim, num_heads, max_agents, dim_ff, dropout) for _ in range(n_layers)])
         self.actor_mu_layer = nn.Linear(model_dim, action_dim)
         self.actor_std_layer = nn.Linear(model_dim, action_dim)
+        self.gelu = nn.GELU()
 
     def forward(self, state_enc, actions):
         """
@@ -188,14 +192,15 @@ class ActorDecoder(nn.Module):
                actions (bs, n_agents, action_dim)
         Output: decoder_output (bs, n_agents, model_dim)
         """
-        act_enc = self.dropout(self.positional_encoding(F.gelu(self.action_embedding(actions))))
+        # act_enc = self.dropout(self.positional_encoding(F.gelu(self.action_embedding(actions))))
+        act_enc = self.gelu(self.action_embedding(actions))
         for layer in self.decoder_layers:
             act_enc = layer(act_enc, state_enc)
         act_mean = self.actor_mu_layer(act_enc)
         act_std = self.actor_std_layer(act_enc)
         act_std = torch.clamp(act_std, LOG_STD_MIN, LOG_STD_MAX)
-        act_std = torch.exp(act_std)
-        return act_mean, act_std
+        std = torch.exp(act_std)
+        return act_mean, std
 
 class Transformer(nn.Module):
     def __init__(self, state_dim, action_dim, action_limit, model_dim, num_heads, dim_ff, num_layers, dropout, device, delta_array_size = (8,8)):
@@ -248,23 +253,35 @@ class Transformer(nn.Module):
         output_actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
         output_action_log_probs = torch.zeros((bs, n_agents)).to(self.device)
 
+        
+
         for i in range(n_agents):
             act_means, act_stds = self.decoder_actor(state_enc, shifted_actions)
+            
+            dist = torch.distributions.Normal(act_means, act_stds)
+            output_actions = dist.rsample()
 
-            if deterministic:
-                output_action = self.act_limit * torch.tanh(act_means[:, i, :])
-                output_action_log_prob = 0
-            else:
-                dist = torch.distributions.Normal(act_means[:, i, :], act_stds[:, i, :])
-                output_action = dist.rsample()
+            output_action_log_probs = dist.log_prob(output_actions).sum(axis=-1)
+            output_action_log_probs = output_action_log_probs - (2*(np.log(2) - output_actions - F.softplus(-2*output_actions))).sum(axis=2)
+            
+            output_actions = self.act_limit * torch.tanh(output_actions)
+            # act_means, act_stds = self.decoder_actor(state_enc, shifted_actions)
+            # mean, std = act_means[:, i, :].clone(), act_stds[:, i, :].clone()
 
-                output_action_log_prob = dist.log_prob(output_action).sum(axis=-1)
-                output_action_log_prob -= (2*(np.log(2) - output_action - F.softplus(-2*output_action))).sum(axis=1)
-                output_action = torch.tanh(output_action)
-                output_action = self.act_limit * output_action
+            # if deterministic:
+            #     output_action = self.act_limit * torch.tanh(mean)
+            #     output_action_log_prob = 0
+            # else:
+            #     dist = torch.distributions.Normal(mean, std)
+            #     output_action = dist.rsample()
 
-            output_actions[:, i, :] = output_action 
-            output_action_log_probs[:, i] = output_action_log_prob
-            if (i+1) < n_agents:
-                shifted_actions[:, i+1, :] = output_action 
+            #     output_action_log_prob = dist.log_prob(output_action).sum(axis=-1)
+            #     output_action_log_prob = output_action_log_prob - (2*(np.log(2) - output_action - F.softplus(-2*output_action))).sum(axis=1)
+                
+            #     output_action = self.act_limit * torch.tanh(output_action)
+
+            # output_actions[:, i, :] = output_action.clone()
+            # output_action_log_probs[:, i] = output_action_log_prob.clone()
+            # if (i+1) < n_agents:
+            #     shifted_actions[:, i+1, :] = output_action.clone()
         return output_actions, output_action_log_probs

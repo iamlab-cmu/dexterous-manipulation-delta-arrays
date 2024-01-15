@@ -1,0 +1,67 @@
+{
+    "env_dict":	{
+        "action_space":	{
+            "dim":	2,
+            "high":	0.03,
+            "low":	-0.03
+        },
+        "max_agents":	64,
+        "pi_obs_space":	{
+            "dim":	6
+        },
+        "q_obs_space":	{
+            "dim":	6
+        }
+    },
+    "exp_name":	"matsac_expt_0",
+    "hp_dict":	{
+        "alpha":	0.2,
+        "batch_size":	2,
+        "delta_array_size":	[
+            8,
+            8
+        ],
+        "device":	"cuda:0",
+        "dim_ff":	128,
+        "dropout":	0.1,
+        "exploration_cutoff":	2,
+        "gamma":	0.99,
+        "model_dim":	128,
+        "n_layers_dict":	{
+            "actor":	2,
+            "critic":	2,
+            "encoder":	2
+        },
+        "num_heads":	8,
+        "pi_lr":	0.003,
+        "q_lr":	0.003,
+        "replay_size":	500000,
+        "seed":	69420,
+        "state_dim":	6,
+        "tau":	0.005
+    },
+    "logger_kwargs":	{
+        "exp_name":	"matsac_expt_0",
+        "output_dir":	"./data/rl_data/matsac_expt_0/matsac_expt_0_s69420"
+    },
+    "self":	{
+        "<utils.MATSAC.matsac.MATSAC object at 0x7faa931c29a0>":	{
+            "logger":	{
+                "<utils.openai_utils.logx.EpochLogger object at 0x7fa94d29a970>":	{
+                    "epoch_dict":	{},
+                    "exp_name":	"matsac_expt_0",
+                    "first_row":	true,
+                    "log_current_row":	{},
+                    "log_headers":	[],
+                    "output_dir":	"./data/rl_data/matsac_expt_0/matsac_expt_0_s69420",
+                    "output_file":	{
+                        "<_io.TextIOWrapper name='./data/rl_data/matsac_expt_0/matsac_expt_0_s69420/progress.txt' mode='w' encoding='UTF-8'>":	{
+                            "mode":	"w"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "train_or_test":	"train"
+}
