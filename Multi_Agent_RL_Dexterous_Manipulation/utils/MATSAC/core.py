@@ -256,32 +256,35 @@ class Transformer(nn.Module):
         
 
         for i in range(n_agents):
-            act_means, act_stds = self.decoder_actor(state_enc, shifted_actions)
-            
-            dist = torch.distributions.Normal(act_means, act_stds)
-            output_actions = dist.rsample()
-
-            output_action_log_probs = dist.log_prob(output_actions).sum(axis=-1)
-            output_action_log_probs = output_action_log_probs - (2*(np.log(2) - output_actions - F.softplus(-2*output_actions))).sum(axis=2)
-            
-            output_actions = self.act_limit * torch.tanh(output_actions)
             # act_means, act_stds = self.decoder_actor(state_enc, shifted_actions)
-            # mean, std = act_means[:, i, :].clone(), act_stds[:, i, :].clone()
+            
+            # dist = torch.distributions.Normal(act_means, act_stds)
+            # output_actions = dist.rsample()
 
-            # if deterministic:
-            #     output_action = self.act_limit * torch.tanh(mean)
-            #     output_action_log_prob = 0
-            # else:
-            #     dist = torch.distributions.Normal(mean, std)
-            #     output_action = dist.rsample()
+            # output_action_log_probs = dist.log_prob(output_actions).sum(axis=-1)
+            # output_action_log_probs = output_action_log_probs - (2*(np.log(2) - output_actions - F.softplus(-2*output_actions))).sum(axis=2)
+            
+            # output_actions = self.act_limit * torch.tanh(output_actions)
+            act_means, act_stds = self.decoder_actor(state_enc, shifted_actions)
+            mean, std = act_means[:, i, :], act_stds[:, i, :]
 
-            #     output_action_log_prob = dist.log_prob(output_action).sum(axis=-1)
-            #     output_action_log_prob = output_action_log_prob - (2*(np.log(2) - output_action - F.softplus(-2*output_action))).sum(axis=1)
+            if deterministic:
+                output_action = self.act_limit * torch.tanh(mean)
+                output_action_log_prob = 0
+            else:
+                dist = torch.distributions.Normal(mean, std)
+                output_action = dist.rsample()
+
+                output_action_log_prob = dist.log_prob(output_action).sum(axis=-1)
+                output_action_log_prob = output_action_log_prob - (2*(np.log(2) - output_action - F.softplus(-2*output_action))).sum(axis=1)
                 
-            #     output_action = self.act_limit * torch.tanh(output_action)
+                output_action = self.act_limit * torch.tanh(output_action)
 
-            # output_actions[:, i, :] = output_action.clone()
-            # output_action_log_probs[:, i] = output_action_log_prob.clone()
-            # if (i+1) < n_agents:
-            #     shifted_actions[:, i+1, :] = output_action.clone()
+            output_actions = output_actions.clone()
+            output_actions[:, i, :] = output_action
+            output_action_log_probs = output_action_log_probs.clone()
+            output_action_log_probs[:, i] = output_action_log_prob
+            if (i+1) < n_agents:
+                shifted_actions = shifted_actions.clone()
+                shifted_actions[:, i+1, :] = output_action
         return output_actions, output_action_log_probs

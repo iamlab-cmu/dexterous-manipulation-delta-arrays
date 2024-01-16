@@ -45,9 +45,9 @@
         "output_dir":	"./data/rl_data/matsac_expt_0/matsac_expt_0_s69420"
     },
     "self":	{
-        "<utils.MATSAC.matsac.MATSAC object at 0x7faa931c29a0>":	{
+        "<utils.MATSAC.matsac.MATSAC object at 0x7f6e80145970>":	{
             "logger":	{
-                "<utils.openai_utils.logx.EpochLogger object at 0x7fa94d29a970>":	{
+                "<utils.openai_utils.logx.EpochLogger object at 0x7f6d3c2ab820>":	{
                     "epoch_dict":	{},
                     "exp_name":	"matsac_expt_0",
                     "first_row":	true,
