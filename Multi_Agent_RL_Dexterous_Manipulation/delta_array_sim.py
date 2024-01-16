@@ -112,6 +112,7 @@ class DeltaArraySim:
             self.agent = agents[1]
 
         self.goal_yaw_deg = np.zeros((self.scene.n_envs))
+        self.n_idxs = np.zeros((self.scene.n_envs),dtype=np.int8)
         self.init_pose = np.zeros((self.scene.n_envs, 3))
         self.goal_pose = np.zeros((self.scene.n_envs, 3))
         self.state_dim = hp_dict['state_dim']
@@ -184,6 +185,7 @@ class DeltaArraySim:
         if vec.shape[0] == 2:
             return (vec[0] - self.plane_size[0][0])/(self.plane_size[1][0]-self.plane_size[0][0])*1080, 1920 - (vec[1]  - self.plane_size[0][1])/(self.plane_size[1][1]-self.plane_size[0][1])*1920
         else:
+            print(vec.shape)
             vec = vec.flatten()
             return (vec[0] - self.plane_size[0][0])/(self.plane_size[1][0]-self.plane_size[0][0])*1080, 1920 - (vec[1]  - self.plane_size[0][1])/(self.plane_size[1][1]-self.plane_size[0][1])*1920, vec[2]
     
@@ -266,43 +268,43 @@ class DeltaArraySim:
                 # Get indices of nearest robots to the boundary. We are not using neg_idxs for now. 
                 idxs, neg_idxs = self.nn_helper.get_nn_robots(bd_cluster_centers)
                 self.active_idxs[env_idx] = list(idxs)
-                self.n_idxs = len(self.active_idxs[env_idx])
+                self.n_idxs[env_idx] = len(self.active_idxs[env_idx])
                 # for n, idx in enumerate(self.active_idxs[env_idx]):
-                self.actions[env_idx, :self.n_idxs] = np.array((0,0))
+                self.actions[env_idx, :self.n_idxs[env_idx]] = np.array((0,0))
                 
                 _, self.nn_bd_pts[env_idx] = self.nn_helper.get_min_dist(bd_cluster_centers, self.active_idxs[env_idx], self.actions[env_idx])
-                self.init_state[env_idx, :self.n_idxs, 2:4] = self.nn_bd_pts[env_idx]/self.img_size
-                self.init_grasp_state[env_idx, :self.n_idxs, :2] = self.nn_bd_pts[env_idx]/self.img_size
-                self.init_state[env_idx, :self.n_idxs, 4:6] = self.nn_helper.robot_positions[tuple(zip(*self.active_idxs[env_idx]))]
-                self.init_grasp_state[env_idx, :self.n_idxs, 2:4] = self.nn_helper.robot_positions[tuple(zip(*self.active_idxs[env_idx]))]/self.img_size
-                self.final_state[env_idx, :self.n_idxs, 4:6] = self.nn_helper.robot_positions[tuple(zip(*self.active_idxs[env_idx]))]
+                self.init_state[env_idx, :self.n_idxs[env_idx], 2:4] = self.nn_bd_pts[env_idx]/self.img_size
+                self.init_grasp_state[env_idx, :self.n_idxs[env_idx], :2] = self.nn_bd_pts[env_idx]/self.img_size
+                self.init_state[env_idx, :self.n_idxs[env_idx], 4:6] = self.nn_helper.robot_positions[tuple(zip(*self.active_idxs[env_idx]))]
+                self.init_grasp_state[env_idx, :self.n_idxs[env_idx], 2:4] = self.nn_helper.robot_positions[tuple(zip(*self.active_idxs[env_idx]))]/self.img_size
+                self.final_state[env_idx, :self.n_idxs[env_idx], 4:6] = self.nn_helper.robot_positions[tuple(zip(*self.active_idxs[env_idx]))]
                 
             else:
                 # We are not using min_dists for now. Try expt to see if it helps. 
-                self.act_grasp_pix[env_idx, :self.n_idxs, 0] = self.actions_grasp[env_idx, :self.n_idxs, 0]/(self.plane_size[1][0]-self.plane_size[0][0])*1080
-                self.act_grasp_pix[env_idx, :self.n_idxs, 1] = self.actions_grasp[env_idx, :self.n_idxs, 1]/(self.plane_size[1][1]-self.plane_size[0][1])*1920
+                self.act_grasp_pix[env_idx, :self.n_idxs[env_idx], 0] = self.actions_grasp[env_idx, :self.n_idxs[env_idx], 0]/(self.plane_size[1][0]-self.plane_size[0][0])*1080
+                self.act_grasp_pix[env_idx, :self.n_idxs[env_idx], 1] = self.actions_grasp[env_idx, :self.n_idxs[env_idx], 1]/(self.plane_size[1][1]-self.plane_size[0][1])*1920
                 
-                self.act_pix[env_idx, :self.n_idxs, 0] = self.actions[env_idx, :self.n_idxs, 0]/(self.plane_size[1][0]-self.plane_size[0][0])*1080
-                self.act_pix[env_idx, :self.n_idxs, 1] = self.actions[env_idx, :self.n_idxs, 1]/(self.plane_size[1][1]-self.plane_size[0][1])*1920
+                self.act_pix[env_idx, :self.n_idxs[env_idx], 0] = self.actions[env_idx, :self.n_idxs[env_idx], 0]/(self.plane_size[1][0]-self.plane_size[0][0])*1080
+                self.act_pix[env_idx, :self.n_idxs[env_idx], 1] = self.actions[env_idx, :self.n_idxs[env_idx], 1]/(self.plane_size[1][1]-self.plane_size[0][1])*1920
                 # print(self.actions[env_idx, 0], self.act_pix[env_idx, 0])
 
                 # min_dists, _ = self.nn_helper.get_min_dist(bd_cluster_centers, self.active_idxs[env_idx], self.act_pix[env_idx])
                 obj_2d_tf = geom_utils.get_transform(init_bd_pts, self.bd_pts[env_idx])
-                goal_bd_pts = geom_utils.transform_pts(self.nn_bd_pts[env_idx], self.convert_world_2_pix(self.goal_pose - self.init_pose))
-                self.init_state[env_idx, :self.n_idxs, :2] = goal_bd_pts/self.img_size
-                self.final_state[env_idx, :self.n_idxs, :2] = goal_bd_pts/self.img_size
+                goal_bd_pts = geom_utils.transform_pts(self.nn_bd_pts[env_idx], self.convert_world_2_pix(self.goal_pose[env_idx] - self.init_pose[env_idx]))
+                self.init_state[env_idx, :self.n_idxs[env_idx], :2] = goal_bd_pts/self.img_size
+                self.final_state[env_idx, :self.n_idxs[env_idx], :2] = goal_bd_pts/self.img_size
 
                 self.nn_bd_pts[env_idx] = geom_utils.transform_pts(self.nn_bd_pts[env_idx], obj_2d_tf)
-                self.final_state[env_idx, :self.n_idxs, 2:4] = self.nn_bd_pts[env_idx]/self.img_size
+                self.final_state[env_idx, :self.n_idxs[env_idx], 2:4] = self.nn_bd_pts[env_idx]/self.img_size
 
                 # Convert action to normalized pixel values
-                self.actions[env_idx, :self.n_idxs] = self.act_pix[env_idx, self.n_idxs]/self.img_size
+                self.actions[env_idx, :self.n_idxs[env_idx]] = self.act_pix[env_idx, self.n_idxs[env_idx]]/self.img_size
 
-                self.init_state[env_idx, :self.n_idxs, 4:6] += self.act_grasp_pix[env_idx, :self.n_idxs]
-                self.init_state[env_idx, :self.n_idxs, 4:6] = self.init_state[env_idx, :self.n_idxs, 4:6]/self.img_size
-                self.final_state[env_idx, :self.n_idxs, 4:6] += self.act_grasp_pix[env_idx, :self.n_idxs]
-                self.final_state[env_idx, :self.n_idxs, 4:6] += self.act_pix[env_idx, :self.n_idxs]
-                self.final_state[env_idx, :self.n_idxs, 4:6] = self.final_state[env_idx, :self.n_idxs, 4:6]/self.img_size
+                self.init_state[env_idx, :self.n_idxs[env_idx], 4:6] += self.act_grasp_pix[env_idx, :self.n_idxs[env_idx]]
+                self.init_state[env_idx, :self.n_idxs[env_idx], 4:6] = self.init_state[env_idx, :self.n_idxs[env_idx], 4:6]/self.img_size
+                self.final_state[env_idx, :self.n_idxs[env_idx], 4:6] += self.act_grasp_pix[env_idx, :self.n_idxs[env_idx]]
+                self.final_state[env_idx, :self.n_idxs[env_idx], 4:6] += self.act_pix[env_idx, :self.n_idxs[env_idx]]
+                self.final_state[env_idx, :self.n_idxs[env_idx], 4:6] = self.final_state[env_idx, :self.n_idxs[env_idx], 4:6]/self.img_size
 
                 # plt.scatter()
 
@@ -326,7 +328,7 @@ class DeltaArraySim:
         rot_dif = rot_dif if rot_dif < np.pi else 2*np.pi - rot_dif
         delta_2d_pose = [T[0] - self.goal_pose[env_idx, 0], T[1] - self.goal_pose[env_idx, 1], rot_dif]
         
-        self.ep_reward[env_idx] = -np.linalg.norm(delta_2d_pose)
+        self.ep_reward[env_idx] = -10*np.linalg.norm(delta_2d_pose)
 
         print(delta_2d_pose, self.ep_reward[env_idx])
         # self.ep_reward[env_idx] += -tf_loss*0.6
@@ -335,13 +337,13 @@ class DeltaArraySim:
     def terminate(self, env_idx, t_step, agent):
         """ Update the replay buffer and reset the env """
         # agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
-        if self.ep_reward[env_idx] > -1.5:
+        if self.ep_reward[env_idx] > -15:
             if agent.ma_replay_buffer.size > self.batch_size:
                 self.log_data(env_idx, t_step, agent)
 
             #normalize the reward for easier training
             # self.ep_reward[env_idx] = (self.ep_reward[env_idx] - -45)/90
-            agent.ma_replay_buffer.store(self.init_state[env_idx], self.actions[env_idx], self.ep_reward[env_idx], self.final_state[env_idx], True, self.n_idxs)
+            agent.ma_replay_buffer.store(self.init_state[env_idx], self.actions[env_idx], self.ep_reward[env_idx], self.final_state[env_idx], True, self.n_idxs[env_idx])
             # self.ep_rewards.append(self.ep_reward[env_idx])
             agent.logger.store(EpRet=self.ep_reward[env_idx], EpLen=self.ep_len[env_idx])
             # if env_idx == (self.scene.n_envs-1):
@@ -372,10 +374,10 @@ class DeltaArraySim:
                 self.actions_grasp[env_idx][i] = agent.get_action(self.init_grasp_state[env_idx, i], deterministic=True) # For pretrained grasping policy, single state -> 2D action var
 
         elif (self.current_episode > self.exploration_cutoff) or test:
-            self.actions[env_idx, :self.n_idxs] = agent.get_actions(self.init_state[env_idx, :self.n_idxs], deterministic=test) # For MARL policy, multiple states -> 3D action var
-            # self.actions[env_idx, :self.n_idxs] = np.clip(self.actions[env_idx, :self.n_idxs], -0.03, 0.03)
+            self.actions[env_idx, :self.n_idxs[env_idx]] = agent.get_actions(self.init_state[env_idx, :self.n_idxs[env_idx]], deterministic=test) # For MARL policy, multiple states -> 3D action var
+            # self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(self.actions[env_idx, :self.n_idxs[env_idx]], -0.03, 0.03)
         else:
-            self.actions[env_idx, :self.n_idxs] = np.random.uniform(-0.03, 0.03, size=(self.n_idxs, 2))
+            self.actions[env_idx, :self.n_idxs[env_idx]] = np.random.uniform(-0.03, 0.03, size=(self.n_idxs[env_idx], 2))
             # self.actions[env_idx, :self.n_idxs] += np.ones((self.n_idxs, 2))*np.array((-0.01, 0))
             # self.actions[env_idx, :self.n_idxs] = np.clip(self.actions[env_idx, :self.n_idxs], -0.03, 0.03)
 
@@ -448,7 +450,7 @@ class DeltaArraySim:
             elif t_step == 1:
                 self.env_step(env_idx, t_step, self.pretrained_agent) #Store Init Pose
             elif (t_step == 2) and self.dont_skip_episode:
-                self.set_attractor_target(env_idx, t_step)
+                self.set_attractor_target(env_idx, t_step, self.actions_grasp)
             elif (t_step == self.time_horizon-1) and self.dont_skip_episode:
                 self.ep_len[env_idx] = 1
             elif not self.dont_skip_episode:
@@ -460,7 +462,7 @@ class DeltaArraySim:
             if t_step == 0:
                 self.env_step(env_idx, t_step, self.agent, test=True) # Only Store Actions from MARL Policy
             elif t_step == 2:
-                self.set_attractor_target(env_idx, t_step)
+                self.set_attractor_target(env_idx, t_step, np.clip(self.actions_grasp + self.actions, -0.03, 0.03))
             elif t_step == (self.time_horizon-2):
                 # Update policy
                 self.compute_reward(env_idx, t_step)
