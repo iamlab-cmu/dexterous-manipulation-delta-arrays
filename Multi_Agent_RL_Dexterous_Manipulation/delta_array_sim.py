@@ -395,7 +395,7 @@ class DeltaArraySim:
         """ Store data about training progress in systematic data structures """
         log_utils.log_data(agent.logger, self.ep_reward[env_idx], self.current_episode, self.start_time)
 
-    def visual_servoing(self, scene, env_idx, t_step, _):
+    def inverse_dynamics(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
 
         # if (t_step == 0) and (self.ep_len[env_idx] == 0):
@@ -438,6 +438,44 @@ class DeltaArraySim:
                 self.ep_len[env_idx] = 0
             
     def test_learned_policy(self, scene, env_idx, t_step, _):
+        t_step = t_step % self.time_horizon
+        env_ptr = self.scene.env_ptrs[env_idx]
+        
+        if self.ep_len[env_idx]==0:
+            # Call the pretrained policy for all NN robots and set attractors
+            if t_step == 0:
+                self.set_block_pose(env_idx) # Reset block to current initial pose
+                self.set_all_fingers_pose(env_idx, pos_high=True) # Set all fingers to high pose
+                self.set_attractor_target(env_idx, t_step, None, all_zeros=True) # Set all fingers to high pose
+            elif t_step == 1:
+                self.env_step(env_idx, t_step, self.pretrained_agent) #Store Init Pose
+            elif (t_step == 2) and self.dont_skip_episode:
+                self.set_attractor_target(env_idx, t_step, self.actions_grasp)
+            elif (t_step == self.time_horizon-1) and self.dont_skip_episode:
+                self.ep_len[env_idx] = 1
+            elif not self.dont_skip_episode:
+                self.ep_len[env_idx] = 0
+                self.reset(env_idx)
+        
+        else:
+            # Gen actions from new policy and set attractor until max episodes            
+            if t_step == 0:
+                self.env_step(env_idx, t_step, self.agent, test=True) # Only Store Actions from MARL Policy
+            elif t_step == 2:
+                self.set_attractor_target(env_idx, t_step, np.clip(self.actions_grasp + self.actions, -0.03, 0.03))
+            elif t_step == (self.time_horizon-2):
+                # Update policy
+                self.compute_reward(env_idx, t_step)
+                print(f"Reward: {self.ep_reward[env_idx]}")
+                self.reset(env_idx)
+            elif t_step == self.time_horizon - 1:
+                self.set_block_pose(env_idx, goal=True) # Set block to next goal pose & Store Goal Pose for both states
+                self.ep_len[env_idx] = 0
+
+    def vs_step(self, env_idx, t_step):
+         
+
+    def visual_servoing(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
         env_ptr = self.scene.env_ptrs[env_idx]
         
