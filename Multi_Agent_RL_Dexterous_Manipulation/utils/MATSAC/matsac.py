@@ -101,7 +101,7 @@ class MATSAC:
         # Critic Update
         self.optimizer_critic.zero_grad()
         q_loss, q_info = self.compute_q_loss(states, actions, new_states, rews, dones)
-        self.logger.store(LossQ=q_loss.item(), **q_info)
+        # self.logger.store(LossQ=q_loss.item(), **q_info)
         
         # Set action embeddings of critic to be the same as actor so there is consistency.
         # self.tf.decoder_critic1.action_embedding.weight.data = self.tf.decoder_actor.action_embedding.weight.data.clone()
@@ -116,7 +116,7 @@ class MATSAC:
         with torch.autograd.set_detect_anomaly(True):
             self.optimizer_actor.zero_grad()
             pi_loss, pi_info = self.compute_pi_loss(states)
-            self.logger.store(LossPi=pi_loss.item(), **pi_info)
+            # self.logger.store(LossPi=pi_loss.item(), **pi_info)
 
         for p in self.critic_params:
             p.requires_grad = True

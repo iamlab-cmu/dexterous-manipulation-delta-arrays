@@ -446,7 +446,7 @@ class DeltaArraySim:
             if t_step == 0:
                 self.set_block_pose(env_idx) # Reset block to current initial pose
                 self.set_all_fingers_pose(env_idx, pos_high=True) # Set all fingers to high pose
-                self.set_attractor_target(env_idx, t_step, all_zeros=True) # Set all fingers to high pose
+                self.set_attractor_target(env_idx, t_step, None, all_zeros=True) # Set all fingers to high pose
             elif t_step == 1:
                 self.env_step(env_idx, t_step, self.pretrained_agent) #Store Init Pose
             elif (t_step == 2) and self.dont_skip_episode:
@@ -466,7 +466,7 @@ class DeltaArraySim:
             elif t_step == (self.time_horizon-2):
                 # Update policy
                 self.compute_reward(env_idx, t_step)
-                print(f"Action: {self.actions[env_idx]},Reward: {self.ep_reward[env_idx]}")
+                print(f"Reward: {self.ep_reward[env_idx]}")
                 self.reset(env_idx)
             elif t_step == self.time_horizon - 1:
                 self.set_block_pose(env_idx, goal=True) # Set block to next goal pose & Store Goal Pose for both states
