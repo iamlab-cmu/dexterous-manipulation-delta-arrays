@@ -2,8 +2,8 @@ import numpy as np
 import os
 import time
 from pathlib import Path
-import wandb
 import argparse
+import wandb
 from autolab_core import YamlConfig, RigidTransform
 from isaacgym import gymapi
 from isaacgym_utils.scene import GymScene
@@ -25,7 +25,7 @@ import utils.MASAC.masac as masac
 import utils.MATSAC.matsac as matsac
 
 from utils.openai_utils.run_utils import setup_logger_kwargs
-device = torch.device("cuda:0")
+device = torch.device("cuda:1")
 
 class DeltaArraySimEnvironment():
     def __init__(self, yaml_path, run_no, train_or_test="test"):
@@ -86,8 +86,8 @@ class DeltaArraySimEnvironment():
         self.hp_dict = {
                 "tau"         :0.005,
                 "gamma"       :0.99,
-                "q_lr"        :3e-3,
-                "pi_lr"       :3e-3,
+                "q_lr"        :1e-3,
+                "pi_lr"       :1e-3,
                 "alpha"       :0.2,
                 "replay_size" :500000,
                 'seed'        :69420,
@@ -97,16 +97,20 @@ class DeltaArraySimEnvironment():
                 # Multi Agent Part Below:
                 'state_dim': 6,
                 "device": torch.device("cuda:0"),
-                "model_dim": 128,
+                "model_dim": 64,
                 "num_heads": 8,
-                "dim_ff": 128,
-                "n_layers_dict":{'encoder': 2, 'actor': 2, 'critic': 2},
-                "dropout": 0.1,
-                "delta_array_size": [8,8], 
+                "dim_ff": 32,
+                "n_layers_dict":{'encoder': 4, 'actor': 4, 'critic': 2},
+                "dropout": 0,
+                "delta_array_size": [8,8],
             }
 
         if self.train_or_test=="train":
-            logger_kwargs = setup_logger_kwargs("matsac_expt_0", 69420, data_dir="./data/rl_data")
+            name = "matsac_expt_1"
+            logger_kwargs = setup_logger_kwargs(name, 69420, data_dir="./data/rl_data")
+            # wandb.init(project="MARL_Dexterous_Manipulation",
+            #            config=self.hp_dict,
+            #            name = name)
         else:
             logger_kwargs = {}
         # self.agent = ddpg.DDPG(env_dict, self.hp_dict, logger_kwargs)
@@ -175,7 +179,7 @@ class DeltaArraySimEnvironment():
     def run(self):
         # self.scene.run(policy=self.fingers.sim_test)
         if self.train_or_test=="train":
-            self.scene.run(policy=self.fingers.visual_servoing)
+            self.scene.run(policy=self.fingers.inverse_dynamics)
         else:
             self.scene.run(policy=self.fingers.test_learned_policy)
 

@@ -13,7 +13,7 @@
             "dim":	6
         }
     },
-    "exp_name":	"matsac_expt_0",
+    "exp_name":	"matsac_expt_1",
     "hp_dict":	{
         "alpha":	0.2,
         "batch_size":	128,
@@ -22,40 +22,40 @@
             8
         ],
         "device":	"cuda:0",
-        "dim_ff":	128,
-        "dropout":	0.1,
+        "dim_ff":	32,
+        "dropout":	0,
         "exploration_cutoff":	511,
         "gamma":	0.99,
-        "model_dim":	128,
+        "model_dim":	64,
         "n_layers_dict":	{
-            "actor":	2,
+            "actor":	4,
             "critic":	2,
-            "encoder":	2
+            "encoder":	4
         },
         "num_heads":	8,
-        "pi_lr":	0.003,
-        "q_lr":	0.003,
+        "pi_lr":	0.001,
+        "q_lr":	0.001,
         "replay_size":	500000,
         "seed":	69420,
         "state_dim":	6,
         "tau":	0.005
     },
     "logger_kwargs":	{
-        "exp_name":	"matsac_expt_0",
-        "output_dir":	"./data/rl_data/matsac_expt_0/matsac_expt_0_s69420"
+        "exp_name":	"matsac_expt_1",
+        "output_dir":	"./data/rl_data/matsac_expt_1/matsac_expt_1_s69420"
     },
     "self":	{
-        "<utils.MATSAC.matsac.MATSAC object at 0x7fa368445280>":	{
+        "<utils.MATSAC.matsac.MATSAC object at 0x7f906c9f1520>":	{
             "logger":	{
-                "<utils.openai_utils.logx.EpochLogger object at 0x7fa368445f70>":	{
+                "<utils.openai_utils.logx.EpochLogger object at 0x7f8eea9c59d0>":	{
                     "epoch_dict":	{},
-                    "exp_name":	"matsac_expt_0",
+                    "exp_name":	"matsac_expt_1",
                     "first_row":	true,
                     "log_current_row":	{},
                     "log_headers":	[],
-                    "output_dir":	"./data/rl_data/matsac_expt_0/matsac_expt_0_s69420",
+                    "output_dir":	"./data/rl_data/matsac_expt_1/matsac_expt_1_s69420",
                     "output_file":	{
-                        "<_io.TextIOWrapper name='./data/rl_data/matsac_expt_0/matsac_expt_0_s69420/progress.txt' mode='w' encoding='UTF-8'>":	{
+                        "<_io.TextIOWrapper name='./data/rl_data/matsac_expt_1/matsac_expt_1_s69420/progress.txt' mode='w' encoding='UTF-8'>":	{
                             "mode":	"w"
                         }
                     }

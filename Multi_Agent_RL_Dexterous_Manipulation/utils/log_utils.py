@@ -1,8 +1,10 @@
 import time
+import wandb
 
 def log_data(logger, ep_rewards, episode, start_time):
     """ Store data about training progress in systematic data structures """
-    logger.save_state({'ep_rewards': ep_rewards}, None)
+    if episode%500==0:
+        logger.save_state({'ep_rewards': ep_rewards}, None)
     logger.log_tabular('Episode', episode)
     logger.log_tabular('EpRet', with_min_and_max=True)
     logger.log_tabular('EpLen', average_only=True)            

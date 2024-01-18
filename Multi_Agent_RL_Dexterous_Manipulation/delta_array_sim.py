@@ -37,7 +37,7 @@ import utils.rl_utils as rl_utils
 # import utils.SAC.sac as sac
 # import utils.SAC.reinforce as reinforce
 import utils.geometric_utils as geom_utils
-device = torch.device("cuda:0")
+device = torch.device("cuda:1")
 
 class DeltaArraySim:
     def __init__(self, scene, cfg, obj, obj_name, img_embed_model, transform, agents, hp_dict, num_tips = [8,8], max_agents=64):
@@ -328,24 +328,26 @@ class DeltaArraySim:
         rot_dif = rot_dif if rot_dif < np.pi else 2*np.pi - rot_dif
         delta_2d_pose = [T[0] - self.goal_pose[env_idx, 0], T[1] - self.goal_pose[env_idx, 1], rot_dif]
         
-        self.ep_reward[env_idx] = -10*np.linalg.norm(delta_2d_pose)
+        # self.ep_reward[env_idx] = -10*np.linalg.norm(delta_2d_pose)
+        self.ep_reward[env_idx] = -np.mean((3*np.array(delta_2d_pose))**2)
 
         print(delta_2d_pose, self.ep_reward[env_idx])
         # self.ep_reward[env_idx] += -tf_loss*0.6
         return True
 
-    def terminate(self, env_idx, t_step, agent):
+    def terminate(self, env_idx, agent):
         """ Update the replay buffer and reset the env """
         # agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
         if self.ep_reward[env_idx] > -15:
             if agent.ma_replay_buffer.size > self.batch_size:
-                self.log_data(env_idx, t_step, agent)
+                self.log_data(env_idx, agent)
 
             #normalize the reward for easier training
             # self.ep_reward[env_idx] = (self.ep_reward[env_idx] - -45)/90
             agent.ma_replay_buffer.store(self.init_state[env_idx], self.actions[env_idx], self.ep_reward[env_idx], self.final_state[env_idx], True, self.n_idxs[env_idx])
             # self.ep_rewards.append(self.ep_reward[env_idx])
             agent.logger.store(EpRet=self.ep_reward[env_idx], EpLen=self.ep_len[env_idx])
+            self.ep_reward[env_idx]
             # if env_idx == (self.scene.n_envs-1):
             print(f"Iter: {self.current_episode}, Current Reward: {self.ep_reward[env_idx]}")
         self.reset(env_idx)
@@ -391,7 +393,7 @@ class DeltaArraySim:
             for n, idx in enumerate(self.active_idxs[env_idx]):
                 self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][idx[0]][idx[1]], gymapi.Transform(p=self.finger_positions[idx[0]][idx[1]] + gymapi.Vec3(actions[env_idx, n, 0], actions[env_idx, n, 1], -0.47), r=self.finga_q)) 
             
-    def log_data(self, env_idx, t_step, agent):
+    def log_data(self, env_idx, agent):
         """ Store data about training progress in systematic data structures """
         log_utils.log_data(agent.logger, self.ep_reward[env_idx], self.current_episode, self.start_time)
 
@@ -430,7 +432,7 @@ class DeltaArraySim:
                 self.compute_reward(env_idx, t_step)
                 if self.agent.ma_replay_buffer.size > self.batch_size:
                     self.agent.update(self.batch_size)
-                self.terminate(env_idx, t_step, self.agent)
+                self.terminate(env_idx, self.agent)
 
                 self.current_episode += 1
             elif t_step == self.time_horizon - 1:
@@ -473,7 +475,7 @@ class DeltaArraySim:
                 self.ep_len[env_idx] = 0
 
     def vs_step(self, env_idx, t_step):
-         
+        
 
     def visual_servoing(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
@@ -498,7 +500,7 @@ class DeltaArraySim:
         else:
             # Gen actions from new policy and set attractor until max episodes            
             if t_step == 0:
-                self.env_step(env_idx, t_step, self.agent, test=True) # Only Store Actions from MARL Policy
+                self.vs_step(env_idx, t_step, test=True) # Only Store Actions from MARL Policy
             elif t_step == 2:
                 self.set_attractor_target(env_idx, t_step, np.clip(self.actions_grasp + self.actions, -0.03, 0.03))
             elif t_step == (self.time_horizon-2):
