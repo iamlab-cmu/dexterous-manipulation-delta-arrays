@@ -11,6 +11,7 @@ import pandas as pd
 class NNHelper:
     def __init__(self, plane_size, real_or_sim="real"):
         self.robot_positions = np.zeros((8,8,2))
+        self.rb_pos_raw = np.zeros((8,8,2))
         self.kdtree_positions = np.zeros((64, 2))
         for i in range(8):
             for j in range(8):
@@ -22,8 +23,10 @@ class NNHelper:
                 else:
                     if i%2!=0:
                         finger_pos = np.array((i*0.0375, j*0.043301 - 0.02165))
+                        self.rb_pos_raw[i,j] = np.array((i*0.0375, j*0.043301 - 0.02165))
                     else:
                         finger_pos = np.array((i*0.0375, j*0.043301))
+                        self.rb_pos_raw[i,j] = np.array((i*0.0375, j*0.043301))
         
                 finger_pos[0] = (finger_pos[0] - plane_size[0][0])/(plane_size[1][0]-plane_size[0][0])*1080 - 0
                 finger_pos[1] = 1920 - (finger_pos[1] - plane_size[0][1])/(plane_size[1][1]-plane_size[0][1])*1920

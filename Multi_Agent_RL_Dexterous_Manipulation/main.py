@@ -80,7 +80,7 @@ class DeltaArraySimEnvironment():
 
         single_agent_env_dict = {'action_space': {'low': -0.03, 'high': 0.03, 'dim': 2},
                     'observation_space': {'dim': 4},}
-        ma_env_dict = {'action_space': {'low': -0.03, 'high': 0.03, 'dim': 2},
+        ma_env_dict = {'action_space': {'low': -0.03, 'high': 0.06, 'dim': 2},
                     'pi_obs_space': {'dim': 6},
                     'q_obs_space': {'dim': 6},
                     "max_agents"    :64,}
@@ -92,26 +92,26 @@ class DeltaArraySimEnvironment():
                 "alpha"       :0.2,
                 "replay_size" :500000,
                 'seed'        :69420,
-                "batch_size"  :128,
+                "batch_size"  :129,
                 "exploration_cutoff": 511,
 
                 # Multi Agent Part Below:
                 'state_dim': 6,
                 "device": torch.device("cuda:0"),
-                "model_dim": 64,
+                "model_dim": 128,
                 "num_heads": 8,
-                "dim_ff": 32,
-                "n_layers_dict":{'encoder': 4, 'actor': 4, 'critic': 2},
+                "dim_ff": 64,
+                "n_layers_dict":{'encoder': 3, 'actor': 3, 'critic': 2},
                 "dropout": 0,
                 "delta_array_size": [8,8],
             }
 
         if self.train_or_test=="train":
-            name = "matsac_expt_1"
+            name = "matsac_expt_2"
             logger_kwargs = setup_logger_kwargs(name, 69420, data_dir="./data/rl_data")
-            # wandb.init(project="MARL_Dexterous_Manipulation",
-            #            config=self.hp_dict,
-            #            name = name)
+            wandb.init(project="MARL_Dexterous_Manipulation",
+                       config=self.hp_dict,
+                       name = name)
         else:
             logger_kwargs = {}
         # self.agent = ddpg.DDPG(env_dict, self.hp_dict, logger_kwargs)
