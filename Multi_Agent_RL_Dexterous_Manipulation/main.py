@@ -123,7 +123,7 @@ class DeltaArraySimEnvironment():
         self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
 
         if self.train_or_test=="test":
-            self.pushing_agent.load_saved_policy('./data/rl_data/matsac_expt_1/matsac_expt_1_s69420/pyt_save/model.pt')
+            self.pushing_agent.load_saved_policy('./data/rl_data/matsac_expt_2/matsac_expt_2_s69420/pyt_save/model.pt')
         
         self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.obj_name, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
         

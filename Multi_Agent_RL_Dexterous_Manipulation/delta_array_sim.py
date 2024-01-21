@@ -320,15 +320,43 @@ class DeltaArraySim:
                 self.final_state[env_idx, :self.n_idxs[env_idx], 2:4] = [self.convert_pix_2_world(bd_pts) for bd_pts in final_nn_bd_pts]
 
                 # Convert action to normalized pixel values
-                self.actions[env_idx, :self.n_idxs[env_idx]] = self.act_pix[env_idx, self.n_idxs[env_idx]]/self.img_size
+                # self.actions[env_idx, :self.n_idxs[env_idx]] = self.act_pix[env_idx, self.n_idxs[env_idx]]/self.img_size
 
                 self.init_state[env_idx, :self.n_idxs[env_idx], 4:6] = self.actions_grasp[env_idx, :self.n_idxs[env_idx]]
                 # self.init_state[env_idx, :self.n_idxs[env_idx], 4:6] = self.init_state[env_idx, :self.n_idxs[env_idx], 4:6]/self.img_size
                 self.final_state[env_idx, :self.n_idxs[env_idx], 4:6] = self.actions[env_idx, :self.n_idxs[env_idx]]
                 # self.final_state[env_idx, :self.n_idxs[env_idx], 4:6] += self.act_pix[env_idx, :self.n_idxs[env_idx]]
                 # self.final_state[env_idx, :self.n_idxs[env_idx], 4:6] = self.final_state[env_idx, :self.n_idxs[env_idx], 4:6]/self.img_size
+                
+################################################################################################################################################################################
+                
+                if self.current_episode > 2:
+                    r_poses = self.nn_helper.robot_positions[tuple(zip(*self.active_idxs[env_idx]))]
+                    init_pts = self.init_state[env_idx, :self.n_idxs[env_idx], 2:4].copy()
+                    goal_bd_pts = self.init_state[env_idx, :self.n_idxs[env_idx], :2].copy()
+                    g_bd_pt2 = [self.convert_pix_2_world[bdpts] for bdpts in self.goal_bd_pts[env_idx]]
+                    final_bd_pts = self.final_state[env_idx, :self.n_idxs[env_idx], 2:4].copy()
+                    act_grsp = self.actions_grasp[env_idx, :self.n_idxs[env_idx]].copy()
+                    acts = self.actions[env_idx, :self.n_idxs[env_idx]].copy()
+                    
+                    # plt.figure(figsize=(10,17.78))
+                    plt.scatter(r_poses[:, 0], r_poses[:, 1], c='#880000ff')
 
-                # plt.scatter()
+                    plt.scatter(init_pts[:, 0], init_pts[:, 1], c = 'green')
+                    plt.scatter(g_bd_pt2[:, 0], g_bd_pt2[:, 1], c='orange')
+                    plt.scatter(goal_bd_pts[:, 0], goal_bd_pts[:, 1], c='red')
+                    plt.scatter(final_bd_pts[:, 0], final_bd_pts[:, 1], c='blue')
+
+                    plt.quiver(r_poses[:, 0], r_poses[:, 1], act_grsp[:, 0], act_grsp[:, 1], scale=1, scale_units='xy')
+                    plt.quiver(init_pts[:, 0], init_pts[:, 1], acts[:, 0], acts[:, 1], scale=1, scale_units='xy')
+                    plt.gca().set_aspect('equal')
+                    plt.show()
+
+                # plt.scatter(self.nn_bd_pts[env_idx][:, 0], self.nn_bd_pts[env_idx][:, 1], c='#ff0000ff')
+                # plt.quiver(self.nn_bd_pts[env_idx][:, 0], self.nn_bd_pts[env_idx][:, 1], displacement_vector[:, 0], displacement_vector[:, 1], scale=1, scale_units='xy')
+                # plt.gca().set_aspect('equal')
+                # plt.show()
+
 
     def compute_reward(self, env_idx, t_step):
         """ 
@@ -476,6 +504,8 @@ class DeltaArraySim:
         if self.ep_len[env_idx]==0:
             # Call the pretrained policy for all NN robots and set attractors
             if t_step == 0:
+                img = self.get_camera_image(env_idx)
+                _, self.goal_bd_pts[env_idx] = self.get_boundary_pts(img)
                 self.set_block_pose(env_idx) # Reset block to current initial pose
                 self.set_all_fingers_pose(env_idx, pos_high=True) # Set all fingers to high pose
                 self.set_attractor_target(env_idx, t_step, None, all_zeros=True) # Set all fingers to high pose
