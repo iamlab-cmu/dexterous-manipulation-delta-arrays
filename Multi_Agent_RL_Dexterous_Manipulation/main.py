@@ -92,8 +92,8 @@ class DeltaArraySimEnvironment():
                 "alpha"       :0.2,
                 "replay_size" :500000,
                 'seed'        :69420,
-                "batch_size"  :129,
-                "exploration_cutoff": 511,
+                "batch_size"  :128,
+                "exploration_cutoff": 512,
 
                 # Multi Agent Part Below:
                 'state_dim': 6,

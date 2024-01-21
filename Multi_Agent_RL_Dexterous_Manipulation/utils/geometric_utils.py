@@ -13,22 +13,15 @@ from scipy.spatial import Delaunay
 from scipy.spatial.transform import Rotation as R
 from skimage.measure import find_contours
 
-def transform_pts(points, transform):
+def transform_pts_wrt_com(points, transform, com):
     """
     Apply a 2D transformation to a set of points.
     """
-    deltaX, deltaY, deltaTheta = transform
-    rotation_matrix = np.array([
-        [np.cos(deltaTheta), -np.sin(deltaTheta)],
-        [np.sin(deltaTheta), np.cos(deltaTheta)]
-    ])
-    
-    # Translate points
-    translated_points = points + np.array([deltaX, deltaY])
-
-    # Rotate points around the origin
-    transformed_points = np.dot(translated_points, rotation_matrix.T)
-    return transformed_points
+    rot_m = np.array([[np.cos(transform[2]), -np.sin(transform[2])], [np.sin(transform[2]), np.cos(transform[2])]])
+    points = points - com
+    points = com + np.dot(points, rot_m.T)
+    points = points + transform[:2]
+    return points
 
 def get_transform(init_bd_pts, new_bd_pts):
     min_size = min(init_bd_pts.shape[0], new_bd_pts.shape[0])

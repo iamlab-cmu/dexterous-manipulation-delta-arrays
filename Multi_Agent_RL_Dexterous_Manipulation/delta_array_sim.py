@@ -311,10 +311,12 @@ class DeltaArraySim:
                 # min_dists, _ = self.nn_helper.get_min_dist(bd_cluster_centers, self.active_idxs[env_idx], self.act_pix[env_idx])
                 # obj_2d_tf = geom_utils.get_transform(init_bd_pts, self.bd_pts[env_idx])
                 delta = self.goal_pose[env_idx] - self.init_pose[env_idx]
-                goal_bd_pts = geom_utils.transform_pts(self.nn_bd_pts[env_idx], [*self.convert_world_2_pix(delta[:2]), delta[2]])
+                com = np.array(self.convert_pix_2_world(np.mean(init_bd_pts, axis=0)))
+                nn_bd_pts_world = [self.convert_pix_2_world(bd_pts) for bd_pts in self.nn_bd_pts[env_idx]]
+                nn_bd_pts_world = geom_utils.transform_pts_wrt_com(nn_bd_pts_world, delta, com)
                 
-                self.init_state[env_idx, :self.n_idxs[env_idx], :2] = [self.convert_pix_2_world(bd_pts) for bd_pts in goal_bd_pts]
-                self.final_state[env_idx, :self.n_idxs[env_idx], :2] = [self.convert_pix_2_world(bd_pts) for bd_pts in goal_bd_pts]
+                self.init_state[env_idx, :self.n_idxs[env_idx], :2] = nn_bd_pts_world
+                self.final_state[env_idx, :self.n_idxs[env_idx], :2] = nn_bd_pts_world
 
                 _, final_nn_bd_pts = self.nn_helper.get_min_dist(bd_cluster_centers, self.active_idxs[env_idx], self.actions[env_idx])
                 self.final_state[env_idx, :self.n_idxs[env_idx], 2:4] = [self.convert_pix_2_world(bd_pts) for bd_pts in final_nn_bd_pts]
@@ -330,27 +332,29 @@ class DeltaArraySim:
                 
 ################################################################################################################################################################################
                 
-                if self.current_episode > 2:
-                    r_poses = self.nn_helper.robot_positions[tuple(zip(*self.active_idxs[env_idx]))]
-                    init_pts = self.init_state[env_idx, :self.n_idxs[env_idx], 2:4].copy()
-                    goal_bd_pts = self.init_state[env_idx, :self.n_idxs[env_idx], :2].copy()
-                    g_bd_pt2 = [self.convert_pix_2_world[bdpts] for bdpts in self.goal_bd_pts[env_idx]]
-                    final_bd_pts = self.final_state[env_idx, :self.n_idxs[env_idx], 2:4].copy()
-                    act_grsp = self.actions_grasp[env_idx, :self.n_idxs[env_idx]].copy()
-                    acts = self.actions[env_idx, :self.n_idxs[env_idx]].copy()
+                # if self.current_episode > 0:
+                #     r_poses = self.nn_helper.rb_pos_raw[tuple(zip(*self.active_idxs[env_idx]))]
+                #     init_pts = self.init_state[env_idx, :self.n_idxs[env_idx], 2:4].copy()
+                #     init_bd_pts = np.array([self.convert_pix_2_world(bdpts) for bdpts in init_bd_pts])
+                #     goal_bd_pts = self.init_state[env_idx, :self.n_idxs[env_idx], :2].copy()
+                #     g_bd_pt2 = np.array([self.convert_pix_2_world(bdpts) for bdpts in self.goal_bd_pts[env_idx]])
+                #     final_bd_pts = self.final_state[env_idx, :self.n_idxs[env_idx], 2:4].copy()
+                #     act_grsp = self.actions_grasp[env_idx, :self.n_idxs[env_idx]].copy()
+                #     acts = self.actions[env_idx, :self.n_idxs[env_idx]].copy()
                     
-                    # plt.figure(figsize=(10,17.78))
-                    plt.scatter(r_poses[:, 0], r_poses[:, 1], c='#880000ff')
+                #     # plt.figure(figsize=(10,17.78))
+                #     plt.scatter(r_poses[:, 0], r_poses[:, 1], c='#880000ff')
 
-                    plt.scatter(init_pts[:, 0], init_pts[:, 1], c = 'green')
-                    plt.scatter(g_bd_pt2[:, 0], g_bd_pt2[:, 1], c='orange')
-                    plt.scatter(goal_bd_pts[:, 0], goal_bd_pts[:, 1], c='red')
-                    plt.scatter(final_bd_pts[:, 0], final_bd_pts[:, 1], c='blue')
+                #     plt.scatter(g_bd_pt2[:, 0], g_bd_pt2[:, 1], c='#ffa50066')
+                #     plt.scatter(init_bd_pts[:, 0], init_bd_pts[:, 1], c = '#00ff0066')
+                #     plt.scatter(init_pts[:, 0], init_pts[:, 1], c = '#00ff00ff')
+                #     plt.scatter(goal_bd_pts[:, 0], goal_bd_pts[:, 1], c='red')
+                #     plt.scatter(final_bd_pts[:, 0], final_bd_pts[:, 1], c='blue')
 
-                    plt.quiver(r_poses[:, 0], r_poses[:, 1], act_grsp[:, 0], act_grsp[:, 1], scale=1, scale_units='xy')
-                    plt.quiver(init_pts[:, 0], init_pts[:, 1], acts[:, 0], acts[:, 1], scale=1, scale_units='xy')
-                    plt.gca().set_aspect('equal')
-                    plt.show()
+                #     plt.quiver(r_poses[:, 0], r_poses[:, 1], act_grsp[:, 0], act_grsp[:, 1], scale=0.5, scale_units='xy')
+                #     plt.quiver(init_pts[:, 0], init_pts[:, 1], acts[:, 0], acts[:, 1], scale=1, scale_units='xy')
+                #     plt.gca().set_aspect('equal')
+                #     plt.show()
 
                 # plt.scatter(self.nn_bd_pts[env_idx][:, 0], self.nn_bd_pts[env_idx][:, 1], c='#ff0000ff')
                 # plt.quiver(self.nn_bd_pts[env_idx][:, 0], self.nn_bd_pts[env_idx][:, 1], displacement_vector[:, 0], displacement_vector[:, 1], scale=1, scale_units='xy')
@@ -384,7 +388,7 @@ class DeltaArraySim:
         # delta_2d_pose = [T[0] - self.goal_pose[env_idx, 0], T[1] - self.goal_pose[env_idx, 1], rot_dif]
         
         # self.ep_reward[env_idx] = -10*np.linalg.norm(delta_2d_pose)
-        self.ep_reward[env_idx] = -np.mean((np.array(delta_2d_pose))**2)
+        self.ep_reward[env_idx] = -np.mean((10*(np.array(delta_2d_pose)))**2)
 
         # print(delta_2d_pose, self.ep_reward[env_idx])
         # self.ep_reward[env_idx] += -tf_loss*0.6
