@@ -1,5 +1,6 @@
 import numpy as np
 import os
+import sys
 import time
 from pathlib import Path
 import argparse
@@ -28,9 +29,9 @@ from utils.openai_utils.run_utils import setup_logger_kwargs
 device = torch.device("cuda:1")
 
 class DeltaArraySimEnvironment():
-    def __init__(self, yaml_path, run_no, train_or_test="test"):
+    def __init__(self, yaml_path, run_no, train_or_test="test", args={}):
         self.train_or_test = train_or_test
-
+        self.args = args
         gym = gymapi.acquire_gym()
         self.run_no = run_no
         self.cfg = YamlConfig(yaml_path)
@@ -122,7 +123,7 @@ class DeltaArraySimEnvironment():
         self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
 
         if self.train_or_test=="test":
-            self.pushing_agent.load_saved_policy('./models/trained_models/MATSAC_full/pyt_save/model.pt')
+            self.pushing_agent.load_saved_policy('./data/rl_data/matsac_expt_1/matsac_expt_1_s69420/pyt_save/model.pt')
         
         self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.obj_name, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
         
@@ -181,7 +182,11 @@ class DeltaArraySimEnvironment():
         if self.train_or_test=="train":
             self.scene.run(policy=self.fingers.inverse_dynamics)
         else:
-            self.scene.run(policy=self.fingers.test_learned_policy)
+            if self.args.vis_servo:
+                self.scene.run(policy=self.fingers.visual_servoing)
+            else:
+                self.scene.run(policy=self.fingers.test_learned_policy)
+            # self.scene.run(policy=self.fingers.visual_servoing)
 
 class DeltaArrayRealEnvironment():
     def __init__(self, train_or_test="test"):
@@ -218,12 +223,18 @@ if __name__ == "__main__":
 
     parser.add_argument("-r", "--real", action="store_true", help="True for Real Robot Expt")
     parser.add_argument("-t", "--test", action="store_true", help="True for Test")
+    parser.add_argument("-v", "--vis_servo", action="store_true", help="True for Visual Servoing")
     args = parser.parse_args()
+
+    if args.vis_servo and not args.test:
+        parser.error("--vis_servo requires --test")
+        sys.exit(1)
+
     train_or_test = "test" if args.test else "train"
     if not args.real:
         yaml_path = './config/env.yaml'
         run_no = 0
-        env = DeltaArraySimEnvironment(yaml_path, run_no, train_or_test)
+        env = DeltaArraySimEnvironment(yaml_path, run_no, train_or_test, args)
         env.run()
     else:
         env = DeltaArrayRealEnvironment(train_or_test)

@@ -31,7 +31,10 @@ def transform_pts(points, transform):
     return transformed_points
 
 def get_transform(init_bd_pts, new_bd_pts):
-    M2 = icp(init_bd_pts, new_bd_pts, icp_radius=1000)
+    min_size = min(init_bd_pts.shape[0], new_bd_pts.shape[0])
+    init_bd_pts = init_bd_pts[np.random.choice(init_bd_pts.shape[0], size=min_size, replace=False)]
+    new_bd_pts = new_bd_pts[np.random.choice(new_bd_pts.shape[0], size=min_size, replace=False)]
+    M2 = icp(init_bd_pts, new_bd_pts, icp_radius=200)
     theta = np.arctan2(M2[1, 0], M2[0, 0])
     obj_2d_pose_delta = [M2[0,3], M2[1,3], theta]
     return obj_2d_pose_delta
