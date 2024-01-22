@@ -109,7 +109,7 @@ class DeltaArraySimEnvironment():
             }
 
         if self.train_or_test=="train":
-            name = "matsac_expt_2"
+            name = "matsac_expt_3"
             logger_kwargs = setup_logger_kwargs(name, 69420, data_dir="./data/rl_data")
             wandb.init(project="MARL_Dexterous_Manipulation",
                        config=self.hp_dict,
