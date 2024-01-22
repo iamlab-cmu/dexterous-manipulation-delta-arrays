@@ -35,6 +35,8 @@ class DeltaArraySimEnvironment():
         gym = gymapi.acquire_gym()
         self.run_no = run_no
         self.cfg = YamlConfig(yaml_path)
+        self.cfg['scene']['n_envs'] = self.args.num_expts
+        self.cfg['scene']['gui'] = self.args.gui
         self.scene = GymScene(self.cfg['scene'])
         if not os.path.exists('./data/manip_data'):   
             os.makedirs('./data/manip_data')
@@ -224,6 +226,8 @@ if __name__ == "__main__":
     parser.add_argument("-r", "--real", action="store_true", help="True for Real Robot Expt")
     parser.add_argument("-t", "--test", action="store_true", help="True for Test")
     parser.add_argument("-v", "--vis_servo", action="store_true", help="True for Visual Servoing")
+    parser.add_argument("-nexp", "--num_expts", type=int, default=160, help="Number of Experiments to run")
+    parser.add_argument("-gui", "--gui", action="store_true", help="True for GUI")
     args = parser.parse_args()
 
     if args.vis_servo and not args.test:
