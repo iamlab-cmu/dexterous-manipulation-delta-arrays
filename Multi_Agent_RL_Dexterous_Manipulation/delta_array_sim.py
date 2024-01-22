@@ -332,29 +332,29 @@ class DeltaArraySim:
                 
 ################################################################################################################################################################################
                 
-                # if self.current_episode > 0:
-                #     r_poses = self.nn_helper.rb_pos_raw[tuple(zip(*self.active_idxs[env_idx]))]
-                #     init_pts = self.init_state[env_idx, :self.n_idxs[env_idx], 2:4].copy()
-                #     init_bd_pts = np.array([self.convert_pix_2_world(bdpts) for bdpts in init_bd_pts])
-                #     goal_bd_pts = self.init_state[env_idx, :self.n_idxs[env_idx], :2].copy()
-                #     g_bd_pt2 = np.array([self.convert_pix_2_world(bdpts) for bdpts in self.goal_bd_pts[env_idx]])
-                #     final_bd_pts = self.final_state[env_idx, :self.n_idxs[env_idx], 2:4].copy()
-                #     act_grsp = self.actions_grasp[env_idx, :self.n_idxs[env_idx]].copy()
-                #     acts = self.actions[env_idx, :self.n_idxs[env_idx]].copy()
+                if self.current_episode > 0:
+                    r_poses = self.nn_helper.rb_pos_raw[tuple(zip(*self.active_idxs[env_idx]))]
+                    init_pts = self.init_state[env_idx, :self.n_idxs[env_idx], 2:4].copy()
+                    init_bd_pts = np.array([self.convert_pix_2_world(bdpts) for bdpts in init_bd_pts])
+                    goal_bd_pts = self.init_state[env_idx, :self.n_idxs[env_idx], :2].copy()
+                    g_bd_pt2 = np.array([self.convert_pix_2_world(bdpts) for bdpts in self.goal_bd_pts[env_idx]])
+                    final_bd_pts = self.final_state[env_idx, :self.n_idxs[env_idx], 2:4].copy()
+                    act_grsp = self.actions_grasp[env_idx, :self.n_idxs[env_idx]].copy()
+                    acts = self.actions[env_idx, :self.n_idxs[env_idx]].copy()
                     
-                #     # plt.figure(figsize=(10,17.78))
-                #     plt.scatter(r_poses[:, 0], r_poses[:, 1], c='#880000ff')
+                    # plt.figure(figsize=(10,17.78))
+                    plt.scatter(r_poses[:, 0], r_poses[:, 1], c='#880000ff')
 
-                #     plt.scatter(g_bd_pt2[:, 0], g_bd_pt2[:, 1], c='#ffa50066')
-                #     plt.scatter(init_bd_pts[:, 0], init_bd_pts[:, 1], c = '#00ff0066')
-                #     plt.scatter(init_pts[:, 0], init_pts[:, 1], c = '#00ff00ff')
-                #     plt.scatter(goal_bd_pts[:, 0], goal_bd_pts[:, 1], c='red')
-                #     plt.scatter(final_bd_pts[:, 0], final_bd_pts[:, 1], c='blue')
+                    plt.scatter(g_bd_pt2[:, 0], g_bd_pt2[:, 1], c='#ffa50066')
+                    plt.scatter(init_bd_pts[:, 0], init_bd_pts[:, 1], c = '#00ff0066')
+                    plt.scatter(init_pts[:, 0], init_pts[:, 1], c = '#00ff00ff')
+                    plt.scatter(goal_bd_pts[:, 0], goal_bd_pts[:, 1], c='red')
+                    plt.scatter(final_bd_pts[:, 0], final_bd_pts[:, 1], c='blue')
 
-                #     plt.quiver(r_poses[:, 0], r_poses[:, 1], act_grsp[:, 0], act_grsp[:, 1], scale=0.5, scale_units='xy')
-                #     plt.quiver(init_pts[:, 0], init_pts[:, 1], acts[:, 0], acts[:, 1], scale=1, scale_units='xy')
-                #     plt.gca().set_aspect('equal')
-                #     plt.show()
+                    plt.quiver(r_poses[:, 0], r_poses[:, 1], act_grsp[:, 0], act_grsp[:, 1], scale=0.5, scale_units='xy')
+                    plt.quiver(init_pts[:, 0], init_pts[:, 1], acts[:, 0], acts[:, 1], scale=1, scale_units='xy')
+                    plt.gca().set_aspect('equal')
+                    plt.show()
 
                 # plt.scatter(self.nn_bd_pts[env_idx][:, 0], self.nn_bd_pts[env_idx][:, 1], c='#ff0000ff')
                 # plt.quiver(self.nn_bd_pts[env_idx][:, 0], self.nn_bd_pts[env_idx][:, 1], displacement_vector[:, 0], displacement_vector[:, 1], scale=1, scale_units='xy')
@@ -528,7 +528,7 @@ class DeltaArraySim:
             if t_step == 0:
                 self.env_step(env_idx, t_step, self.agent, test=True) # Only Store Actions from MARL Policy
             elif t_step == 2:
-                self.set_attractor_target(env_idx, t_step, np.clip(self.actions_grasp + self.actions, -0.03, 0.03))
+                self.set_attractor_target(env_idx, t_step, self.actions)
             elif t_step == (self.time_horizon-2):
                 # Update policy
                 self.compute_reward(env_idx, t_step)
