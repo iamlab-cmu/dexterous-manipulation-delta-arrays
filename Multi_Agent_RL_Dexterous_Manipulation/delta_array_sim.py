@@ -383,7 +383,7 @@ class DeltaArraySim:
         # delta_2d_pose = [T[0] - self.goal_pose[env_idx, 0], T[1] - self.goal_pose[env_idx, 1], rot_dif]
         
         # self.ep_reward[env_idx] = -10*np.linalg.norm(delta_2d_pose)
-        self.ep_reward[env_idx] = -np.mean((10*(np.array(delta_2d_pose)))**2)
+        self.ep_reward[env_idx] = -np.mean((np.array(delta_2d_pose))**2)
         return True
 
     def terminate(self, env_idx, agent):
@@ -503,7 +503,7 @@ class DeltaArraySim:
                 if self.agent.ma_replay_buffer.size > self.batch_size:
                     # epoch = self.scale_epoch(self.current_episode)
                     # for i in range(epoch):
-                    self.agent.update(self.batch_size)
+                    self.agent.update(self.batch_size, self.current_episode)
                 self.terminate(env_idx, self.agent)
 
                 self.current_episode += 1

@@ -130,7 +130,7 @@ class MATSAC:
         #     for p, p_target in zip(self.tf.parameters(), self.tf_target.parameters()):
         #         p_target.data.mul_(self.hp_dict['tau'])
         #         p_target.data.add_((1 - self.hp_dict['tau']) * p.data)
-        if (train_or_test == "train") and (current_episode % 1000) == 0:
+        if (self.train_or_test == "train") and (current_episode % 1000) == 0:
             torch.save(self.tf.state_dict(), f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
     
     @torch.no_grad()
