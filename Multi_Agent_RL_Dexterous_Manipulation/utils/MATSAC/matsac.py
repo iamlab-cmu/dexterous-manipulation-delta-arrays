@@ -132,7 +132,7 @@ class MATSAC:
         #         p_target.data.mul_(self.hp_dict['tau'])
         #         p_target.data.add_((1 - self.hp_dict['tau']) * p.data)
         if current_episode % 1000 == 0:
-            torch.save(self.tf.state_dict(), f"{self.hp_dict['data_dir']}/{self.hp_dict['env_name']}/pyt_save/model.pt")
+            torch.save(self.tf.state_dict(), f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
     
     @torch.no_grad()
     def get_actions(self, obs, deterministic=False):
