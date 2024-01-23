@@ -97,7 +97,7 @@ class MATSAC:
         wandb.log({"Pi loss":pi_loss.cpu().detach().numpy()})
         return pi_loss, pi_info
 
-    def update(self, batch_size):
+    def update(self, batch_size, current_episode):
         data = self.ma_replay_buffer.sample_batch(batch_size)
         n_agents = int(torch.max(data['num_agents']))
         # print(n_agents, n_agents[0])
@@ -131,6 +131,8 @@ class MATSAC:
         #     for p, p_target in zip(self.tf.parameters(), self.tf_target.parameters()):
         #         p_target.data.mul_(self.hp_dict['tau'])
         #         p_target.data.add_((1 - self.hp_dict['tau']) * p.data)
+        if current_episode % 1000 == 0:
+            torch.save(self.tf.state_dict(), f"{self.hp_dict['data_dir']}/{self.hp_dict['env_name']}/pyt_save/model.pt")
     
     @torch.no_grad()
     def get_actions(self, obs, deterministic=False):

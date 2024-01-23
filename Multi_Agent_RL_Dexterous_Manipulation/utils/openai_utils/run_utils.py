@@ -1,7 +1,7 @@
 from utils.openai_utils.user_config import DEFAULT_DATA_DIR, FORCE_DATESTAMP, \
                                DEFAULT_SHORTHAND, WAIT_BEFORE_LAUNCH
 from utils.openai_utils.logx import colorize
-from utils.openai_utils.mpi_tools import mpi_fork, msg
+# from utils.openai_utils.mpi_tools import mpi_fork, msg
 from utils.openai_utils.serialization_utils import convert_json
 import base64
 from copy import deepcopy

@@ -87,6 +87,8 @@ class DeltaArraySimEnvironment():
                     'q_obs_space': {'dim': 6},
                     "max_agents"    :64,}
         self.hp_dict = {
+                "exp_name": "matsac_expt_4",
+                "data_dir": "./data/rl_data",
                 "tau"         :0.005,
                 "gamma"       :0.99,
                 "q_lr"        :3e-3,
@@ -110,11 +112,10 @@ class DeltaArraySimEnvironment():
             }
 
         if self.train_or_test=="train":
-            name = "matsac_expt_4"
-            logger_kwargs = setup_logger_kwargs(name, 69420, data_dir="./data/rl_data")
+            logger_kwargs = setup_logger_kwargs(self.hp_dict['env_name'], 69420, data_dir=self.hp_dict['data_dir'])
             wandb.init(project="MARL_Dexterous_Manipulation",
                        config=self.hp_dict,
-                       name = name)
+                       name = self.hp_dict['env_name'])
         else:
             logger_kwargs = {}
         # self.agent = ddpg.DDPG(env_dict, self.hp_dict, logger_kwargs)
