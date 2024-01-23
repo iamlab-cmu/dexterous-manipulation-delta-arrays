@@ -13,7 +13,7 @@ import numpy as np
 import torch
 import os.path as osp, time, atexit, os
 import warnings
-from utils.openai_utils.mpi_tools import proc_id, mpi_statistics_scalar
+# from utils.openai_utils.mpi_tools import proc_id, mpi_statistics_scalar
 from utils.openai_utils.serialization_utils import convert_json
 
 color2num = dict(
