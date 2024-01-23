@@ -94,12 +94,12 @@ class DeltaArraySimEnvironment():
                 "alpha"       :0.2,
                 "replay_size" :500000,
                 'seed'        :69420,
-                "batch_size"  :2,
-                "exploration_cutoff": 1,
+                "batch_size"  :128,
+                "exploration_cutoff": 512,
 
                 # Multi Agent Part Below:
                 'state_dim': 6,
-                "device": torch.device("cuda:0"),
+                "device": torch.device("cuda:7"),
                 "model_dim": 128,
                 "num_heads": 8,
                 "dim_ff": 64,
@@ -109,7 +109,7 @@ class DeltaArraySimEnvironment():
             }
 
         if self.train_or_test=="train":
-            name = "matsac_expt_3"
+            name = "matsac_expt_4"
             logger_kwargs = setup_logger_kwargs(name, 69420, data_dir="./data/rl_data")
             wandb.init(project="MARL_Dexterous_Manipulation",
                        config=self.hp_dict,
