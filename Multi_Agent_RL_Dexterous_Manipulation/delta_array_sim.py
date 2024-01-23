@@ -488,7 +488,7 @@ class DeltaArraySim:
             # Gen actions from new policy and set attractor until max episodes
             if t_step == 0:
                 # self.start = time.time()
-                if self.hp_dict["add_vs_Data"]:
+                if self.hp_dict["add_vs_data"]:
                     if np.random.rand < 0.5:
                         self.env_step(env_idx, t_step, self.agent)
                     else:

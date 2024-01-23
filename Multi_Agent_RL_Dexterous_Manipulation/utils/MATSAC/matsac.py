@@ -12,14 +12,14 @@ import torch.utils.data as data
 import torch.nn.functional as F
 
 import utils.MATSAC.core as core
-from utils.openai_utils.logx import EpochLogger
+# from utils.openai_utils.logx import EpochLogger
 from utils.MATSAC.multi_agent_replay_buffer import MultiAgentReplayBuffer
 
 class MATSAC:
     def __init__(self, env_dict, hp_dict, logger_kwargs=dict(), train_or_test="train"):
-        if train_or_test == "train":
-            self.logger = EpochLogger(**logger_kwargs)
-            self.logger.save_config(locals())
+        # if train_or_test == "train":
+            # self.logger = EpochLogger(**logger_kwargs)
+            # self.logger.save_config(locals())
 
         self.train_or_test = train_or_test
         self.hp_dict = hp_dict
@@ -44,17 +44,16 @@ class MATSAC:
 
         # Count variables (protip: try to get a feel for how different size networks behave!)
         var_counts = tuple(core.count_vars(module) for module in [self.tf.encoder, self.tf.decoder_actor, self.tf.decoder_critic1, self.tf.decoder_critic2])
-        print(var_counts)
         if self.train_or_test == "train":
-            self.logger.log('\nNumber of parameters: \t Encoder: %d, \t Actor Decoder: %d, \t Critic Decoder1: %d, \t Critic Decoder2: %d\n'%var_counts)
+            print('\nNumber of parameters: \t Encoder: %d, \t Actor Decoder: %d, \t Critic Decoder1: %d, \t Critic Decoder2: %d\n'%var_counts)
 
         self.critic_params = itertools.chain(self.tf.encoder.parameters(), self.tf.decoder_critic1.parameters(), self.tf.decoder_critic2.parameters())
         self.optimizer_critic = optim.Adam(self.critic_params, lr=hp_dict['q_lr'])
         self.optimizer_actor = optim.Adam(self.tf.decoder_actor.parameters(), lr=hp_dict['pi_lr'])
 
         # Set up model saving
-        if self.train_or_test == "train":
-            self.logger.setup_pytorch_saver(self.tf)
+        # if self.train_or_test == "train":
+        #     self.logger.setup_pytorch_saver(self.tf)
 
     def compute_q_loss(self, s1, a, s2, r, d):
         state_enc = self.tf.encoder(s1)
@@ -131,7 +130,7 @@ class MATSAC:
         #     for p, p_target in zip(self.tf.parameters(), self.tf_target.parameters()):
         #         p_target.data.mul_(self.hp_dict['tau'])
         #         p_target.data.add_((1 - self.hp_dict['tau']) * p.data)
-        if current_episode % 1000 == 0:
+        if (train_or_test == "train") and (current_episode % 1000) == 0:
             torch.save(self.tf.state_dict(), f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
     
     @torch.no_grad()
