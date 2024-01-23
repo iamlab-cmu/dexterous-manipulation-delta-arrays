@@ -101,7 +101,7 @@ class DeltaArraySimEnvironment():
 
                 # Multi Agent Part Below:
                 'state_dim': 6,
-                "device": torch.device("cuda:7"),
+                "device": torch.device("cuda:0"),
                 "model_dim": 128,
                 "num_heads": 8,
                 "dim_ff": 64,
