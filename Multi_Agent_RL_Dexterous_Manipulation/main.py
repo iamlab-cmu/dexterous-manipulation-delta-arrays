@@ -89,13 +89,13 @@ class DeltaArraySimEnvironment():
         self.hp_dict = {
                 "tau"         :0.005,
                 "gamma"       :0.99,
-                "q_lr"        :1e-3,
-                "pi_lr"       :1e-3,
+                "q_lr"        :3e-3,
+                "pi_lr"       :3e-3,
                 "alpha"       :0.2,
                 "replay_size" :500000,
                 'seed'        :69420,
-                "batch_size"  :128,
-                "exploration_cutoff": 512,
+                "batch_size"  :2,
+                "exploration_cutoff": 1,
 
                 # Multi Agent Part Below:
                 'state_dim': 6,
@@ -125,7 +125,7 @@ class DeltaArraySimEnvironment():
         self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
 
         if self.train_or_test=="test":
-            self.pushing_agent.load_saved_policy('./data/rl_data/matsac_expt_2/matsac_expt_2_s69420/pyt_save/model.pt')
+            self.pushing_agent.load_saved_policy('./data/rl_data/matsac_expt_3/matsac_expt_3_s69420/pyt_save/model.pt')
         
         self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.obj_name, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
         

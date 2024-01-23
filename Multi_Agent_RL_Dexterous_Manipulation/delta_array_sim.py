@@ -301,11 +301,11 @@ class DeltaArraySim:
                 
             else:
                 # We are not using min_dists for now. Try expt to see if it helps. 
-                self.act_grasp_pix[env_idx, :self.n_idxs[env_idx], 0] = self.actions_grasp[env_idx, :self.n_idxs[env_idx], 0]/(self.delta_plane_x)*1080
-                self.act_grasp_pix[env_idx, :self.n_idxs[env_idx], 1] = self.actions_grasp[env_idx, :self.n_idxs[env_idx], 1]/(self.delta_plane_y)*1920
+                # self.act_grasp_pix[env_idx, :self.n_idxs[env_idx], 0] = self.actions_grasp[env_idx, :self.n_idxs[env_idx], 0]/(self.delta_plane_x)*1080
+                # self.act_grasp_pix[env_idx, :self.n_idxs[env_idx], 1] = self.actions_grasp[env_idx, :self.n_idxs[env_idx], 1]/(self.delta_plane_y)*1920
                 
-                self.act_pix[env_idx, :self.n_idxs[env_idx], 0] = self.actions[env_idx, :self.n_idxs[env_idx], 0]/(self.delta_plane_x)*1080
-                self.act_pix[env_idx, :self.n_idxs[env_idx], 1] = self.actions[env_idx, :self.n_idxs[env_idx], 1]/(self.delta_plane_y)*1920
+                # self.act_pix[env_idx, :self.n_idxs[env_idx], 0] = self.actions[env_idx, :self.n_idxs[env_idx], 0]/(self.delta_plane_x)*1080
+                # self.act_pix[env_idx, :self.n_idxs[env_idx], 1] = self.actions[env_idx, :self.n_idxs[env_idx], 1]/(self.delta_plane_y)*1920
                 # print(self.actions[env_idx, 0], self.act_pix[env_idx, 0])
 
                 # min_dists, _ = self.nn_helper.get_min_dist(bd_cluster_centers, self.active_idxs[env_idx], self.act_pix[env_idx])
@@ -383,15 +383,12 @@ class DeltaArraySim:
         
         # self.ep_reward[env_idx] = -10*np.linalg.norm(delta_2d_pose)
         self.ep_reward[env_idx] = -np.mean((10*(np.array(delta_2d_pose)))**2)
-
-        # print(delta_2d_pose, self.ep_reward[env_idx])
-        # self.ep_reward[env_idx] += -tf_loss*0.6
         return True
 
     def terminate(self, env_idx, agent):
         """ Update the replay buffer and reset the env """
         # agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
-        if self.ep_reward[env_idx] > -15:
+        if self.ep_reward[env_idx] > -30:
             if agent.ma_replay_buffer.size > self.batch_size:
                 self.log_data(env_idx, agent)
 
@@ -451,6 +448,12 @@ class DeltaArraySim:
         wandb.log({"reward":self.ep_reward[env_idx]})
         log_utils.log_data(agent.logger, self.ep_reward[env_idx], self.current_episode, self.start_time)
 
+    def scale_epoch(self, x, A=100/np.log(100000), B=1/1000, C=1000):
+        if x <= C:
+            return 1
+        else:
+            return int(min(50, 1 + A * np.log(B * (x - C) + 1)))
+    
     def inverse_dynamics(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
 
@@ -462,20 +465,20 @@ class DeltaArraySim:
         if self.ep_len[env_idx]==0:
             # Call the pretrained policy for all NN robots and set attractors
             if t_step == 0:
-                self.start = time.time()
+                # self.start = time.time()
                 img = self.get_camera_image(env_idx)
                 _, self.goal_bd_pts[env_idx] = self.get_boundary_pts(img)
                 self.set_block_pose(env_idx) # Reset block to current initial pose
                 self.set_all_fingers_pose(env_idx, pos_high=True) # Set all fingers to high pose
                 self.set_attractor_target(env_idx, t_step, None, all_zeros=True) # Set all fingers to high pose
-                print("Time to get image and set attractor: ", time.time() - self.start)
+                # print("Time to get image and set attractor: ", time.time() - self.start)
             elif t_step == 1:
                 self.env_step(env_idx, t_step, self.pretrained_agent) #Store Init Pose
             elif (t_step == 2) and self.dont_skip_episode:
                 self.set_attractor_target(env_idx, t_step, self.actions_grasp)
             elif (t_step == self.time_horizon-1) and self.dont_skip_episode:
                 self.ep_len[env_idx] = 1
-                print("Time until grasp: ", time.time() - self.start)
+                # print("Time until grasp: ", time.time() - self.start)
             elif not self.dont_skip_episode:
                 self.ep_len[env_idx] = 0
                 self.reset(env_idx)
@@ -483,14 +486,19 @@ class DeltaArraySim:
         else:
             # Gen actions from new policy and set attractor until max episodes
             if t_step == 0:
-                self.start = time.time()
-                self.env_step(env_idx, t_step, self.agent) # Only Store Actions from MARL Policy
+                # self.start = time.time()
+                if np.random.rand <0.5:
+                    self.env_step(env_idx, t_step, self.agent) # Only Store Actions from MARL Policy
+                else:
+                    self.vs_step(env_idx, t_step)
             elif t_step == 2:
                 self.set_attractor_target(env_idx, t_step, self.actions)
             elif t_step == (self.time_horizon-2):
                 # Update policy
                 self.compute_reward(env_idx, t_step)
                 if self.agent.ma_replay_buffer.size > self.batch_size:
+                    # epoch = self.scale_epoch(self.current_episode)
+                    # for i in range(epoch):
                     self.agent.update(self.batch_size)
                 self.terminate(env_idx, self.agent)
 
@@ -498,7 +506,7 @@ class DeltaArraySim:
             elif t_step == self.time_horizon - 1:
                 self.set_block_pose(env_idx, goal=True) # Set block to next goal pose & Store Goal Pose for both states
                 self.ep_len[env_idx] = 0
-                print("Time until 2nd episode execution: ", time.time() - self.start)
+                # print("Time until 2nd episode execution: ", time.time() - self.start)
             
     def test_learned_policy(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon

@@ -16,7 +16,7 @@
     "exp_name":	"matsac_expt_3",
     "hp_dict":	{
         "alpha":	0.2,
-        "batch_size":	128,
+        "batch_size":	2,
         "delta_array_size":	[
             8,
             8
@@ -24,7 +24,7 @@
         "device":	"cuda:0",
         "dim_ff":	64,
         "dropout":	0,
-        "exploration_cutoff":	512,
+        "exploration_cutoff":	1,
         "gamma":	0.99,
         "model_dim":	128,
         "n_layers_dict":	{
@@ -33,8 +33,8 @@
             "encoder":	3
         },
         "num_heads":	8,
-        "pi_lr":	0.001,
-        "q_lr":	0.001,
+        "pi_lr":	0.003,
+        "q_lr":	0.003,
         "replay_size":	500000,
         "seed":	69420,
         "state_dim":	6,
@@ -45,9 +45,9 @@
         "output_dir":	"./data/rl_data/matsac_expt_3/matsac_expt_3_s69420"
     },
     "self":	{
-        "<utils.MATSAC.matsac.MATSAC object at 0x7f603fff8fa0>":	{
+        "<utils.MATSAC.matsac.MATSAC object at 0x7fd039281670>":	{
             "logger":	{
-                "<utils.openai_utils.logx.EpochLogger object at 0x7f5ff2cf6ee0>":	{
+                "<utils.openai_utils.logx.EpochLogger object at 0x7fd020695430>":	{
                     "epoch_dict":	{},
                     "exp_name":	"matsac_expt_3",
                     "first_row":	true,

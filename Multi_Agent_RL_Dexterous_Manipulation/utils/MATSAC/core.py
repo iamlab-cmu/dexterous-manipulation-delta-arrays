@@ -66,10 +66,10 @@ class FF_MLP(nn.Module):
         super(FF_MLP, self).__init__()
         self.fc1 = wt_init_(nn.Linear(model_dim, dim_ff))
         self.fc2 = wt_init_(nn.Linear(dim_ff, model_dim))
-        self.gelu = nn.GELU()
+        self.ReLU = nn.ReLU()
 
     def forward(self, x):
-        return self.fc2(self.gelu(self.fc1(x)))
+        return self.fc2(self.ReLU(self.fc1(x)))
 
 # Position Encoder for robotics should encode the ID of the robot (i,j)
 # TODO: Change this function to capture the spatial arrangement of delta robots
@@ -148,14 +148,14 @@ class StateEncoder(nn.Module):
         self.positional_encoding = pos_enc
         self.dropout = nn.Dropout(dropout)
         self.encoder_layers = nn.ModuleList([StateEncoderLayer(model_dim, num_heads, max_agents, dim_ff, dropout) for _ in range(n_layers)])
-        self.gelu = nn.GELU()
+        self.ReLU = nn.ReLU()
 
     def forward(self, states):
         """
         Input: states (bs, n_agents, state_dim)
         Output: state_enc (bs, n_agents, model_dim)
         """
-        state_enc = self.dropout(self.positional_encoding(self.gelu(self.state_embedding(states))))
+        state_enc = self.dropout(self.positional_encoding(self.ReLU(self.state_embedding(states))))
         for layer in self.encoder_layers:
             state_enc = layer(state_enc)
         return state_enc
@@ -169,7 +169,7 @@ class CriticDecoder(nn.Module):
 
         self.decoder_layers = nn.ModuleList([CriticDecoderLayer(model_dim, num_heads, max_agents, dim_ff, dropout) for _ in range(n_layers)])
         self.critic_op_layer = wt_init_(nn.Linear(model_dim, 1))
-        self.gelu = nn.GELU()
+        self.ReLU = nn.ReLU()
 
     def forward(self, state_enc, actions):
         """
@@ -177,7 +177,7 @@ class CriticDecoder(nn.Module):
                actions (bs, n_agents, action_dim)
         Output: q_value (bs, 1) --> Centralized Critic Q' = 1/N * ∑Q
         """
-        act_enc = self.dropout(self.positional_encoding(self.gelu(self.action_embedding(actions))))
+        act_enc = self.dropout(self.positional_encoding(self.ReLU(self.action_embedding(actions))))
         for layer in self.decoder_layers:
             act_enc = layer(act_enc, state_enc)
         q_val = self.critic_op_layer(act_enc)
@@ -193,7 +193,7 @@ class ActorDecoder(nn.Module):
         self.decoder_layers = nn.ModuleList([ActorDecoderLayer(model_dim, num_heads, max_agents, dim_ff, dropout) for _ in range(n_layers)])
         self.actor_mu_layer = wt_init_(nn.Linear(model_dim, action_dim))
         self.actor_std_layer = wt_init_(nn.Linear(model_dim, action_dim))
-        self.gelu = nn.GELU()
+        self.ReLU = nn.ReLU()
 
     def forward(self, state_enc, actions):
         """
@@ -201,8 +201,8 @@ class ActorDecoder(nn.Module):
                actions (bs, n_agents, action_dim)
         Output: decoder_output (bs, n_agents, model_dim)
         """
-        # act_enc = self.dropout(self.positional_encoding(F.gelu(self.action_embedding(actions))))
-        act_enc = self.gelu(self.action_embedding(actions))
+        # act_enc = self.dropout(self.positional_encoding(F.ReLU(self.action_embedding(actions))))
+        act_enc = self.ReLU(self.action_embedding(actions))
         for layer in self.decoder_layers:
             act_enc = layer(act_enc, state_enc)
         act_mean = self.actor_mu_layer(act_enc)
