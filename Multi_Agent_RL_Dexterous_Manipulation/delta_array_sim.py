@@ -581,7 +581,7 @@ class DeltaArraySim:
                 tf_pts += delta_com
                 displacement_vectors = tf_pts - self.nn_bd_pts[env_idx]
 
-                if self.hp_dict["add_vs_Data"]:
+                if self.hp_dict["add_vs_data"]:
                     self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip([self.scale_pix_2_world(disp_vec) for disp_vec in displacement_vectors], -0.03, 0.03)
                 else:
                     if self.current_episode < self.temp_cutoff_1:
