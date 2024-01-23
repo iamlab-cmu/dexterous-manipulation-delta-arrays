@@ -51,6 +51,7 @@ class DeltaArraySim:
         self.object = obj
         self.obj_name = obj_name
         self.max_agents = max_agents
+        self.hp_dict = hp_dict
         
         # Introduce delta robot EE in the env
         for i in range(self.num_tips[0]):
@@ -487,10 +488,13 @@ class DeltaArraySim:
             # Gen actions from new policy and set attractor until max episodes
             if t_step == 0:
                 # self.start = time.time()
-                if np.random.rand <0.5:
-                    self.env_step(env_idx, t_step, self.agent) # Only Store Actions from MARL Policy
+                if self.hp_dict["add_vs_Data"]:
+                    if np.random.rand < 0.5:
+                        self.env_step(env_idx, t_step, self.agent)
+                    else:
+                        self.vs_step(env_idx, t_step)
                 else:
-                    self.vs_step(env_idx, t_step)
+                    self.env_step(env_idx, t_step, self.agent)
             elif t_step == 2:
                 self.set_attractor_target(env_idx, t_step, self.actions)
             elif t_step == (self.time_horizon-2):
@@ -576,17 +580,20 @@ class DeltaArraySim:
                 tf_pts = com_pix + np.dot(tf_pts, rot_m)
                 tf_pts += delta_com
                 displacement_vectors = tf_pts - self.nn_bd_pts[env_idx]
-                act_rand = np.random.uniform(-0.06, 0.06, size=(self.n_idxs[env_idx], 2))
 
-                if self.current_episode < self.temp_cutoff_1:
-                    self.actions[env_idx, :self.n_idxs[env_idx]] = [self.scale_pix_2_world(disp_vec) for disp_vec in displacement_vectors]
-                elif self.current_episode < self.temp_cutoff_2:
-                    self.actions[env_idx, :self.n_idxs[env_idx]] = act_rand
+                if self.hp_dict["add_vs_Data"]:
+                    self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip([self.scale_pix_2_world(disp_vec) for disp_vec in displacement_vectors], -0.03, 0.03)
                 else:
-                    # Save vs_rews and rand_rews using pickle
-                    pkl.dump(self.vs_rews, open(f"./data/manip_data/vis_servoing/vs_rews.pkl", "wb"))
-                    pkl.dump(self.rand_rews, open(f"./data/manip_data/vis_servoing/rand_rews.pkl", "wb"))
-                    sys.exit(1)
+                    if self.current_episode < self.temp_cutoff_1:
+                        self.actions[env_idx, :self.n_idxs[env_idx]] = [self.scale_pix_2_world(disp_vec) for disp_vec in displacement_vectors]
+                    elif self.current_episode < self.temp_cutoff_2:
+                        act_rand = np.random.uniform(-0.06, 0.06, size=(self.n_idxs[env_idx], 2))
+                        self.actions[env_idx, :self.n_idxs[env_idx]] = act_rand
+                    else:
+                        # Save vs_rews and rand_rews using pickle
+                        pkl.dump(self.vs_rews, open(f"./data/manip_data/vis_servoing/vs_rews.pkl", "wb"))
+                        pkl.dump(self.rand_rews, open(f"./data/manip_data/vis_servoing/rand_rews.pkl", "wb"))
+                        sys.exit(1)
                 
                 
                 

@@ -106,6 +106,7 @@ class DeltaArraySimEnvironment():
                 "n_layers_dict":{'encoder': 3, 'actor': 3, 'critic': 2},
                 "dropout": 0,
                 "delta_array_size": [8,8],
+                "add_vs_data": self.args.add_vs_data,
             }
 
         if self.train_or_test=="train":
@@ -228,6 +229,7 @@ if __name__ == "__main__":
     parser.add_argument("-v", "--vis_servo", action="store_true", help="True for Visual Servoing")
     parser.add_argument("-nexp", "--num_expts", type=int, default=160, help="Number of Experiments to run")
     parser.add_argument("-gui", "--gui", action="store_true", help="True for GUI")
+    parser.add_argument("-avsd", "--add_vs_data", action="store_true", help="True for adding visual servoing data")
     args = parser.parse_args()
 
     if args.vis_servo and not args.test:
