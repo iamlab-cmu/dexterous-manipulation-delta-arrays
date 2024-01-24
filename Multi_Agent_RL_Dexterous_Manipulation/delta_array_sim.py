@@ -447,7 +447,7 @@ class DeltaArraySim:
     def log_data(self, env_idx, agent):
         """ Store data about training progress in systematic data structures """
         wandb.log({"reward":self.ep_reward[env_idx]})
-        log_utils.log_data(agent.logger, self.ep_reward[env_idx], self.current_episode, self.start_time)
+        # log_utils.log_data(agent.logger, self.ep_reward[env_idx], self.current_episode, self.start_time)
 
     def scale_epoch(self, x, A=100/np.log(100000), B=1/1000, C=1000):
         if x <= C:
