@@ -87,7 +87,7 @@ class DeltaArraySimEnvironment():
                     'q_obs_space': {'dim': 6},
                     "max_agents"    :64,}
         self.hp_dict = {
-                "exp_name": "matsac_expt_4",
+                "exp_name": args.name,
                 "data_dir": "./data/rl_data",
                 "tau"         :0.005,
                 "gamma"       :0.99,
@@ -127,7 +127,7 @@ class DeltaArraySimEnvironment():
         self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
 
         if self.train_or_test=="test":
-            self.pushing_agent.load_saved_policy('./data/rl_data/matsac_expt_3/matsac_expt_3_s69420/pyt_save/model.pt')
+            self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/{args.name}_s69420/pyt_save/model.pt')
         
         self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.obj_name, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
         
@@ -231,10 +231,14 @@ if __name__ == "__main__":
     parser.add_argument("-nexp", "--num_expts", type=int, default=160, help="Number of Experiments to run")
     parser.add_argument("-gui", "--gui", action="store_true", help="True for GUI")
     parser.add_argument("-avsd", "--add_vs_data", action="store_true", help="True for adding visual servoing data")
+    parser.add_argument("-n", "--name", type=str, default="HAKUNA", help="Expt Name")
     args = parser.parse_args()
 
     if args.vis_servo and not args.test:
         parser.error("--vis_servo requires --test")
+        sys.exit(1)
+    if args.name=="HAKUNA":
+        parser.error("Expt name is required for training")
         sys.exit(1)
 
     train_or_test = "test" if args.test else "train"

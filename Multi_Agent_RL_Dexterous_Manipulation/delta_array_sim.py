@@ -489,7 +489,7 @@ class DeltaArraySim:
             if t_step == 0:
                 # self.start = time.time()
                 if self.hp_dict["add_vs_data"]:
-                    if np.random.rand() < 0.5:
+                    if np.random.rand() <= 0.5:
                         self.env_step(env_idx, t_step, self.agent)
                     else:
                         self.vs_step(env_idx, t_step)
@@ -501,9 +501,9 @@ class DeltaArraySim:
                 # Update policy
                 self.compute_reward(env_idx, t_step)
                 if self.agent.ma_replay_buffer.size > self.batch_size:
-                    # epoch = self.scale_epoch(self.current_episode)
-                    # for i in range(epoch):
-                    self.agent.update(self.batch_size, self.current_episode)
+                    epoch = self.scale_epoch(self.current_episode)
+                    for i in range(epoch):
+                        self.agent.update(self.batch_size, self.current_episode)
                 self.terminate(env_idx, self.agent)
 
                 self.current_episode += 1
