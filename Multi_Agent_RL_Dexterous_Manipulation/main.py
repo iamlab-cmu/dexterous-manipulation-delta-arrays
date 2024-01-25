@@ -78,7 +78,8 @@ class DeltaArraySimEnvironment():
         #     transforms.ToTensor(),
         #     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         # ])
-
+        if not os.path.exists(f'./data/rl_data/{args.name}/pyt_save'):
+            os.makedirs(f'./data/rl_data/{args.name}/pyt_save')
 
         single_agent_env_dict = {'action_space': {'low': -0.03, 'high': 0.03, 'dim': 2},
                     'observation_space': {'dim': 4},}
