@@ -221,14 +221,16 @@ class DeltaArraySim:
         if goal:
             self.goal_yaw_deg[env_idx] = np.random.randint(0, 180)
             r = R.from_euler('xyz', [90, 0, self.goal_yaw_deg[env_idx]], degrees=True)
-            object_r = gymapi.Quat(*r.as_quat())
+            # object_r = gymapi.Quat(*r.as_quat())
+            object_r = gymapi.Quat(0,0,0,1)
             yaw = R.from_quat([object_r.x, object_r.y, object_r.z, object_r.w]).as_euler('xyz')[2]
             T = (np.random.uniform(0.009, 0.21), np.random.uniform(0.005, 0.25))
             self.goal_pose[env_idx] = np.array([T[0], T[1], yaw])
 
         else:
             r = R.from_euler('xyz', [90, 0, self.goal_yaw_deg[env_idx] + np.random.randint(-45, 45)], degrees=True)
-            object_r = gymapi.Quat(*r.as_quat())
+            # object_r = gymapi.Quat(*r.as_quat())
+            object_r = gymapi.Quat(0,0,0,1)
             yaw = R.from_quat([object_r.x, object_r.y, object_r.z, object_r.w]).as_euler('xyz')[2]
             com = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
             T = (com.p.x + np.random.uniform(-0.02, 0.02), com.p.y + np.random.uniform(-0.02, 0.02))
@@ -273,7 +275,12 @@ class DeltaArraySim:
         self.bd_pts
         """
         img = self.get_camera_image(env_idx)
-        seg_map, boundary_pts = self.get_boundary_pts(img)
+        # plt.imshow(img)
+        # plt.show()
+        # seg_map, boundary_pts = self.get_boundary_pts(img)
+        # plt.scatter(boundary_pts[:,0], boundary_pts[:,1])
+        # print(boundary_pts.shape)
+        # plt.show()
         
         if len(boundary_pts) < 64:
             self.dont_skip_episode = False
@@ -373,7 +380,10 @@ class DeltaArraySim:
         rot = geom_utils.get_transform(self.goal_bd_pts[env_idx], self.bd_pts[env_idx])[2]
         delta_com = np.mean(self.goal_bd_pts[env_idx], axis=0) - com_pix
         delta_com = self.scale_pix_2_world(delta_com)
-        delta_2d_pose = np.array([*delta_com, rot])
+        if self.obj_name=="disc":
+            delta_2d_pose = np.array([*delta_com])
+        else:
+            delta_2d_pose = np.array([*delta_com, rot])
 
         # com = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
         # yaw = R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')[2]
@@ -597,17 +607,17 @@ class DeltaArraySim:
                 
                 
                 
-                # r_poses = self.nn_helper.robot_positions[tuple(zip(*self.active_idxs[env_idx]))]
+                r_poses = self.nn_helper.robot_positions[tuple(zip(*self.active_idxs[env_idx]))]
                 # Plot robot positions of n_idxs
-                # plt.scatter(r_poses[:, 0], r_poses[:, 1], c='#880000ff')
+                plt.scatter(r_poses[:, 0], r_poses[:, 1], c='#880000ff')
 
-                # plt.scatter(new_bd_pts[:, 0], new_bd_pts[:, 1], c = 'green')
-                # plt.scatter(self.goal_bd_pts[env_idx][:, 0], self.goal_bd_pts[env_idx][:, 1], c='orange')
-                # plt.scatter(tf_pts[:, 0], tf_pts[:, 1], c='blue')
-                # plt.scatter(self.nn_bd_pts[env_idx][:, 0], self.nn_bd_pts[env_idx][:, 1], c='#ff0000ff')
-                # plt.quiver(self.nn_bd_pts[env_idx][:, 0], self.nn_bd_pts[env_idx][:, 1], displacement_vector[:, 0], displacement_vector[:, 1], scale=1, scale_units='xy')
-                # plt.gca().set_aspect('equal')
-                # plt.show()
+                plt.scatter(new_bd_pts[:, 0], new_bd_pts[:, 1], c = 'green')
+                plt.scatter(self.goal_bd_pts[env_idx][:, 0], self.goal_bd_pts[env_idx][:, 1], c='orange')
+                plt.scatter(tf_pts[:, 0], tf_pts[:, 1], c='blue')
+                plt.scatter(self.nn_bd_pts[env_idx][:, 0], self.nn_bd_pts[env_idx][:, 1], c='#ff0000ff')
+                plt.quiver(self.nn_bd_pts[env_idx][:, 0], self.nn_bd_pts[env_idx][:, 1], displacement_vector[:, 0], displacement_vector[:, 1], scale=1, scale_units='xy')
+                plt.gca().set_aspect('equal')
+                plt.show()
 
     def visual_servoing(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
@@ -678,7 +688,7 @@ class DeltaArraySim:
             # block_p = gymapi.Vec3(0 + 0.2625*t_step/self.time_horizon, 0.1407285, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
             xy = self.traj[(t_step-2)//2]
             block_p = gymapi.Vec3(*xy, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
-            block_r = gymapi.Quat(0.5, 0.5, 0.5, 0.5)
+            block_r = gymapi.Quat(0,0,0,1)
             self.object.set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p, r=block_r)])
         else:
             img = self.get_camera_image(env_idx)
@@ -687,5 +697,12 @@ class DeltaArraySim:
             cluster_centers = kmeans.cluster_centers_
             self.new_gft.append(geom_utils.GFT(cluster_centers))
 
-
+    def do_nothing(self, scene, env_idx, t_step, _):
+        """ Call this function to visualize the scene without taking any action """
+        env_ptr = self.scene.env_ptrs[env_idx]
+        t_step = t_step % self.time_horizon
+        
+        for i in range(self.num_tips[0]):
+            for j in range(self.num_tips[1]):
+                self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
 

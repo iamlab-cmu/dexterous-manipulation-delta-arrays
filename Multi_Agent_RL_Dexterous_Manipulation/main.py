@@ -41,16 +41,16 @@ class DeltaArraySimEnvironment():
         if not os.path.exists('./data/manip_data'):   
             os.makedirs('./data/manip_data')
 
-        self.obj_name = "block"
-        # self.object = GymBoxAsset(self.scene, **self.cfg['block']['dims'], 
-        #                     shape_props=self.cfg['block']['shape_props'], 
-        #                     rb_props=self.cfg['block']['rb_props'],
-        #                     asset_options=self.cfg['block']['asset_options'])
+        self.obj_name = args.obj_name
+        # self.object = GymBoxAsset(self.scene, **self.cfg[self.obj_name]['dims'], 
+        #                     shape_props=self.cfg[self.obj_name]['shape_props'], 
+        #                     rb_props=self.cfg[self.obj_name]['rb_props'],
+        #                     asset_options=self.cfg[self.obj_name]['asset_options'])
         
-        self.object = GymURDFAsset(self.cfg['block']['urdf_path'], self.scene, 
-                            shape_props=self.cfg['block']['shape_props'], 
-                            rb_props=self.cfg['block']['rb_props'],
-                            asset_options=self.cfg['block']['asset_options'],
+        self.object = GymURDFAsset(self.cfg[self.obj_name]['urdf_path'], self.scene, 
+                            shape_props=self.cfg[self.obj_name]['shape_props'], 
+                            rb_props=self.cfg[self.obj_name]['rb_props'],
+                            asset_options=self.cfg[self.obj_name]['asset_options'],
                             assets_root=Path('config'))
 
         self.table = GymURDFAsset(self.cfg['table']['urdf_path'], self.scene,
@@ -128,8 +128,8 @@ class DeltaArraySimEnvironment():
         self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
 
         if self.train_or_test=="test":
-            # self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/{args.name}_s69420/pyt_save/model.pt')
-            self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/pyt_save/model.pt')
+            self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/{args.name}_s69420/pyt_save/model.pt')
+            # self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/pyt_save/model.pt')
         
         self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.obj_name, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
         
@@ -163,7 +163,8 @@ class DeltaArraySimEnvironment():
             self.fingers.set_attractor_handles(i)
 
         object_p = gymapi.Vec3(0.13125, 0.1407285, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
-        object_r = gymapi.Quat(0.5, 0.5, 0.5, 0.5)
+        # object_r = gymapi.Quat(0.5, 0.5, 0.5, 0.5)
+        object_r = gymapi.Quat(0, 0, 0, 1)
         object_transforms = [gymapi.Transform(p=object_p, r=object_r) for _ in range(self.scene.n_envs)]
         table_transforms = [gymapi.Transform(p=gymapi.Vec3(0,0,0.5)) for _ in range(self.scene.n_envs)]
         # fiducial_rb = [gymapi.Transform(p=gymapi.Vec3(-0.2035, -0.06, 1.0052)) for _ in range(self.scene.n_envs)]
@@ -190,9 +191,9 @@ class DeltaArraySimEnvironment():
         else:
             if self.args.vis_servo:
                 self.scene.run(policy=self.fingers.visual_servoing)
+                # self.scene.run(policy=self.fingers.do_nothing)
             else:
                 self.scene.run(policy=self.fingers.test_learned_policy)
-            # self.scene.run(policy=self.fingers.visual_servoing)
 
 class DeltaArrayRealEnvironment():
     def __init__(self, train_or_test="test"):
@@ -234,6 +235,7 @@ if __name__ == "__main__":
     parser.add_argument("-gui", "--gui", action="store_true", help="True for GUI")
     parser.add_argument("-avsd", "--add_vs_data", action="store_true", help="True for adding visual servoing data")
     parser.add_argument("-n", "--name", type=str, default="HAKUNA", help="Expt Name")
+    parser.add_argument("-on", "--obj_name", type=str, default="disc", help="Object Name in env.yaml")
     args = parser.parse_args()
 
     if args.vis_servo and not args.test:
