@@ -10,7 +10,6 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.utils.data as data
 import torch.nn.functional as F
-from torchviz import make_dot
 
 import utils.MATSAC.core as core
 # from utils.openai_utils.logx import EpochLogger
