@@ -83,7 +83,7 @@ class DeltaArraySimEnvironment():
 
         single_agent_env_dict = {'action_space': {'low': -0.03, 'high': 0.03, 'dim': 2},
                     'observation_space': {'dim': 4},}
-        ma_env_dict = {'action_space': {'low': -0.03, 'high': 0.06, 'dim': 2},
+        ma_env_dict = {'action_space': {'low': -0.06, 'high': 0.06, 'dim': 2},
                     'pi_obs_space': {'dim': 6},
                     'q_obs_space': {'dim': 6},
                     "max_agents"    :64,}
@@ -97,8 +97,8 @@ class DeltaArraySimEnvironment():
                 "alpha"       :0.2,
                 "replay_size" :500000,
                 'seed'        :69420,
-                "batch_size"  :256,
-                "exploration_cutoff": 512,
+                "batch_size"  :8,
+                "exploration_cutoff": 2,
 
                 # Multi Agent Part Below:
                 'state_dim': 6,
@@ -130,8 +130,8 @@ class DeltaArraySimEnvironment():
         self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
 
         if self.train_or_test=="test":
-            self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/{args.name}_s69420/pyt_save/model.pt')
-            # self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/pyt_save/model.pt')
+            # self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/{args.name}_s69420/pyt_save/model.pt')
+            self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/pyt_save/model.pt')
         
         self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.obj_name, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
         

@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.utils.data as data
 import torch.nn.functional as F
+from torchviz import make_dot
 
 import utils.MATSAC.core as core
 # from utils.openai_utils.logx import EpochLogger
@@ -80,10 +81,12 @@ class MATSAC:
             wandb.log({"Q loss":q_loss.cpu().detach().numpy()})
         return q_loss, q_info
 
-    def compute_pi_loss(self, s1):
+    def compute_pi_loss(self, s1, current_episode):
         with torch.no_grad():
             state_enc = self.tf.encoder(s1)
-        actions, logp_pi = self.tf.get_actions(state_enc)
+        # actions, logp_pi = self.tf.get_actions_gauss(state_enc)
+        logp_pi = 0
+        actions = self.tf.get_actions_lin(state_enc)
         
         q1_pi = self.tf.decoder_critic1(state_enc, actions)
         q2_pi = self.tf.decoder_critic2(state_enc, actions)
@@ -92,7 +95,7 @@ class MATSAC:
 
         pi_loss.backward()
         self.optimizer_actor.step()
-        pi_info = dict(LogPi=logp_pi.cpu().detach().numpy())
+        pi_info = dict(LogPi=0) # logp_pi.cpu().detach().numpy())
 
         if not self.hp_dict["dont_log"]:
             wandb.log({"Pi loss":pi_loss.cpu().detach().numpy()})
@@ -121,7 +124,7 @@ class MATSAC:
 
         with torch.autograd.set_detect_anomaly(True):
             self.optimizer_actor.zero_grad()
-            pi_loss, pi_info = self.compute_pi_loss(states)
+            pi_loss, pi_info = self.compute_pi_loss(states, current_episode)
             # self.logger.store(LossPi=pi_loss.item(), **pi_info)
 
         for p in self.critic_params:
@@ -141,7 +144,8 @@ class MATSAC:
         obs = obs.unsqueeze(0)
         with torch.no_grad():
             state_enc = self.tf.encoder(obs)
-            actions, _ = self.tf.get_actions(state_enc, deterministic=deterministic)
+            # actions, _ = self.tf.get_actions_gauss(state_enc, deterministic=deterministic)
+            actions = self.tf.get_actions_lin(state_enc, deterministic=deterministic)
             return actions.detach().cpu().numpy()
         
     def load_saved_policy(self, path='./data/rl_data/backup/matsac_expt_grasp/pyt_save/model.pt'):

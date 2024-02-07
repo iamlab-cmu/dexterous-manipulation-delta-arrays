@@ -206,10 +206,12 @@ class ActorDecoder(nn.Module):
         for layer in self.decoder_layers:
             act_enc = layer(act_enc, state_enc)
         act_mean = self.actor_mu_layer(act_enc)
-        act_std = self.actor_std_layer(act_enc)
-        act_std = torch.clamp(act_std, LOG_STD_MIN, LOG_STD_MAX)
-        std = torch.exp(act_std)
-        return act_mean, std
+        return act_mean
+        # act_mean = self.actor_mu_layer(act_enc)
+        # act_std = self.actor_std_layer(act_enc)
+        # act_std = torch.clamp(act_std, LOG_STD_MIN, LOG_STD_MAX)
+        # std = torch.exp(act_std)
+        # return act_mean, std
 
 class Transformer(nn.Module):
     def __init__(self, state_dim, action_dim, action_limit, model_dim, num_heads, dim_ff, num_layers, dropout, device, delta_array_size = (8,8)):
@@ -255,7 +257,28 @@ class Transformer(nn.Module):
         output_actions = self.act_limit * output_actions # Output actions go from A_0 to A_n
         return output_actions, log_probs, entropy
 
-    def get_actions(self, state_enc, deterministic=False):
+    def get_actions_lin(self, state_enc, deterministic=False):
+        """ Returns actor actions, and their log probs. If deterministic=True, set action as the output of decoder. Else, sample from mean=dec output, std=exp(log_std) """
+        bs, n_agents, _ = state_enc.size()
+        shifted_actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
+        output_actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
+
+        for i in range(n_agents):
+            act_encs = self.decoder_actor(state_enc, shifted_actions)
+            act = act_encs[:, i, :]
+
+            output_action = self.act_limit * torch.tanh(act)
+
+            output_actions = output_actions.clone()
+            output_actions[:, i, :] = output_action
+            
+            if (i+1) < n_agents:
+                shifted_actions = shifted_actions.clone()
+                shifted_actions[:, i+1, :] = output_action
+        return output_actions
+
+
+    def get_actions_gauss(self, state_enc, deterministic=False):
         """ Returns actor actions, and their log probs. If deterministic=True, set action as the output of decoder. Else, sample from mean=dec output, std=exp(log_std) """
         bs, n_agents, _ = state_enc.size()
         shifted_actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)

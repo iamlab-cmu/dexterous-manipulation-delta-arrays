@@ -396,7 +396,7 @@ class DeltaArraySim:
         # delta_2d_pose = [T[0] - self.goal_pose[env_idx, 0], T[1] - self.goal_pose[env_idx, 1], rot_dif]
         
         # self.ep_reward[env_idx] = -10*np.linalg.norm(delta_2d_pose)
-        self.ep_reward[env_idx] = -np.mean(delta_2d_pose**2)
+        self.ep_reward[env_idx] = -np.mean((1000*delta_2d_pose)**2)
         # print(np.linalg.norm(delta_2d_pose))
         return True
 
