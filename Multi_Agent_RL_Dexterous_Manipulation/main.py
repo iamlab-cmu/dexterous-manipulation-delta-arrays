@@ -110,15 +110,17 @@ class DeltaArraySimEnvironment():
                 "dropout": 0,
                 "delta_array_size": [8,8],
                 "add_vs_data": self.args.add_vs_data,
+                "dont_log": self.args.dont_log,
             }
-
+        
+        logger_kwargs = {}
         if self.train_or_test=="train":
-            logger_kwargs = setup_logger_kwargs(self.hp_dict['exp_name'], 69420, data_dir=self.hp_dict['data_dir'])
-            wandb.init(project="MARL_Dexterous_Manipulation",
-                       config=self.hp_dict,
-                       name = self.hp_dict['exp_name'])
-        else:
-            logger_kwargs = {}
+            if not self.hp_dict["dont_log"]:
+                logger_kwargs = setup_logger_kwargs(self.hp_dict['exp_name'], 69420, data_dir=self.hp_dict['data_dir'])
+                wandb.init(project="MARL_Dexterous_Manipulation",
+                        config=self.hp_dict,
+                        name = self.hp_dict['exp_name'])
+
         # self.agent = ddpg.DDPG(env_dict, self.hp_dict, logger_kwargs)
         # self.agent = reinforce.REINFORCE(env_dict, 3e-3)
         self.grasping_agent = sac.SAC(single_agent_env_dict, self.hp_dict, logger_kwargs, train_or_test="test")
@@ -236,6 +238,7 @@ if __name__ == "__main__":
     parser.add_argument("-avsd", "--add_vs_data", action="store_true", help="True for adding visual servoing data")
     parser.add_argument("-n", "--name", type=str, default="HAKUNA", help="Expt Name")
     parser.add_argument("-on", "--obj_name", type=str, default="disc", help="Object Name in env.yaml")
+    parser.add_argument("-dontlog", "--dont_log", action="store_true", help="Don't Log to Wandb")
     args = parser.parse_args()
 
     if args.vis_servo and not args.test:

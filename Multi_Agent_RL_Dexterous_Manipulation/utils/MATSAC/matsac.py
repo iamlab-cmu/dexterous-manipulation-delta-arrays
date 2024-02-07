@@ -76,7 +76,8 @@ class MATSAC:
         self.optimizer_critic.step()
         q_info = dict(Q1Vals=q1.cpu().detach().numpy(), Q2Vals=q2.cpu().detach().numpy())
 
-        wandb.log({"Q loss":q_loss.cpu().detach().numpy()})
+        if not self.hp_dict["dont_log"]:
+            wandb.log({"Q loss":q_loss.cpu().detach().numpy()})
         return q_loss, q_info
 
     def compute_pi_loss(self, s1):
@@ -93,7 +94,8 @@ class MATSAC:
         self.optimizer_actor.step()
         pi_info = dict(LogPi=logp_pi.cpu().detach().numpy())
 
-        wandb.log({"Pi loss":pi_loss.cpu().detach().numpy()})
+        if not self.hp_dict["dont_log"]:
+            wandb.log({"Pi loss":pi_loss.cpu().detach().numpy()})
         return pi_loss, pi_info
 
     def update(self, batch_size, current_episode):

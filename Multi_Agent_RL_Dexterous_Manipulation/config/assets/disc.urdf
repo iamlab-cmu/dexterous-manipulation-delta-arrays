@@ -1,5 +1,49 @@
 <?xml version="1.0"?>
 <robot name="disc">
+
+  <link name="disc">
+    <!-- Bottom disk (red) -->
+    <visual>
+      <origin xyz="0 0 -0.0095"/> <!-- Rotate to align with the bottom of the cylinder -->
+      <geometry>
+        <cylinder radius="0.035" length="0.001"/> <!-- Very thin cylinder to act as a disk -->
+      </geometry>
+      <material name="red">
+        <color rgba="0 1 0 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.0 0.0 -0.0095"/>
+      <geometry>
+        <cylinder radius="0.035" length="0.001"/>
+      </geometry>
+    </collision>
+    <!-- Side of the cylinder (green) -->
+    <visual>
+      <origin xyz="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.035" length="0.019"/>
+      </geometry>
+      <material name="green">
+        <color rgba="1 0 0 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <cylinder radius="0.035" length="0.019"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="bottom_disk_to_side_joint" type="fixed">
+    <parent link="side_link"/> <!-- The side of the cylinder acts as the parent link -->
+    <child link="bottom_disk_link"/> <!-- Assuming 'bottom_disk_link' is the name of the link for the bottom disk -->
+    <origin xyz="0 0 -0.0095" rpy="0 0 0"/> <!-- Adjust as needed to match the position of the bottom disk -->
+  </joint>
+</robot>
+
+<!-- <?xml version="1.0"?>
+<robot name="disc">
   <link name="disc">
     <visual>
       <origin xyz="0.0 0.0 0.0"/>
@@ -14,8 +58,8 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="1.0"/> <!-- Example mass; adjust as needed -->
-      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/> <!-- Example inertia; calculate based on your disc's distribution -->
+      <mass value="1.0"/> 
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/> 
     </inertial>
   </link>
-</robot>
+</robot> -->

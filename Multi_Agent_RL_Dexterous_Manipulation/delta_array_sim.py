@@ -72,6 +72,7 @@ class DeltaArraySim:
         self.plane_size = np.array([(0 - 0.063, 0 - 0.2095), (0.2625 + 0.063, 0.303107 + 0.1865)]) # 1000*np.array([(0.13125-0.025, 0.1407285-0.055),(0.13125+0.025, 0.1407285+0.055)])
         self.delta_plane_x = self.plane_size[1][0] - self.plane_size[0][0]
         self.delta_plane_y = self.plane_size[1][1] - self.plane_size[0][1]
+        self.delta_plane = np.array((self.delta_plane_x, -self.delta_plane_y))
         self.nn_helper = helper.NNHelper(self.plane_size, real_or_sim="sim")
         # self.save_iters = 0
         
@@ -198,7 +199,10 @@ class DeltaArraySim:
             return (vec[0] - self.plane_size[0][0])/(self.delta_plane_x)*1080, 1920 - (vec[1]  - self.plane_size[0][1])/(self.delta_plane_y)*1920, vec[2]
     
     def scale_world_2_pix(self, vec):
-        return vec[0]/(self.delta_plane_x)*1080, -vec[1]/(self.delta_plane_y)*1920
+        if isinstance(vec, np.ndarray):
+            return vec / self.delta_plane * self.img_size
+        else:
+            return vec[0]/(self.delta_plane_x)*1080, -vec[1]/(self.delta_plane_y)*1920
 
     def convert_pix_2_world(self, vec):
         if vec.shape[0] == 2:
@@ -208,7 +212,10 @@ class DeltaArraySim:
             return vec[0]/1080*self.delta_plane_x + self.plane_size[0][0], (1920 - vec[1])/1920*self.delta_plane_y + self.plane_size[0][1], vec[2]
 
     def scale_pix_2_world(self, vec):
-        return vec[0]/1080*self.delta_plane_x, -vec[1]/1920*self.delta_plane_y
+        if isinstance(vec, np.ndarray):
+            return vec / self.img_size * self.delta_plane
+        else:
+            return vec[0]/1080*self.delta_plane_x, -vec[1]/1920*self.delta_plane_y
 
     def set_block_pose(self, env_idx, goal=False):
         """ 
@@ -224,7 +231,7 @@ class DeltaArraySim:
             # object_r = gymapi.Quat(*r.as_quat())
             object_r = gymapi.Quat(0,0,0,1)
             yaw = R.from_quat([object_r.x, object_r.y, object_r.z, object_r.w]).as_euler('xyz')[2]
-            T = (np.random.uniform(0.009, 0.21), np.random.uniform(0.005, 0.25))
+            T = (np.random.uniform(0.009, 0.19), np.random.uniform(0.007, 0.23))
             self.goal_pose[env_idx] = np.array([T[0], T[1], yaw])
 
         else:
@@ -233,7 +240,8 @@ class DeltaArraySim:
             object_r = gymapi.Quat(0,0,0,1)
             yaw = R.from_quat([object_r.x, object_r.y, object_r.z, object_r.w]).as_euler('xyz')[2]
             com = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
-            T = (com.p.x + np.random.uniform(-0.02, 0.02), com.p.y + np.random.uniform(-0.02, 0.02))
+            # T = (com.p.x + np.random.uniform(-0.02, 0.02), com.p.y + np.random.uniform(-0.02, 0.02))
+            T = (com.p.x - 0.02, com.p.y + 0)
             self.init_pose[env_idx] = np.array([T[0], T[1], yaw])
 
         block_p = gymapi.Vec3(*T, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
@@ -275,12 +283,7 @@ class DeltaArraySim:
         self.bd_pts
         """
         img = self.get_camera_image(env_idx)
-        # plt.imshow(img)
-        # plt.show()
-        # seg_map, boundary_pts = self.get_boundary_pts(img)
-        # plt.scatter(boundary_pts[:,0], boundary_pts[:,1])
-        # print(boundary_pts.shape)
-        # plt.show()
+        seg_map, boundary_pts = self.get_boundary_pts(img)
         
         if len(boundary_pts) < 64:
             self.dont_skip_episode = False
@@ -393,7 +396,8 @@ class DeltaArraySim:
         # delta_2d_pose = [T[0] - self.goal_pose[env_idx, 0], T[1] - self.goal_pose[env_idx, 1], rot_dif]
         
         # self.ep_reward[env_idx] = -10*np.linalg.norm(delta_2d_pose)
-        self.ep_reward[env_idx] = -np.mean((np.array(delta_2d_pose))**2)
+        self.ep_reward[env_idx] = -np.mean(delta_2d_pose**2)
+        # print(np.linalg.norm(delta_2d_pose))
         return True
 
     def terminate(self, env_idx, agent):
@@ -456,7 +460,9 @@ class DeltaArraySim:
             
     def log_data(self, env_idx, agent):
         """ Store data about training progress in systematic data structures """
-        wandb.log({"reward":self.ep_reward[env_idx]})
+
+        if not self.hp_dict["dont_log"]:
+            wandb.log({"reward":self.ep_reward[env_idx]})
         # log_utils.log_data(agent.logger, self.ep_reward[env_idx], self.current_episode, self.start_time)
 
     def scale_epoch(self, x, A=100/np.log(100000), B=1/1000, C=1000):
@@ -499,10 +505,10 @@ class DeltaArraySim:
             if t_step == 0:
                 # self.start = time.time()
                 if self.hp_dict["add_vs_data"]:
-                    if np.random.rand() <= 0.5:
-                        self.env_step(env_idx, t_step, self.agent)
+                    if np.random.rand() <= 1:
+                        self.vs_step_disc(env_idx, t_step)
                     else:
-                        self.vs_step(env_idx, t_step)
+                        self.env_step(env_idx, t_step, self.agent)
                 else:
                     self.env_step(env_idx, t_step, self.agent)
             elif t_step == 2:
@@ -571,10 +577,8 @@ class DeltaArraySim:
             if self.current_episode >= 0:
                 kmeans = self.KMeans.fit(new_bd_pts)
                 bd_cluster_centers = kmeans.cluster_centers_
-                self.act_grasp_pix[env_idx, :self.n_idxs[env_idx], 0] = self.actions_grasp[env_idx, :self.n_idxs[env_idx], 0]/(self.delta_plane_x)*1080
-                self.act_grasp_pix[env_idx, :self.n_idxs[env_idx], 1] = self.actions_grasp[env_idx, :self.n_idxs[env_idx], 1]/(self.delta_plane_y)*1920
-                
-                _, self.nn_bd_pts[env_idx] = self.nn_helper.get_min_dist(bd_cluster_centers, self.active_idxs[env_idx], self.act_grasp_pix[env_idx])
+                self.act_grasp_pix[env_idx, :self.n_idxs[env_idx]] = self.scale_world_2_pix(self.actions_grasp[env_idx, :self.n_idxs[env_idx]])
+                _, self.nn_bd_pts[env_idx] = self.nn_helper.get_min_dist(bd_cluster_centers, self.active_idxs[env_idx], self.act_grasp_pix[env_idx, :self.n_idxs[env_idx]])
                 # com = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
                 # yaw = R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')[2]
 
@@ -590,9 +594,10 @@ class DeltaArraySim:
                 tf_pts = com_pix + np.dot(tf_pts, rot_m)
                 tf_pts += delta_com
                 displacement_vectors = tf_pts - self.nn_bd_pts[env_idx]
+                actions = self.act_grasp_pix[env_idx, :self.n_idxs[env_idx]] + displacement_vectors
 
                 if self.hp_dict["add_vs_data"]:
-                    self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip([self.scale_pix_2_world(disp_vec) for disp_vec in displacement_vectors], -0.03, 0.03)
+                    self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(self.scale_pix_2_world(actions), -0.03, 0.03)
                 else:
                     if self.current_episode < self.temp_cutoff_1:
                         self.actions[env_idx, :self.n_idxs[env_idx]] = [self.scale_pix_2_world(disp_vec) for disp_vec in displacement_vectors]
@@ -607,17 +612,74 @@ class DeltaArraySim:
                 
                 
                 
-                r_poses = self.nn_helper.robot_positions[tuple(zip(*self.active_idxs[env_idx]))]
-                # Plot robot positions of n_idxs
-                plt.scatter(r_poses[:, 0], r_poses[:, 1], c='#880000ff')
+                # r_poses = self.nn_helper.robot_positions[tuple(zip(*self.active_idxs[env_idx]))]
+                # # Plot robot positions of n_idxs
+                # plt.scatter(r_poses[:, 0], r_poses[:, 1], c='#880000ff')
 
-                plt.scatter(new_bd_pts[:, 0], new_bd_pts[:, 1], c = 'green')
-                plt.scatter(self.goal_bd_pts[env_idx][:, 0], self.goal_bd_pts[env_idx][:, 1], c='orange')
-                plt.scatter(tf_pts[:, 0], tf_pts[:, 1], c='blue')
-                plt.scatter(self.nn_bd_pts[env_idx][:, 0], self.nn_bd_pts[env_idx][:, 1], c='#ff0000ff')
-                plt.quiver(self.nn_bd_pts[env_idx][:, 0], self.nn_bd_pts[env_idx][:, 1], displacement_vector[:, 0], displacement_vector[:, 1], scale=1, scale_units='xy')
-                plt.gca().set_aspect('equal')
-                plt.show()
+                # plt.scatter(new_bd_pts[:, 0], new_bd_pts[:, 1], c = 'green')
+                # plt.scatter(self.goal_bd_pts[env_idx][:, 0], self.goal_bd_pts[env_idx][:, 1], c='orange')
+                # plt.scatter(tf_pts[:, 0], tf_pts[:, 1], c='blue')
+                # plt.scatter(self.nn_bd_pts[env_idx][:, 0], self.nn_bd_pts[env_idx][:, 1], c='#ff0000ff')
+                # plt.quiver(self.nn_bd_pts[env_idx][:, 0], self.nn_bd_pts[env_idx][:, 1], displacement_vector[:, 0], displacement_vector[:, 1], scale=1, scale_units='xy')
+                # plt.gca().set_aspect('equal')
+                # plt.show()
+
+    def vs_step_disc(self, env_idx, t_step):
+        
+        img = self.get_camera_image(env_idx)
+        seg_map, new_bd_pts = self.get_boundary_pts(img)
+        
+        if len(new_bd_pts) < 64:
+            self.dont_skip_episode = False
+            return None, None
+        else:
+            if self.current_episode >= 0:
+                kmeans = self.KMeans.fit(new_bd_pts)
+                bd_cluster_centers = kmeans.cluster_centers_
+                self.act_grasp_pix[env_idx, :self.n_idxs[env_idx]] = self.scale_world_2_pix(self.actions_grasp[env_idx, :self.n_idxs[env_idx]])
+                _, self.nn_bd_pts[env_idx] = self.nn_helper.get_min_dist(bd_cluster_centers, self.active_idxs[env_idx], self.act_grasp_pix[env_idx])
+    
+                com_pix = np.mean(new_bd_pts, axis=0)
+
+                # rot = 0
+                delta_com = np.mean(self.goal_bd_pts[env_idx], axis=0) - com_pix
+
+                # tf_pts = self.nn_bd_pts[env_idx] - com_pix
+                # rot_m = np.array([[np.cos(rot), -np.sin(rot)], [np.sin(rot), np.cos(rot)]])
+                # tf_pts = com_pix + np.dot(tf_pts, rot_m)
+                # tf_pts += delta_com
+                # displacement_vectors = tf_pts - self.nn_bd_pts[env_idx]
+                tf_pts = self.nn_bd_pts[env_idx] + delta_com
+                displacement_vectors = delta_com*np.ones((self.n_idxs[env_idx], 2))
+                actions = self.act_grasp_pix[env_idx, :self.n_idxs[env_idx]] + displacement_vectors
+
+                if self.hp_dict["add_vs_data"]:
+                    self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(self.scale_pix_2_world(actions), -0.03, 0.03)
+                else:
+                    if self.current_episode < self.temp_cutoff_1:
+                        self.actions[env_idx, :self.n_idxs[env_idx]] = [self.scale_pix_2_world(disp_vec) for disp_vec in displacement_vectors]
+                    elif self.current_episode < self.temp_cutoff_2:
+                        act_rand = np.random.uniform(-0.06, 0.06, size=(self.n_idxs[env_idx], 2))
+                        self.actions[env_idx, :self.n_idxs[env_idx]] = act_rand
+                    else:
+                        # Save vs_rews and rand_rews using pickle
+                        pkl.dump(self.vs_rews, open(f"./data/manip_data/vis_servoing/vs_rews.pkl", "wb"))
+                        pkl.dump(self.rand_rews, open(f"./data/manip_data/vis_servoing/rand_rews.pkl", "wb"))
+                        sys.exit(1)
+                
+                
+                
+                # r_poses = self.nn_helper.robot_positions[tuple(zip(*self.active_idxs[env_idx]))]
+                # # Plot robot positions of n_idxs
+                # plt.scatter(r_poses[:, 0], r_poses[:, 1], c='#880000ff')
+
+                # plt.scatter(new_bd_pts[:, 0], new_bd_pts[:, 1], c = 'green')
+                # plt.scatter(self.goal_bd_pts[env_idx][:, 0], self.goal_bd_pts[env_idx][:, 1], c='orange')
+                # plt.scatter(tf_pts[:, 0], tf_pts[:, 1], c='blue')
+                # plt.scatter(self.nn_bd_pts[env_idx][:, 0], self.nn_bd_pts[env_idx][:, 1], c='#ff0000ff')
+                # plt.quiver(self.nn_bd_pts[env_idx][:, 0], self.nn_bd_pts[env_idx][:, 1], displacement_vectors[:, 0], displacement_vectors[:, 1], scale=1, scale_units='xy')
+                # plt.gca().set_aspect('equal')
+                # plt.show()
 
     def visual_servoing(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
