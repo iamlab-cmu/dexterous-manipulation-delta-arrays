@@ -36,3 +36,5 @@ class MultiAgentReplayBuffer:
                      num_agents=self.num_agents_buf[idxs])
         return {k: torch.as_tensor(v, dtype=torch.float32) for k,v in batch.items()}
 
+    def save_RB(self):
+        np.savez("replay_buffer.npz", obs_buf=self.obs_buf, obs2_buf=self.obs2_buf, act_buf=self.act_buf, rew_buf=self.rew_buf, done_buf=self.done_buf, num_agents_buf=self.num_agents_buf)
