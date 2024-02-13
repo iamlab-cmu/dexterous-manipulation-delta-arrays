@@ -28,16 +28,41 @@ from mujoco import mjx
 model = mujoco.MjModel.from_xml_path("./config/env.xml")
 mjx_model = mjx.device_put(model)
 
+robot_id = 0
+
 @jax.vmap
 def batched_step(vel):
     mjx_data = mjx.make_data(mjx_model)
-    qvel = mjx_data.qvel.at[0].set(vel)
+    qvel = mjx_data.mocap_pos.at[robot_id].set(vel)
     mjx_data = mjx_data.replace(qvel=qvel)
     pos = mjx.step(mjx_model, mjx_data).qpos[0]
     return pos
 
-vel = jax.numpy.arange(0, 1, 0.01)
-pos = jax.jit(batched_step)(vel)
+pos = jax.numpy.array((0.01, 0.01, 1.02))
+pos = jax.jit(batched_step)(pos)
 
-plt.plot(vel, pos)
+plt.plot(pos, pos)
 plt.show()
+
+# data = mujoco.MjData(model)
+# viewer = mujoco_viewer.MujocoViewer(model, data)
+# viewer.cam.lookat = np.array((0.13125, 0.1407285, 1.5))
+# viewer.cam.distance = 0.85
+# viewer.cam.azimuth = 0
+# viewer.cam.elevation = 90
+
+# robot_id = 0
+# print(data.mocap_pos)
+
+# for i in range(10000):
+#     if i==0:
+#         data.mocap_pos[robot_id] = (0.01, 0.01, 1.02)
+#     if i%200==0:
+#         data.mocap_pos[robot_id] = data.mocap_pos[robot_id]*np.array((-1, -1, 1))
+#     if viewer.is_alive:
+#         mujoco.mj_step(model, data)
+#         viewer.render()
+#     else:
+#         break
+
+# viewer.close()

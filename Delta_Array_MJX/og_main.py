@@ -12,13 +12,13 @@ viewer.cam.azimuth = 0
 viewer.cam.elevation = 90
 
 robot_id = 0
-print(data.qpos[robot_id*7:robot_id*7+7])
+print(data.mocap_pos)
 
 for i in range(10000):
-    if i%2==0:
-        data.qpos[:3] = (0.01, 0.01, 1.02)
-    if i%2!=0:
-        data.qpos[:3] = (-0.01, -0.01, 1.02)
+    if i==0:
+        data.mocap_pos[robot_id] = (0.01, 0.01, 1.02)
+    if i%200==0:
+        data.mocap_pos[robot_id] = data.mocap_pos[robot_id]*np.array((-1, -1, 1))
     if viewer.is_alive:
         mujoco.mj_step(model, data)
         viewer.render()

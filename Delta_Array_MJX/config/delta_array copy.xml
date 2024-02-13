@@ -6,208 +6,35 @@
     </default>
     <worldbody>
         <body name="transparent_table" pos="0 0 0">
-            <geom name="collision_geom" type="box" size="1 1 1" contype="1" conaffinity="1" material="collision_material"/>
-            <geom name="visual_geom" type="box" size="0.15 0.15 0.015" contype="0" conaffinity="0" material="visual_material"/>
+            <geom name="collision_geom" type="box" size="1 1 1" contype="1" conaffinity="1"
+                material="collision_material" />
+            <geom name="visual_geom" type="box" size="0.15 0.15 0.015" contype="0" conaffinity="0"
+                material="visual_material" />
         </body>
-        <body name="disc" pos="0.13125 0.1407285 1.021"> <!-- 1.021 = table height(1) + block height/2(0.01) + tolerance(0.001) -->
+        <body name="disc" pos="0.13125 0.1407285 1.021"> <!-- 1.021 = table height(1) + block
+            height/2(0.01) + tolerance(0.001) -->
             <body name="disc_face" pos="0 0 -0.0095">
-                <geom name="disc_face" size="0.035 0.001" type="cylinder" rgba="0 1 0 1"/>
+                <geom name="disc_face" size="0.035 0.001" type="cylinder" rgba="0 1 0 1" />
             </body>
             <body name="disc_body" pos="0 0 0">
-                <geom name="disc_body" size="0.035 0.0095" type="cylinder" rgba="0 0 1 1"/>
+                <geom name="disc_body" size="0.035 0.0095" type="cylinder" rgba="0 0 1 1" />
             </body>
         </body>
+
         <body name="fingertip_0" pos="0.0 0.0 1.5">
+            <freejoint />
             <geom rgba="1 0 0 1" />
         </body>
         <body name="fingertip_1" pos="0.0 0.043301 1.5">
+            <freejoint />
             <geom rgba="1 0 0 1" />
         </body>
-        <body name="fingertip_2" pos="0.0 0.086602 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_3" pos="0.0 0.129903 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_4" pos="0.0 0.173204 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_5" pos="0.0 0.216505 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_6" pos="0.0 0.259806 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_7" pos="0.0 0.303107 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_8" pos="0.0375 -0.02165 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_9" pos="0.0375 0.021651 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_10" pos="0.0375 0.064952 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_11" pos="0.0375 0.10825299999999999 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_12" pos="0.0375 0.151554 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_13" pos="0.0375 0.194855 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_14" pos="0.0375 0.23815599999999998 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_15" pos="0.0375 0.281457 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_16" pos="0.075 0.0 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_17" pos="0.075 0.043301 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_18" pos="0.075 0.086602 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_19" pos="0.075 0.129903 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_20" pos="0.075 0.173204 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_21" pos="0.075 0.216505 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_22" pos="0.075 0.259806 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_23" pos="0.075 0.303107 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_24" pos="0.11249999999999999 -0.02165 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_25" pos="0.11249999999999999 0.021651 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_26" pos="0.11249999999999999 0.064952 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_27" pos="0.11249999999999999 0.10825299999999999 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_28" pos="0.11249999999999999 0.151554 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_29" pos="0.11249999999999999 0.194855 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_30" pos="0.11249999999999999 0.23815599999999998 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_31" pos="0.11249999999999999 0.281457 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_32" pos="0.15 0.0 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_33" pos="0.15 0.043301 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_34" pos="0.15 0.086602 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_35" pos="0.15 0.129903 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_36" pos="0.15 0.173204 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_37" pos="0.15 0.216505 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_38" pos="0.15 0.259806 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_39" pos="0.15 0.303107 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_40" pos="0.1875 -0.02165 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_41" pos="0.1875 0.021651 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_42" pos="0.1875 0.064952 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_43" pos="0.1875 0.10825299999999999 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_44" pos="0.1875 0.151554 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_45" pos="0.1875 0.194855 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_46" pos="0.1875 0.23815599999999998 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_47" pos="0.1875 0.281457 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_48" pos="0.22499999999999998 0.0 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_49" pos="0.22499999999999998 0.043301 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_50" pos="0.22499999999999998 0.086602 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_51" pos="0.22499999999999998 0.129903 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_52" pos="0.22499999999999998 0.173204 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_53" pos="0.22499999999999998 0.216505 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_54" pos="0.22499999999999998 0.259806 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_55" pos="0.22499999999999998 0.303107 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_56" pos="0.2625 -0.02165 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_57" pos="0.2625 0.021651 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_58" pos="0.2625 0.064952 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_59" pos="0.2625 0.10825299999999999 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_60" pos="0.2625 0.151554 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_61" pos="0.2625 0.194855 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_62" pos="0.2625 0.23815599999999998 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
-        <body name="fingertip_63" pos="0.2625 0.281457 1.5">
-            <geom rgba="1 0 0 1" />
-        </body>
+
     </worldbody>
+    <actuator>
+
+        <general name="attractor_0" ctrllimited="true" ctrlrange="-1 1" body="fingertip_0" />
+        <general name="attractor_1" ctrllimited="true" ctrlrange="-1 1" body="fingertip_1" />
+
+    </actuator>
 </mujoco>

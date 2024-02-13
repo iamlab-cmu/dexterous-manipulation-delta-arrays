@@ -1,4 +1,5 @@
-<mujoco model="delta_array">
+
+    <mujoco model="delta_array">
     <compiler angle="degree" coordinate="local" inertiafromgeom="true" />
     <option timestep="0.01" gravity="0 0 -9.83" />
     <default>
@@ -6,35 +7,38 @@
     </default>
     <worldbody>
         <body name="transparent_table" pos="0 0 0">
-            <geom name="collision_geom" type="box" size="1 1 1" contype="1" conaffinity="1"
-                material="collision_material" />
-            <geom name="visual_geom" type="box" size="0.15 0.15 0.015" contype="0" conaffinity="0"
-                material="visual_material" />
+            <geom name="collision_geom" type="box" size="1 1 1" contype="1" conaffinity="1" material="collision_material"/>
+            <geom name="visual_geom" type="box" size="0.15 0.15 0.015" contype="0" conaffinity="0" material="visual_material"/>
         </body>
-        <body name="disc" pos="0.13125 0.1407285 1.021"> <!-- 1.021 = table height(1) + block
-            height/2(0.01) + tolerance(0.001) -->
-            <body name="disc_face" pos="0 0 -0.0095">
-                <geom name="disc_face" size="0.035 0.001" type="cylinder" rgba="0 1 0 1" />
+        <body name="block" pos="0.13125 0.1407285 1.021"> <!-- 1.021 = table height(1) + block height/2(0.01) + tolerance(0.001) -->
+            <body name="block_face" pos="0 0 -0.0095">
+                <geom name="disc_face" size="0.025 0.05 0.001" type="box" rgba="0 1 0 1"/>
             </body>
-            <body name="disc_body" pos="0 0 0">
-                <geom name="disc_body" size="0.035 0.0095" type="cylinder" rgba="0 0 1 1" />
+            <body name="block_body" pos="0 0 0">
+                <geom name="disc_body" size="0.025 0.05 0.0095" type="box" rgba="0 0 1 1"/>
             </body>
         </body>
 
-        <body name="fingertip_0" pos="0.0 0.0 1.5">
-            <freejoint />
+<body name="fingertip_0" pos="0.0 0.0 1.5">
+            <freejoint/>
             <geom rgba="1 0 0 1" />
         </body>
-        <body name="fingertip_1" pos="0.0 0.043301 1.5">
-            <freejoint />
+        <body name="attractor_0" mocap="true"  pos="0.0 0.0 1.5">
+            <geom rgba="1 0.5 0.5 0.3" contype="0" conaffinity="0" />
+        </body>
+<body name="fingertip_1" pos="0.0 0.043301 1.5">
+            <freejoint/>
             <geom rgba="1 0 0 1" />
+        </body>
+        <body name="attractor_1" mocap="true"  pos="0.0 0.043301 1.5">
+            <geom rgba="1 0.5 0.5 0.3" contype="0" conaffinity="0" />
         </body>
 
     </worldbody>
-    <actuator>
+    <equality>
 
-        <general name="attractor_0" ctrllimited="true" ctrlrange="-1 1" body="fingertip_0" />
-        <general name="attractor_1" ctrllimited="true" ctrlrange="-1 1" body="fingertip_1" />
+<weld body1="attractor_0" body2="fingertip_0" solref="0.025 2.5"/>
+<weld body1="attractor_1" body2="fingertip_1" solref="0.025 2.5"/>
 
-    </actuator>
+    </equality>
 </mujoco>
