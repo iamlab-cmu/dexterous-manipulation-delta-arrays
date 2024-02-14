@@ -11,7 +11,7 @@ from brax import base
 from brax import envs
 from brax import math
 from brax.base import Base, Motion, Transform
-from brax.envs.base import Env, MjxEnv, State
+from brax.envs.base import Env, PipelineEnv, State
 from brax.mjx.base import State as MjxState
 from brax.training.agents.ppo import train as ppo
 from brax.training.agents.ppo import networks as ppo_networks
@@ -25,44 +25,27 @@ from ml_collections import config_dict
 import mujoco
 from mujoco import mjx
 
-model = mujoco.MjModel.from_xml_path("./config/env.xml")
-mjx_model = mjx.device_put(model)
-
 robot_id = 0
 
-@jax.vmap
-def batched_step(vel):
-    mjx_data = mjx.make_data(mjx_model)
-    qvel = mjx_data.mocap_pos.at[robot_id].set(vel)
-    mjx_data = mjx_data.replace(qvel=qvel)
-    pos = mjx.step(mjx_model, mjx_data).qpos[0]
-    return pos
+class DeltaArray(PipelineEnv):
+    def __init__(self, robot_id, offset, **kwargs):
+        model = mujoco.MjModel.from_xml_path("./config/env.xml")
+        model.opt.solver = mujoco.mjtSolver.mjSOL_CG
+        model.opt.iterations = 6
+        model.opt.ls_iterations = 6
+        
+        sys = mjcf.load_model(model)
 
-pos = jax.numpy.array((0.01, 0.01, 1.02))
-pos = jax.jit(batched_step)(pos)
+        physics_steps_per_control_step = 100
+        kwargs['n_frames'] = kwargs.get('n_frames', physics_steps_per_control_step)
+        kwargs['backend'] = 'mjx'
 
-plt.plot(pos, pos)
-plt.show()
+        super().__init__(sys, **kwargs)
 
-# data = mujoco.MjData(model)
-# viewer = mujoco_viewer.MujocoViewer(model, data)
-# viewer.cam.lookat = np.array((0.13125, 0.1407285, 1.5))
-# viewer.cam.distance = 0.85
-# viewer.cam.azimuth = 0
-# viewer.cam.elevation = 90
+        self.robot_id = robot_id
+        self.offset = offset
 
-# robot_id = 0
-# print(data.mocap_pos)
-
-# for i in range(10000):
-#     if i==0:
-#         data.mocap_pos[robot_id] = (0.01, 0.01, 1.02)
-#     if i%200==0:
-#         data.mocap_pos[robot_id] = data.mocap_pos[robot_id]*np.array((-1, -1, 1))
-#     if viewer.is_alive:
-#         mujoco.mj_step(model, data)
-#         viewer.render()
-#     else:
-#         break
-
-# viewer.close()
+    def reset(self, rng: jp.ndarray) -> State:
+        rng = jax.random.split(rng, 1)
+        
+        return 
