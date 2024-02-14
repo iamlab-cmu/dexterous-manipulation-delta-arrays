@@ -24,15 +24,16 @@ import mediapy as media
 from ml_collections import config_dict
 import mujoco
 from mujoco import mjx
+import glfw
 
 robot_id = 0
 
 class DeltaArray(PipelineEnv):
     def __init__(self, robot_id, offset, **kwargs):
         model = mujoco.MjModel.from_xml_path("./config/env.xml")
-        model.opt.solver = mujoco.mjtSolver.mjSOL_CG
-        model.opt.iterations = 6
-        model.opt.ls_iterations = 6
+        model.opt.solver = mujoco.mjtSolver.mjSOL_NEWTON
+        model.opt.iterations = 8
+        model.opt.ls_iterations = 8
         
         sys = mjcf.load_model(model)
 
@@ -44,6 +45,7 @@ class DeltaArray(PipelineEnv):
 
         self.robot_id = robot_id
         self.offset = offset
+        self.obj_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "block")
 
     def reset(self, rng: jp.ndarray) -> State:
         rng = jax.random.split(rng, 1)
