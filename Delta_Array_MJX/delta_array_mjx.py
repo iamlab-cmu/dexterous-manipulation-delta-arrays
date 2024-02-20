@@ -61,17 +61,15 @@ class DeltaArrayMJX(PipelineEnv):
         data = self.pipeline_init(qpos, qvel)
         reward, done, zero = jp.zeros(3)
         metrics = {
-            'forward_reward': zero,
-            'reward_linvel': zero,
-            'reward_quadctrl': zero,
-            'reward_alive': zero,
             'x_position': zero,
             'y_position': zero,
             'distance_from_origin': zero,
-            'x_velocity': zero,
-            'y_velocity': zero,
         }
         return State(data, obs, reward, done, metrics)
+    
+    def pipeline_step(self, pipeline_state: Any, action: jax.Array) -> base.State:
+        
+        return
 
     def step(self, state:State, action:jp.ndarray) -> State:
         data0 = state.pipeline_state

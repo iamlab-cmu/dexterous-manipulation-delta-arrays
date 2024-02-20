@@ -12,7 +12,7 @@ data = mujoco.MjData(model)
 width, height = 1920, 1080
 
 glfw.init()
-glfw.window_hint(glfw.VISIBLE, 0)
+glfw.window_hint(glfw.VISIBLE, 1)
 window = glfw.create_window(width, height, "Offscreen", None, None)
 glfw.make_context_current(window)
 glfw.swap_interval(1)
@@ -46,8 +46,8 @@ for i in range(10000):
         data.ctrl[2*robot_id: 2*robot_id+2] = data.ctrl[2*robot_id: 2*robot_id+2]*np.array((-1, -1))
         mujoco.mjv_updateScene(model, data, opt, pert, cam, mujoco.mjtCatBit.mjCAT_ALL.value, scene)
         mujoco.mjr_render(viewport, scene, context)
-        mujoco.mjr_readPixels(rgb_pixels, None, viewport, context)
-        plt.imshow(np.flipud(rgb_pixels))
-        plt.show()
+        # mujoco.mjr_readPixels(rgb_pixels, None, viewport, context)
+        # plt.imshow(np.flipud(rgb_pixels))
+        # plt.show()
         
     mujoco.mj_step(model, data)
