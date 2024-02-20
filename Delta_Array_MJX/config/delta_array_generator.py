@@ -46,14 +46,14 @@ xml_snippets.append("""
                 <geom name="disc_body" size="0.025 0.05 0.0095" type="box" rgba="0 0 1 1"/>
             </body>
         </body>
-        <body name="fiducial_lt" pos="-0.06 -0.2035 1.021">
+        <!-- <body name="fiducial_lt" pos="-0.06 -0.2035 1.021">
             <freejoint/>
             <geom mass="10000000" name="fiducial_lt" size="0.005 0.005 0.001" type="box" rgba="1 0 0 1"/>
         </body>
         <body name="fiducial_rb" pos="0.3225 0.485107 1.021">
             <freejoint/>
             <geom mass="10000000" name="fiducial_rb"  size="0.005 0.005 0.001" type="box" rgba="1 0 0 1"/>
-        </body>
+        </body> -->
     </worldbody>
     <actuator>
 """)
@@ -72,6 +72,6 @@ xml_snippets.append("""
 """)
 
 final_xml = "\n".join(xml_snippets)
-with open("delta_array.xml", "w") as f:
+with open("./config/delta_array.xml", "w") as f:
     f.write(final_xml)
     

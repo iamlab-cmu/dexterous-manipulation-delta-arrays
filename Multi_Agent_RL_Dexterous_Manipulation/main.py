@@ -192,8 +192,8 @@ class DeltaArraySimEnvironment():
             self.scene.run(policy=self.fingers.inverse_dynamics)
         else:
             if self.args.vis_servo:
-                self.scene.run(policy=self.fingers.visual_servoing)
-                # self.scene.run(policy=self.fingers.do_nothing)
+                # self.scene.run(policy=self.fingers.visual_servoing)
+                self.scene.run(policy=self.fingers.do_nothing)
             else:
                 self.scene.run(policy=self.fingers.test_learned_policy)
 
@@ -233,7 +233,7 @@ if __name__ == "__main__":
     parser.add_argument("-r", "--real", action="store_true", help="True for Real Robot Expt")
     parser.add_argument("-t", "--test", action="store_true", help="True for Test")
     parser.add_argument("-v", "--vis_servo", action="store_true", help="True for Visual Servoing")
-    parser.add_argument("-nexp", "--num_expts", type=int, default=160, help="Number of Experiments to run")
+    parser.add_argument("-nexp", "--num_expts", type=int, default=1, help="Number of Experiments to run")
     parser.add_argument("-gui", "--gui", action="store_true", help="True for GUI")
     parser.add_argument("-avsd", "--add_vs_data", action="store_true", help="True for adding visual servoing data")
     parser.add_argument("-n", "--name", type=str, default="HAKUNA", help="Expt Name")

@@ -38,5 +38,41 @@ import mujoco
 from mujoco import mjx
 
 
-class DeltaArrayMJX:
-    def __init__(self, model, data, )
+class DeltaArrayMJX(PipelineEnv):
+    def __init__(self, mjcf_path, cfg, **kwargs):
+        model = mujoco.MjModel.from_xml_path("./config/env.xml")
+        model.opt.solver = mujoco.mjtSolver.mjSOL_NEWTON
+        model.opt.iterations = 8
+        model.opt.ls_iterations = 8
+        
+        sys = mjcf.load_model(model)
+
+        physics_steps_per_control_step = 100
+        kwargs['n_frames'] = kwargs.get('n_frames', physics_steps_per_control_step)
+        kwargs['backend'] = 'mjx'
+
+        super().__init__(sys, **kwargs)
+
+    def reset(self, rng: jp.ndarray) -> State:
+        rng = jax.random.split(rng, 1)
+        print(self.sys)
+        qpos = self.sys.qpos
+        qvel = self.sys.qvel
+        data = self.pipeline_init(qpos, qvel)
+        reward, done, zero = jp.zeros(3)
+        metrics = {
+            'forward_reward': zero,
+            'reward_linvel': zero,
+            'reward_quadctrl': zero,
+            'reward_alive': zero,
+            'x_position': zero,
+            'y_position': zero,
+            'distance_from_origin': zero,
+            'x_velocity': zero,
+            'y_velocity': zero,
+        }
+        return State(data, obs, reward, done, metrics)
+
+    def step(self, state:State, action:jp.ndarray) -> State:
+        data0 = state.pipeline_state
+        data = self.pipeline_step(data0, action)

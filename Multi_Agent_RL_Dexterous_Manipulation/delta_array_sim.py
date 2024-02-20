@@ -770,5 +770,12 @@ class DeltaArraySim:
         
         for i in range(self.num_tips[0]):
             for j in range(self.num_tips[1]):
-                self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
-
+                if (i==0) and (j==0):
+                    self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.47), r=self.finga_q))     
+                else:
+                    self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
+        
+        if t_step==150:
+            img = self.get_camera_image(env_idx)
+            plt.imshow(img)
+            plt.show()
