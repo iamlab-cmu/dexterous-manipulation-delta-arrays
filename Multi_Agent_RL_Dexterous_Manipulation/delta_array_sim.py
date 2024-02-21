@@ -509,7 +509,7 @@ class DeltaArraySim:
             if t_step == 0:
                 # self.start = time.time()
                 if self.hp_dict["add_vs_data"]:
-                    if np.random.rand() <= 1:
+                    if np.random.rand() <= 0:
                         self.vs_step_disc(env_idx, t_step)
                     else:
                         self.env_step(env_idx, t_step, self.agent)

@@ -241,6 +241,7 @@ if __name__ == "__main__":
     parser.add_argument("-dontlog", "--dont_log", action="store_true", help="Don't Log to Wandb")
     args = parser.parse_args()
 
+    print(args["vis_servo"])
     if args.vis_servo and not args.test:
         parser.error("--vis_servo requires --test")
         sys.exit(1)
