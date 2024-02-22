@@ -11,3 +11,4 @@ RL_with_DMPs/vis_utils/temp/
 RL_with_DMPs/vis_utils/temp2
 *.avi
 wandb/
+*.npz

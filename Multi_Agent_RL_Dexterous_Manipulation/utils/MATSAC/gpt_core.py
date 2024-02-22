@@ -93,14 +93,17 @@ class GPTLayer(nn.Module):
         return x
 
 class GPT(nn.Module):
-    def __init__(self, model_dim, action_dim, num_heads, max_agents, dim_ff, dropout, n_layers):
+    def __init__(self, model_dim, action_dim, num_heads, max_agents, dim_ff, dropout, n_layers, critic=False):
         super(GPT, self).__init__()
         self.action_embedding = wt_init_(nn.Linear(action_dim, model_dim)) # Replace action embedding of Critic Decoder from this.
         self.dropout = nn.Dropout(dropout)
 
         self.decoder_layers = nn.ModuleList([GPTLayer(model_dim, num_heads, max_agents, dim_ff, dropout) for _ in range(n_layers)])
-        self.actor_mu_layer = wt_init_(nn.Linear(model_dim, action_dim))
-        self.actor_std_layer = wt_init_(nn.Linear(model_dim, action_dim))
+        if critic:
+            self.actor_mu_layer = wt_init_(nn.Linear(model_dim, 1))
+        else:
+            self.actor_mu_layer = wt_init_(nn.Linear(model_dim, action_dim))
+        # self.actor_std_layer = wt_init_(nn.Linear(model_dim, action_dim))
         self.ReLU = nn.ReLU()
 
     def forward(self, state_enc, actions):
@@ -142,8 +145,8 @@ class Transformer(nn.Module):
         self.state_enc_critic = nn.Linear(state_dim, model_dim)
 
         self.decoder_actor = GPT(model_dim, action_dim, num_heads, self.max_agents, dim_ff, dropout, num_layers['actor'])
-        self.decoder_critic1 = GPT(model_dim, 1, num_heads, self.max_agents, dim_ff, dropout, num_layers['critic'])
-        self.decoder_critic2 = GPT(model_dim, 1, num_heads, self.max_agents, dim_ff, dropout, num_layers['critic'])
+        self.decoder_critic1 = GPT(model_dim, action_dim, num_heads, self.max_agents, dim_ff, dropout, num_layers['critic'], critic=True)
+        self.decoder_critic2 = GPT(model_dim, action_dim, num_heads, self.max_agents, dim_ff, dropout, num_layers['critic'], critic=True)
 
     # def get_action_values(self, states, actions):
     #     """
@@ -158,15 +161,16 @@ class Transformer(nn.Module):
 
     def get_actions(self, state_enc, deterministic=False):
         """ Returns actor actions """
-        bs, n_agents, _ = states.size()
+        bs, n_agents, _ = state_enc.size()
         actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
         for i in range(n_agents):
             updated_actions = self.decoder_actor(state_enc, actions)
 
             # TODO: Ablate here with all actions cloned so that even previous actions are updated with new info. 
             # TODO: Does it cause instability? How to know if it does?
-            actons[:, i, :] = self.act_limit * torch.tanh(updated_actions[:, i, :]).clone()
-        return actons
+            actions = actions.clone()
+            actions[:, i, :] = self.act_limit * torch.tanh(updated_actions[:, i, :])
+        return actions
 
 
 

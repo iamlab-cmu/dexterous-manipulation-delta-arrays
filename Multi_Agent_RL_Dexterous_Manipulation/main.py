@@ -97,8 +97,8 @@ class DeltaArraySimEnvironment():
                 "alpha"       :0.2,
                 "replay_size" :500000,
                 'seed'        :69420,
-                "batch_size"  :256,
-                "exploration_cutoff": 512,
+                "batch_size"  :2,
+                "exploration_cutoff": 2,
 
                 # Multi Agent Part Below:
                 'state_dim': 6,
@@ -110,6 +110,7 @@ class DeltaArraySimEnvironment():
                 "dropout": 0,
                 "delta_array_size": [8,8],
                 "add_vs_data": self.args.add_vs_data,
+                "ratio": self.args.vs_data,
                 "dont_log": self.args.dont_log,
             }
         
@@ -236,12 +237,12 @@ if __name__ == "__main__":
     parser.add_argument("-nexp", "--num_expts", type=int, default=1, help="Number of Experiments to run")
     parser.add_argument("-gui", "--gui", action="store_true", help="True for GUI")
     parser.add_argument("-avsd", "--add_vs_data", action="store_true", help="True for adding visual servoing data")
+    parser.add_argument("-vsd", "--vs_data", type=float, help="% of data to use for visual servoing")
     parser.add_argument("-n", "--name", type=str, default="HAKUNA", help="Expt Name")
     parser.add_argument("-on", "--obj_name", type=str, default="disc", help="Object Name in env.yaml")
     parser.add_argument("-dontlog", "--dont_log", action="store_true", help="Don't Log to Wandb")
     args = parser.parse_args()
 
-    print(args["vis_servo"])
     if args.vis_servo and not args.test:
         parser.error("--vis_servo requires --test")
         sys.exit(1)

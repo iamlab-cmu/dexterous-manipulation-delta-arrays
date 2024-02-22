@@ -49,8 +49,9 @@ class MATSAC:
 
         self.actor_params = itertools.chain(self.tf.state_enc_actor.parameters(), self.tf.decoder_actor.parameters())
         self.critic_params = itertools.chain(self.tf.state_enc_critic.parameters(), self.tf.decoder_critic1.parameters(), self.tf.decoder_critic2.parameters())
+        
         self.optimizer_actor = optim.Adam(self.actor_params, lr=hp_dict['pi_lr'])
-        self.optimizer_critic = optim.Adam(self.critic_params.parameters(), lr=hp_dict['q_lr'])
+        self.optimizer_critic = optim.Adam(self.critic_params, lr=hp_dict['q_lr'])
 
         # Set up model saving
         # if self.train_or_test == "train":
@@ -58,8 +59,8 @@ class MATSAC:
 
     def compute_q_loss(self, s1, a, s2, r, d):
         state_enc = self.tf.state_enc_critic(s1)
-        q1 = self.tf.decoder_critic1(state_enc, a)
-        q2 = self.tf.decoder_critic2(state_enc, a)
+        q1 = self.tf.decoder_critic1(state_enc, a).mean(dim=1)
+        q2 = self.tf.decoder_critic2(state_enc, a).mean(dim=1)
         
         with torch.no_grad():
             # next_state_enc = self.tf.encoder(s2)
@@ -70,7 +71,7 @@ class MATSAC:
             # next_q2 = self.tf_target.decoder_critic2(next_state_enc, next_actions)
             # q_next = r + self.hp_dict['gamma'] * (1 - d) * (torch.min(next_q1, next_q2) - self.hp_dict['alpha'] * next_log_pi)
             q_next = r.unsqueeze(1)
-
+        print(q1.size(), q_next.size())
         q_loss = F.mse_loss(q1, q_next) + F.mse_loss(q2, q_next)
         q_loss.backward()
         self.optimizer_critic.step()
@@ -84,7 +85,7 @@ class MATSAC:
 
         state_enc = self.tf.state_enc_actor(s1)
         # actions, logp_pi = self.tf.get_actions_gauss(state_enc)
-        actions = self.tf.get_actions_lin(state_enc)
+        actions = self.tf.get_actions(state_enc)
         
         q1_pi = self.tf.decoder_critic1(state_enc, actions)
         q2_pi = self.tf.decoder_critic2(state_enc, actions)
@@ -128,9 +129,9 @@ class MATSAC:
         obs = torch.as_tensor(obs, dtype=torch.float32).to(self.device)
         obs = obs.unsqueeze(0)
         with torch.no_grad():
-            state_enc = self.tf.encoder(obs)
+            state_enc = self.tf.state_enc_actor(obs)
             # actions, _ = self.tf.get_actions_gauss(state_enc, deterministic=deterministic)
-            actions = self.tf.get_actions_lin(state_enc, deterministic=deterministic)
+            actions = self.tf.get_actions(state_enc, deterministic=deterministic)
             return actions.detach().cpu().numpy()
         
     def load_saved_policy(self, path='./data/rl_data/backup/matsac_expt_grasp/pyt_save/model.pt'):

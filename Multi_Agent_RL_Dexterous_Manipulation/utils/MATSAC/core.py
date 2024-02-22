@@ -268,7 +268,6 @@ class Transformer(nn.Module):
             act = act_encs[:, i, :]
 
             output_action = self.act_limit * torch.tanh(act)
-
             output_actions = output_actions.clone()
             output_actions[:, i, :] = output_action
             

@@ -416,10 +416,8 @@ class DeltaArraySim:
             # if env_idx == (self.scene.n_envs-1):
             # print(f"Iter: {self.current_episode}, Current Reward: {self.ep_reward[env_idx]}")
         self.reset(env_idx)
-        if self.current_episode >= 10000:
+        if self.current_episode%5000==0:
             agent.ma_replay_buffer.save_RB()
-            sys.exit(0)
-
 
     def reset(self, env_idx):
         """ Normal reset OR Alt-terminate state when block degenerately collides with robot. This is due to an artifact of the simulation. """
@@ -509,7 +507,7 @@ class DeltaArraySim:
             if t_step == 0:
                 # self.start = time.time()
                 if self.hp_dict["add_vs_data"]:
-                    if np.random.rand() <= 0:
+                    if np.random.rand() <= self.hp_dict['ratio']:
                         self.vs_step_disc(env_idx, t_step)
                     else:
                         self.env_step(env_idx, t_step, self.agent)
