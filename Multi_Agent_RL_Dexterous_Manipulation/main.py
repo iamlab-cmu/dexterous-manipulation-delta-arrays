@@ -92,13 +92,13 @@ class DeltaArraySimEnvironment():
                 "data_dir": "./data/rl_data",
                 "tau"         :0.005,
                 "gamma"       :0.99,
-                "q_lr"        :1e-3,
-                "pi_lr"       :1e-3,
+                "q_lr"        :1e-4,
+                "pi_lr"       :1e-4,
                 "alpha"       :0.2,
                 "replay_size" :500000,
                 'seed'        :69420,
-                "batch_size"  :2,
-                "exploration_cutoff": 2,
+                "batch_size"  :256,
+                "exploration_cutoff": 512,
 
                 # Multi Agent Part Below:
                 'state_dim': 6,
@@ -193,8 +193,8 @@ class DeltaArraySimEnvironment():
             self.scene.run(policy=self.fingers.inverse_dynamics)
         else:
             if self.args.vis_servo:
-                # self.scene.run(policy=self.fingers.visual_servoing)
-                self.scene.run(policy=self.fingers.do_nothing)
+                self.scene.run(policy=self.fingers.visual_servoing)
+                # self.scene.run(policy=self.fingers.do_nothing)
             else:
                 self.scene.run(policy=self.fingers.test_learned_policy)
 

@@ -93,8 +93,9 @@ class GPTLayer(nn.Module):
         return x
 
 class GPT(nn.Module):
-    def __init__(self, model_dim, action_dim, num_heads, max_agents, dim_ff, dropout, n_layers, critic=False):
+    def __init__(self, state_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, dropout, n_layers, critic=False):
         super(GPT, self).__init__()
+        self.state_enc = nn.Linear(state_dim, model_dim)
         self.action_embedding = wt_init_(nn.Linear(action_dim, model_dim)) # Replace action embedding of Critic Decoder from this.
         self.dropout = nn.Dropout(dropout)
 
@@ -106,13 +107,14 @@ class GPT(nn.Module):
         # self.actor_std_layer = wt_init_(nn.Linear(model_dim, action_dim))
         self.ReLU = nn.ReLU()
 
-    def forward(self, state_enc, actions):
+    def forward(self, state, actions):
         """
-        Input: state_enc (bs, n_agents, model_dim)
+        Input: state (bs, n_agents, state_dim)
                actions (bs, n_agents, action_dim)
         Output: decoder_output (bs, n_agents, model_dim)
         """
         # act_enc = self.dropout(self.positional_encoding(F.ReLU(self.action_embedding(actions))))
+        state_enc = self.state_enc(state)
         act_enc = self.ReLU(self.action_embedding(actions))
         for layer in self.decoder_layers:
             act_enc = layer(act_enc, state_enc)
@@ -141,12 +143,9 @@ class Transformer(nn.Module):
         self.act_limit = action_limit
         self.action_dim = action_dim
 
-        self.state_enc_actor = nn.Linear(state_dim, model_dim)
-        self.state_enc_critic = nn.Linear(state_dim, model_dim)
-
-        self.decoder_actor = GPT(model_dim, action_dim, num_heads, self.max_agents, dim_ff, dropout, num_layers['actor'])
-        self.decoder_critic1 = GPT(model_dim, action_dim, num_heads, self.max_agents, dim_ff, dropout, num_layers['critic'], critic=True)
-        self.decoder_critic2 = GPT(model_dim, action_dim, num_heads, self.max_agents, dim_ff, dropout, num_layers['critic'], critic=True)
+        self.decoder_actor = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, dropout, num_layers['actor'])
+        self.decoder_critic1 = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, dropout, num_layers['critic'], critic=True)
+        self.decoder_critic2 = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, dropout, num_layers['critic'], critic=True)
 
     # def get_action_values(self, states, actions):
     #     """
@@ -159,12 +158,12 @@ class Transformer(nn.Module):
     #     q_vals = self.decoder_critic(state_enc, shifted_actions)
     #     return q_vals.squeeze().mean()
 
-    def get_actions(self, state_enc, deterministic=False):
+    def get_actions(self, states, deterministic=False):
         """ Returns actor actions """
-        bs, n_agents, _ = state_enc.size()
+        bs, n_agents, _ = states.size()
         actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
         for i in range(n_agents):
-            updated_actions = self.decoder_actor(state_enc, actions)
+            updated_actions = self.decoder_actor(states, actions)
 
             # TODO: Ablate here with all actions cloned so that even previous actions are updated with new info. 
             # TODO: Does it cause instability? How to know if it does?

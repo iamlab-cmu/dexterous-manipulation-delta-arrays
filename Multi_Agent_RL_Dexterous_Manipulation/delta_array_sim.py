@@ -403,7 +403,7 @@ class DeltaArraySim:
     def terminate(self, env_idx, agent):
         """ Update the replay buffer and reset the env """
         # agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
-        if self.ep_reward[env_idx] > -30:
+        if self.ep_reward[env_idx] > -500:
             if agent.ma_replay_buffer.size > self.batch_size:
                 self.log_data(env_idx, agent)
 
@@ -416,7 +416,7 @@ class DeltaArraySim:
             # if env_idx == (self.scene.n_envs-1):
             # print(f"Iter: {self.current_episode}, Current Reward: {self.ep_reward[env_idx]}")
         self.reset(env_idx)
-        if self.current_episode%5000==0:
+        if (self.current_episode%5000)==0:
             agent.ma_replay_buffer.save_RB()
 
     def reset(self, env_idx):

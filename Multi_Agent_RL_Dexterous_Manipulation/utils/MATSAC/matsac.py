@@ -43,14 +43,13 @@ class MATSAC:
         self.ma_replay_buffer = MultiAgentReplayBuffer(obs_dim=self.obs_dim, act_dim=self.act_dim, size=hp_dict['replay_size'], max_agents=self.tf.max_agents)
 
         # Count variables (protip: try to get a feel for how different size networks behave!)
-        var_counts = tuple(core.count_vars(module) for module in [self.tf.state_enc_actor, self.tf.state_enc_critic, self.tf.decoder_actor, self.tf.decoder_critic1, self.tf.decoder_critic2])
+        var_counts = tuple(core.count_vars(module) for module in [self.tf.decoder_actor, self.tf.decoder_critic1, self.tf.decoder_critic2])
         if self.train_or_test == "train":
             print(f"\nNumber of parameters: {np.sum(var_counts)}\n")
 
-        self.actor_params = itertools.chain(self.tf.state_enc_actor.parameters(), self.tf.decoder_actor.parameters())
-        self.critic_params = itertools.chain(self.tf.state_enc_critic.parameters(), self.tf.decoder_critic1.parameters(), self.tf.decoder_critic2.parameters())
+        self.critic_params = itertools.chain(self.tf.decoder_critic1.parameters(), self.tf.decoder_critic2.parameters())
         
-        self.optimizer_actor = optim.Adam(self.actor_params, lr=hp_dict['pi_lr'])
+        self.optimizer_actor = optim.Adam(self.tf.decoder_actor.parameters(), lr=hp_dict['pi_lr'])
         self.optimizer_critic = optim.Adam(self.critic_params, lr=hp_dict['q_lr'])
 
         # Set up model saving
@@ -58,9 +57,8 @@ class MATSAC:
         #     self.logger.setup_pytorch_saver(self.tf)
 
     def compute_q_loss(self, s1, a, s2, r, d):
-        state_enc = self.tf.state_enc_critic(s1)
-        q1 = self.tf.decoder_critic1(state_enc, a).mean(dim=1)
-        q2 = self.tf.decoder_critic2(state_enc, a).mean(dim=1)
+        q1 = self.tf.decoder_critic1(s1, a).mean(dim=1)
+        q2 = self.tf.decoder_critic2(s1, a).mean(dim=1)
         
         with torch.no_grad():
             # next_state_enc = self.tf.encoder(s2)
@@ -83,12 +81,11 @@ class MATSAC:
         for p in self.critic_params:
             p.requires_grad = False
 
-        state_enc = self.tf.state_enc_actor(s1)
         # actions, logp_pi = self.tf.get_actions_gauss(state_enc)
-        actions = self.tf.get_actions(state_enc)
+        actions = self.tf.get_actions(s1)
         
-        q1_pi = self.tf.decoder_critic1(state_enc, actions)
-        q2_pi = self.tf.decoder_critic2(state_enc, actions)
+        q1_pi = self.tf.decoder_critic1(s1, actions)
+        q2_pi = self.tf.decoder_critic2(s1, actions)
         q_pi = torch.min(q1_pi, q2_pi)
         pi_loss = (-q_pi).mean()
 
@@ -121,7 +118,7 @@ class MATSAC:
                 p_target.data.mul_(self.hp_dict['tau'])
                 p_target.data.add_((1 - self.hp_dict['tau']) * p.data)
 
-        if (self.train_or_test == "train") and (current_episode % 1000) == 0:
+        if (self.train_or_test == "train") and (current_episode % 5000) == 0:
             torch.save(self.tf.state_dict(), f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
     
     @torch.no_grad()
@@ -129,9 +126,8 @@ class MATSAC:
         obs = torch.as_tensor(obs, dtype=torch.float32).to(self.device)
         obs = obs.unsqueeze(0)
         with torch.no_grad():
-            state_enc = self.tf.state_enc_actor(obs)
             # actions, _ = self.tf.get_actions_gauss(state_enc, deterministic=deterministic)
-            actions = self.tf.get_actions(state_enc, deterministic=deterministic)
+            actions = self.tf.get_actions(obs, deterministic=deterministic)
             return actions.detach().cpu().numpy()
         
     def load_saved_policy(self, path='./data/rl_data/backup/matsac_expt_grasp/pyt_save/model.pt'):
