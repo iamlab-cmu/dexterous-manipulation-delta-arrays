@@ -129,6 +129,7 @@ class DeltaArraySim:
         self.act_grasp_pix = np.zeros((self.scene.n_envs, self.max_agents, 2))
         self.actions = np.zeros((self.scene.n_envs, self.max_agents, 2))
         self.act_pix = np.zeros((self.scene.n_envs, self.max_agents, 2))
+        self.pos = np.zeros((self.scene.n_envs, self.max_agents, 1))
 
         # self.ep_rewards = []
         self.ep_reward = np.zeros(self.scene.n_envs)
@@ -409,7 +410,7 @@ class DeltaArraySim:
 
             #normalize the reward for easier training
             # self.ep_reward[env_idx] = (self.ep_reward[env_idx] - -45)/90
-            agent.ma_replay_buffer.store(self.init_state[env_idx], self.actions[env_idx], self.ep_reward[env_idx], self.final_state[env_idx], True, self.n_idxs[env_idx])
+            agent.ma_replay_buffer.store(self.init_state[env_idx], self.actions[env_idx], self.pos[env_idx], self.ep_reward[env_idx], self.final_state[env_idx], True, self.n_idxs[env_idx])
             # self.ep_rewards.append(self.ep_reward[env_idx])
             # agent.logger.store(EpRet=self.ep_reward[env_idx], EpLen=self.ep_len[env_idx])
             self.ep_reward[env_idx]
@@ -428,6 +429,7 @@ class DeltaArraySim:
         self.init_state[env_idx] = np.zeros((self.max_agents, self.state_dim))
         self.final_state[env_idx] = np.zeros((self.max_agents, self.state_dim))
         self.actions[env_idx] = np.zeros((self.max_agents, 2))
+        self.pos[env_idx] = np.zeros((self.max_agents, 1))
 
     def env_step(self, env_idx, t_step, agent, test = False):
         if (self.ep_len[env_idx] == 0) and (t_step == 1):
@@ -443,7 +445,8 @@ class DeltaArraySim:
                 self.actions_grasp[env_idx][i] = agent.get_action(self.init_grasp_state[env_idx, i], deterministic=True) # For pretrained grasping policy, single state -> 2D action var
 
         elif (self.current_episode > self.exploration_cutoff) or test:
-            self.actions[env_idx, :self.n_idxs[env_idx]] = self.actions_grasp[env_idx][:self.n_idxs[env_idx]] + agent.get_actions(self.init_state[env_idx, :self.n_idxs[env_idx]], deterministic=test) # For MARL policy, multiple states -> 3D action var
+            self.pos[env_idx, :self.n_idxs[env_idx], 0] = np.array([i[0]*8+i[1] for i in self.active_idxs[env_idx]]) #.reshape((-1,))
+            self.actions[env_idx, :self.n_idxs[env_idx]] = self.actions_grasp[env_idx][:self.n_idxs[env_idx]] + agent.get_actions(self.init_state[env_idx, :self.n_idxs[env_idx]], self.pos[env_idx, :self.n_idxs[env_idx]], deterministic=test) # For MARL policy, multiple states -> 3D action var
             self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(self.actions[env_idx, :self.n_idxs[env_idx]], -0.03, 0.03)
         else:
             self.actions[env_idx, :self.n_idxs[env_idx]] = np.random.uniform(-0.03, 0.03, size=(self.n_idxs[env_idx], 2))

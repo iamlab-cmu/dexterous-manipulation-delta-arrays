@@ -12,3 +12,4 @@ RL_with_DMPs/vis_utils/temp2
 *.avi
 wandb/
 *.npz
+replay_buffer*

@@ -97,8 +97,8 @@ class DeltaArraySimEnvironment():
                 "alpha"       :0.2,
                 "replay_size" :500000,
                 'seed'        :69420,
-                "batch_size"  :256,
-                "exploration_cutoff": 512,
+                "batch_size"  :2,
+                "exploration_cutoff": 0,
 
                 # Multi Agent Part Below:
                 'state_dim': 6,
@@ -106,7 +106,7 @@ class DeltaArraySimEnvironment():
                 "model_dim": 128,
                 "num_heads": 8,
                 "dim_ff": 64,
-                "n_layers_dict":{'encoder': 3, 'actor': 3, 'critic': 2},
+                "n_layers_dict":{'encoder': 3, 'actor': 3, 'critic': 3},
                 "dropout": 0,
                 "delta_array_size": [8,8],
                 "add_vs_data": self.args.add_vs_data,
