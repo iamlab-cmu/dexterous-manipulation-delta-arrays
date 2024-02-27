@@ -86,7 +86,9 @@ class MATSAC:
         q1_pi = self.tf.decoder_critic1(s1, actions, pos)
         q2_pi = self.tf.decoder_critic2(s1, actions, pos)
         q_pi = torch.min(q1_pi, q2_pi)
-        pi_loss = (-q_pi).mean()
+        if not self.hp_dict["dont_log"]:
+            wandb.log({"Q_pi":q_pi.mean().cpu().detach().numpy()})
+        pi_loss = (q_pi).mean()
 
         pi_loss.backward()
         self.optimizer_actor.step()
