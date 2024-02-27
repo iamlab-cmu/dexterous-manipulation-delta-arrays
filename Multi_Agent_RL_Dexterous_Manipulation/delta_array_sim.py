@@ -38,7 +38,6 @@ import utils.rl_utils as rl_utils
 # import utils.SAC.sac as sac
 # import utils.SAC.reinforce as reinforce
 import utils.geometric_utils as geom_utils
-device = torch.device("cuda:1")
 
 class DeltaArraySim:
     def __init__(self, scene, cfg, obj, obj_name, img_embed_model, transform, agents, hp_dict, num_tips = [8,8], max_agents=64):

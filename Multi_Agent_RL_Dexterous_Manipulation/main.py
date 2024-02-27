@@ -26,7 +26,6 @@ import utils.MASAC.masac as masac
 import utils.MATSAC.matsac as matsac
 
 from utils.openai_utils.run_utils import setup_logger_kwargs
-device = torch.device("cuda:1")
 
 class DeltaArraySimEnvironment():
     def __init__(self, yaml_path, run_no, train_or_test="test", args={}):
@@ -37,6 +36,8 @@ class DeltaArraySimEnvironment():
         self.cfg = YamlConfig(yaml_path)
         self.cfg['scene']['n_envs'] = self.args.num_expts
         self.cfg['scene']['gui'] = self.args.gui
+        self.cfg['scene']['device']['compute'] = self.args.dev_sim
+        self.cfg['scene']['device']['graphics'] = self.args.dev_sim
         self.scene = GymScene(self.cfg['scene'])
         if not os.path.exists('./data/manip_data'):   
             os.makedirs('./data/manip_data')
@@ -102,7 +103,8 @@ class DeltaArraySimEnvironment():
 
                 # Multi Agent Part Below:
                 'state_dim': 6,
-                "device": torch.device("cuda:0"),
+                "dev_sim": torch.device(f"cuda:{self.args.dev_sim}"),
+                "dev_rl": torch.device(f"cuda:{self.args.dev_rl}"),
                 "model_dim": 128,
                 "num_heads": 8,
                 "dim_ff": 64,
@@ -241,6 +243,8 @@ if __name__ == "__main__":
     parser.add_argument("-n", "--name", type=str, default="HAKUNA", help="Expt Name")
     parser.add_argument("-on", "--obj_name", type=str, default="disc", help="Object Name in env.yaml")
     parser.add_argument("-dontlog", "--dont_log", action="store_true", help="Don't Log to Wandb")
+    parser.add_argument("-dev_sim", "--dev_sim", type=int, default=0, help="Device for Sim")
+    parser.add_argument("-dev_rl", "--dev_rl", type=int, default=1, help="Device for RL")
     args = parser.parse_args()
 
     if args.vis_servo and not args.test:
