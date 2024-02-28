@@ -61,20 +61,14 @@ class MultiHeadAttention(nn.Module):
         output = self.W_O(self.combine_heads(attn))
         return output
 
-# Position Encoder for robotics should encode the ID of the robot (i,j)
-# TODO: Change this function to capture the spatial arrangement of delta robots
-class PositionalEncoder(nn.Module):
-    def __init__(self, model_dim, max_seq_len):
-        super(PositionalEncoder, self).__init__()
-        pe = torch.zeros(max_seq_len, model_dim, requires_grad=False)
-        pos = torch.arange(0, max_seq_len).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, model_dim, 2).float() * -(np.log(10000.0) / model_dim))
-        pe[:, 0::2] = torch.sin(pos * div_term)
-        pe[:, 1::2] = torch.cos(pos * div_term)
-        self.register_buffer('pe', pe.unsqueeze(0))
+
+class IntegerEmbeddingModel(nn.Module):
+    def __init__(self, num_embeddings, embedding_dim):
+        super(IntegerEmbeddingModel, self).__init__()
+        self.embedding = nn.Embedding(num_embeddings, embedding_dim)
 
     def forward(self, x):
-        return x + self.pe[:, :x.size(1), :]
+        return self.embedding(x)
 
 class FF_MLP(nn.Module):
     def __init__(self, model_dim, dim_ff):
@@ -108,10 +102,11 @@ class GPTLayer(nn.Module):
         return x
 
 class GPT(nn.Module):
-    def __init__(self, state_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, dropout, n_layers, critic=False):
+    def __init__(self, state_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False):
         super(GPT, self).__init__()
         self.state_enc = nn.Linear(state_dim, model_dim)
-        self.action_embedding = wt_init_(nn.Linear(action_dim, model_dim)) # Replace action embedding of Critic Decoder from this.
+        self.action_embedding = wt_init_(nn.Linear(action_dim, model_dim))
+        self.pos_embedding = pos_embedding
         self.dropout = nn.Dropout(dropout)
 
         self.decoder_layers = nn.ModuleList([GPTLayer(model_dim, num_heads, max_agents, dim_ff, dropout) for _ in range(n_layers)])
@@ -122,7 +117,7 @@ class GPT(nn.Module):
             self.actor_mu_layer = wt_init_(nn.Linear(model_dim, action_dim))
         self.ReLU = nn.ReLU()
 
-    def forward(self, state, actions):
+    def forward(self, state, actions, pos):
         """
         Input: state (bs, n_agents, state_dim)
                actions (bs, n_agents, action_dim)
@@ -130,7 +125,8 @@ class GPT(nn.Module):
         """
         # act_enc = self.dropout(self.positional_encoding(F.ReLU(self.action_embedding(actions))))
         state_enc = self.state_enc(state)
-        act_enc = self.ReLU(self.action_embedding(actions))
+        pos_embed = self.pos_embedding(pos)
+        act_enc = pos_embed.squeeze(2) + self.ReLU(self.action_embedding(actions))
         for layer in self.decoder_layers:
             act_enc = layer(act_enc, state_enc)
         act_mean = self.actor_mu_layer(act_enc)
@@ -157,19 +153,23 @@ class Transformer(nn.Module):
         self.max_agents = delta_array_size[0] * delta_array_size[1]
         self.act_limit = action_limit
         self.action_dim = action_dim
+        self.pos_embedding = IntegerEmbeddingModel(self.max_agents, model_dim)
+        self.pos_embedding.load_state_dict(torch.load("./utils/MATSAC/idx_embedding.pth", map_location=device))
+        for param in self.pos_embedding.parameters():
+            param.requires_grad = False
         log_std = -0.5 * torch.ones(action_dim)
         self.log_std = torch.nn.Parameter(log_std)
 
-        self.decoder_actor = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, dropout, num_layers['actor'])
-        self.decoder_critic1 = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, dropout, num_layers['critic'], critic=True)
-        self.decoder_critic2 = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, dropout, num_layers['critic'], critic=True)
+        self.decoder_actor = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['actor'])
+        self.decoder_critic1 = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['critic'], critic=True)
+        self.decoder_critic2 = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['critic'], critic=True)
 
-    def get_actions_lin(self, states, deterministic=False):
+    def get_actions_lin(self, states, pos, deterministic=False):
         """ Returns actor actions """
         bs, n_agents, _ = states.size()
         actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
         for i in range(n_agents):
-            updated_actions = self.decoder_actor(states, actions)
+            updated_actions = self.decoder_actor(states, actions, pos)
 
             # TODO: Ablate here with all actions cloned so that even previous actions are updated with new info. 
             # TODO: Does it cause instability? How to know if it does?
@@ -177,7 +177,7 @@ class Transformer(nn.Module):
             actions[:, i, :] = self.act_limit * torch.tanh(updated_actions[:, i, :])
         return actions
 
-    def get_actions(self, states, deterministic=False):
+    def get_actions(self, states, pos, deterministic=False):
         """ Returns actor actions, and their log probs. If deterministic=True, set action as the output of decoder. Else, sample from mean=dec output, std=exp(log_std) """
         bs, n_agents, _ = states.size()
         shifted_actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
@@ -185,7 +185,7 @@ class Transformer(nn.Module):
         output_action_log_probs = torch.zeros((bs, n_agents)).to(self.device)
 
         for i in range(n_agents):            
-            act_means = self.decoder_actor(states, shifted_actions)[:, i, :]
+            act_means = self.decoder_actor(states, shifted_actions, pos)[:, i, :]
             std = torch.exp(self.log_std)
             dist = torch.distributions.Normal(act_means, std)
             action = act_means if deterministic else dist.sample()
