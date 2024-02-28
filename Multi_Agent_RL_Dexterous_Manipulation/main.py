@@ -98,8 +98,8 @@ class DeltaArraySimEnvironment():
                 "alpha"       :0.2,
                 "replay_size" :500000,
                 'seed'        :69420,
-                "batch_size"  :2,
-                "exploration_cutoff": 0,
+                "batch_size"  :self.args.bs,
+                "exploration_cutoff": self.args.expl,
 
                 # Multi Agent Part Below:
                 'state_dim': 6,
@@ -245,6 +245,8 @@ if __name__ == "__main__":
     parser.add_argument("-dontlog", "--dont_log", action="store_true", help="Don't Log to Wandb")
     parser.add_argument("-dev_sim", "--dev_sim", type=int, default=0, help="Device for Sim")
     parser.add_argument("-dev_rl", "--dev_rl", type=int, default=1, help="Device for RL")
+    parser.add_argument("-bs", "--bs", type=int, default=256, help="Batch Size")
+    parser.add_argument("-expl", "--expl", type=int, default=512, help="Exploration Cutoff")
     args = parser.parse_args()
 
     if args.vis_servo and not args.test:
