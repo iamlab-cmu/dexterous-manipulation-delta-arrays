@@ -61,6 +61,21 @@ class MultiHeadAttention(nn.Module):
         output = self.W_O(self.combine_heads(attn))
         return output
 
+# Position Encoder for robotics should encode the ID of the robot (i,j)
+# TODO: Change this function to capture the spatial arrangement of delta robots
+class PositionalEncoder(nn.Module):
+    def __init__(self, model_dim, max_seq_len):
+        super(PositionalEncoder, self).__init__()
+        pe = torch.zeros(max_seq_len, model_dim, requires_grad=False)
+        pos = torch.arange(0, max_seq_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, model_dim, 2).float() * -(np.log(10000.0) / model_dim))
+        pe[:, 0::2] = torch.sin(pos * div_term)
+        pe[:, 1::2] = torch.cos(pos * div_term)
+        self.register_buffer('pe', pe.unsqueeze(0))
+
+    def forward(self, x):
+        return x + self.pe[:, :x.size(1), :]
+
 class FF_MLP(nn.Module):
     def __init__(self, model_dim, dim_ff):
         super(FF_MLP, self).__init__()
@@ -70,14 +85,6 @@ class FF_MLP(nn.Module):
 
     def forward(self, x):
         return self.fc2(self.ReLU(self.fc1(x)))
-
-class IntegerEmbeddingModel(nn.Module):
-    def __init__(self, num_embeddings, embedding_dim):
-        super(IntegerEmbeddingModel, self).__init__()
-        self.embedding = nn.Embedding(num_embeddings, embedding_dim)
-
-    def forward(self, x):
-        return self.embedding(x)
 
 class GPTLayer(nn.Module):
     def __init__(self, model_dim, num_heads, max_agents, dim_ff, dropout):
@@ -101,22 +108,21 @@ class GPTLayer(nn.Module):
         return x
 
 class GPT(nn.Module):
-    def __init__(self, state_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False):
+    def __init__(self, state_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, dropout, n_layers, critic=False):
         super(GPT, self).__init__()
         self.state_enc = nn.Linear(state_dim, model_dim)
-        self.action_embedding = wt_init_(nn.Linear(action_dim, model_dim))
-        self.pos_embedding = pos_embedding
+        self.action_embedding = wt_init_(nn.Linear(action_dim, model_dim)) # Replace action embedding of Critic Decoder from this.
         self.dropout = nn.Dropout(dropout)
 
         self.decoder_layers = nn.ModuleList([GPTLayer(model_dim, num_heads, max_agents, dim_ff, dropout) for _ in range(n_layers)])
-        if critic:
+        self.critic = critic
+        if self.critic:
             self.actor_mu_layer = wt_init_(nn.Linear(model_dim, 1))
         else:
             self.actor_mu_layer = wt_init_(nn.Linear(model_dim, action_dim))
-        # self.actor_std_layer = wt_init_(nn.Linear(model_dim, action_dim))
         self.ReLU = nn.ReLU()
 
-    def forward(self, state, actions, pos):
+    def forward(self, state, actions):
         """
         Input: state (bs, n_agents, state_dim)
                actions (bs, n_agents, action_dim)
@@ -124,9 +130,7 @@ class GPT(nn.Module):
         """
         # act_enc = self.dropout(self.positional_encoding(F.ReLU(self.action_embedding(actions))))
         state_enc = self.state_enc(state)
-        pos_embed = self.pos_embedding(pos)
-        # print("HAKUNA", pos_embed.shape, pos_embed.squeeze(2).shape, self.action_embedding(actions).shape)
-        act_enc = self.ReLU(pos_embed.squeeze(2) + self.action_embedding(actions))
+        act_enc = self.ReLU(self.action_embedding(actions))
         for layer in self.decoder_layers:
             act_enc = layer(act_enc, state_enc)
         act_mean = self.actor_mu_layer(act_enc)
@@ -153,14 +157,46 @@ class Transformer(nn.Module):
         self.max_agents = delta_array_size[0] * delta_array_size[1]
         self.act_limit = action_limit
         self.action_dim = action_dim
-        self.pos_embedding = IntegerEmbeddingModel(self.max_agents, model_dim)
-        self.pos_embedding.load_state_dict(torch.load("./utils/MATSAC/idx_embedding.pth", map_location=device))
-        for param in self.pos_embedding.parameters():
-            param.requires_grad = False
+        log_std = -0.5 * torch.ones(action_dim)
+        self.log_std = torch.nn.Parameter(log_std)
 
-        self.decoder_actor = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['actor'])
-        self.decoder_critic1 = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['critic'], critic=True)
-        self.decoder_critic2 = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['critic'], critic=True)
+        self.decoder_actor = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, dropout, num_layers['actor'])
+        self.decoder_critic1 = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, dropout, num_layers['critic'], critic=True)
+        self.decoder_critic2 = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, dropout, num_layers['critic'], critic=True)
+
+    def get_actions_lin(self, states, deterministic=False):
+        """ Returns actor actions """
+        bs, n_agents, _ = states.size()
+        actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
+        for i in range(n_agents):
+            updated_actions = self.decoder_actor(states, actions)
+
+            # TODO: Ablate here with all actions cloned so that even previous actions are updated with new info. 
+            # TODO: Does it cause instability? How to know if it does?
+            actions = actions.clone()
+            actions[:, i, :] = self.act_limit * torch.tanh(updated_actions[:, i, :])
+        return actions
+
+    def get_actions(self, states, deterministic=False):
+        """ Returns actor actions, and their log probs. If deterministic=True, set action as the output of decoder. Else, sample from mean=dec output, std=exp(log_std) """
+        bs, n_agents, _ = states.size()
+        shifted_actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
+        output_actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
+        output_action_log_probs = torch.zeros((bs, n_agents)).to(self.device)
+
+        for i in range(n_agents):            
+            act_means = self.decoder_actor(states, shifted_actions)[:, i, :]
+            std = torch.exp(self.log_std)
+            dist = torch.distributions.Normal(mean, std)
+            action = act_mean if deterministic else dist.sample()
+            action_log = distri.log_prob(action)
+            output_actions[:, i, :] = action
+            output_action_log_probs[:, i] = action_log
+
+            if (i+1) < n_agents:
+                shifted_actions[:, i+1, :] = action
+        return output_actions, output_action_log_probs
+
 
     # def get_action_values(self, states, actions):
     #     """
@@ -172,22 +208,6 @@ class Transformer(nn.Module):
     #     shifted_actions[:, 1:, :] = actions[:, :-1, :]  # Input actions go from 0 to A_n-1
     #     q_vals = self.decoder_critic(state_enc, shifted_actions)
     #     return q_vals.squeeze().mean()
-
-    def get_actions(self, states, pos, deterministic=False):
-        """ Returns actor actions """
-        bs, n_agents, _ = states.size()
-        actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
-        for i in range(n_agents):
-            updated_actions = self.decoder_actor(states, actions, pos)
-
-            # TODO: Ablate here with all actions cloned so that even previous actions are updated with new info. 
-            # TODO: Does it cause instability? How to know if it does?
-            actions = actions.clone()
-            actions[:, i, :] = self.act_limit * torch.tanh(updated_actions[:, i, :])
-        return actions
-
-
-
 
     def eval_actor_gauss(self, states, actions):
         """
@@ -209,44 +229,3 @@ class Transformer(nn.Module):
         output_actions = torch.tanh(output_actions)
         output_actions = self.act_limit * output_actions # Output actions go from A_0 to A_n
         return output_actions, log_probs, entropy
-
-    def get_actions_gauss(self, state_enc, deterministic=False):
-        """ Returns actor actions, and their log probs. If deterministic=True, set action as the output of decoder. Else, sample from mean=dec output, std=exp(log_std) """
-        bs, n_agents, _ = state_enc.size()
-        shifted_actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
-        output_actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
-        output_action_log_probs = torch.zeros((bs, n_agents)).to(self.device)
-
-        for i in range(n_agents):
-            # act_means, act_stds = self.decoder_actor(state_enc, shifted_actions)
-            
-            # dist = torch.distributions.Normal(act_means, act_stds)
-            # output_actions = dist.rsample()
-
-            # output_action_log_probs = dist.log_prob(output_actions).sum(axis=-1)
-            # output_action_log_probs = output_action_log_probs - (2*(np.log(2) - output_actions - F.softplus(-2*output_actions))).sum(axis=2)
-            
-            # output_actions = self.act_limit * torch.tanh(output_actions)
-            act_means, act_stds = self.decoder_actor(state_enc, shifted_actions)
-            mean, std = act_means[:, i, :], act_stds[:, i, :]
-
-            if deterministic:
-                output_action = self.act_limit * torch.tanh(mean)
-                output_action_log_prob = 0
-            else:
-                dist = torch.distributions.Normal(mean, std)
-                output_action = dist.rsample()
-
-                output_action_log_prob = dist.log_prob(output_action).sum(axis=-1)
-                output_action_log_prob = output_action_log_prob - (2*(np.log(2) - output_action - F.softplus(-2*output_action))).sum(axis=1)
-                
-                output_action = self.act_limit * torch.tanh(output_action)
-
-            output_actions = output_actions.clone()
-            output_actions[:, i, :] = output_action
-            output_action_log_probs = output_action_log_probs.clone()
-            output_action_log_probs[:, i] = output_action_log_prob
-            if (i+1) < n_agents:
-                shifted_actions = shifted_actions.clone()
-                shifted_actions[:, i+1, :] = output_action
-        return output_actions, output_action_log_probs
