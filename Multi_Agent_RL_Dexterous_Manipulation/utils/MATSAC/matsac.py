@@ -27,7 +27,7 @@ class MATSAC:
         self.obs_dim = self.env_dict['pi_obs_space']['dim']
         self.act_dim = self.env_dict['action_space']['dim']
         self.act_limit = self.env_dict['action_space']['high']
-        self.device = self.hp_dict['device']
+        self.device = self.hp_dict['dev_rl']
 
         # n_layers_dict={'encoder': 2, 'actor': 2, 'critic': 2}
         self.tf = core.Transformer(self.obs_dim, self.act_dim, self.act_limit, self.hp_dict["model_dim"], self.hp_dict["num_heads"], self.hp_dict["dim_ff"], self.hp_dict["n_layers_dict"], self.hp_dict["dropout"], self.device, self.hp_dict["delta_array_size"])
@@ -130,5 +130,5 @@ class MATSAC:
             return actions.detach().cpu().numpy()
         
     def load_saved_policy(self, path='./data/rl_data/backup/matsac_expt_grasp/pyt_save/model.pt'):
-        self.tf.load_state_dict(torch.load(path, map_location=self.hp_dict['device']))
+        self.tf.load_state_dict(torch.load(path, map_location=self.hp_dict['dev_rl']))
         # self.tf_target = deepcopy(self.tf)
