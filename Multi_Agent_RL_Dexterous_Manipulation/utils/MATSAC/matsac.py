@@ -80,7 +80,7 @@ class MATSAC:
         for p in self.critic_params:
             p.requires_grad = False
 
-        actions, logp_pi = self.tf.get_actions(state_enc)
+        actions, logp_pi = self.tf.get_actions(s1)
         # actions = self.tf.get_actions(s1)
         
         q1_pi, _ = self.tf.decoder_critic1(s1, actions)
