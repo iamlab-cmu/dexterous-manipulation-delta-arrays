@@ -189,7 +189,7 @@ class Transformer(nn.Module):
             std = torch.exp(self.log_std)
             dist = torch.distributions.Normal(act_means, std)
             action = act_means if deterministic else dist.sample()
-            action_log = distri.log_prob(action)
+            action_log = dist.log_prob(action)
             output_actions[:, i, :] = action
             output_action_log_probs[:, i] = action_log
 
