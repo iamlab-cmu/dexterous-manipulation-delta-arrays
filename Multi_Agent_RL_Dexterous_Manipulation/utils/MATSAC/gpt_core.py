@@ -182,7 +182,7 @@ class Transformer(nn.Module):
         bs, n_agents, _ = states.size()
         shifted_actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
         output_actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
-        output_action_log_probs = torch.zeros((bs, n_agents)).to(self.device)
+        output_action_log_probs = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
 
         for i in range(n_agents):            
             act_means = self.decoder_actor(states, shifted_actions, pos)[:, i, :]
@@ -191,7 +191,7 @@ class Transformer(nn.Module):
             action = act_means if deterministic else dist.sample()
             action_log = dist.log_prob(action)
             output_actions[:, i, :] = action
-            output_action_log_probs[:, i] = action_log
+            output_action_log_probs[:, i, :] = action_log
 
             if (i+1) < n_agents:
                 shifted_actions[:, i+1, :] = action
