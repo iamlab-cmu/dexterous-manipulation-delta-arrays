@@ -240,8 +240,8 @@ class DeltaArraySim:
             object_r = gymapi.Quat(0,0,0,1)
             yaw = R.from_quat([object_r.x, object_r.y, object_r.z, object_r.w]).as_euler('xyz')[2]
             com = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
-            # T = (com.p.x + np.random.uniform(-0.02, 0.02), com.p.y + np.random.uniform(-0.02, 0.02))
-            T = (com.p.x - 0.02, com.p.y + 0)
+            T = (com.p.x + np.random.uniform(-0.02, 0.02), com.p.y + np.random.uniform(-0.02, 0.02))
+            # T = (com.p.x - 0.02, com.p.y + 0)
             self.init_pose[env_idx] = np.array([T[0], T[1], yaw])
 
         block_p = gymapi.Vec3(*T, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
@@ -403,7 +403,7 @@ class DeltaArraySim:
     def terminate(self, env_idx, agent):
         """ Update the replay buffer and reset the env """
         # agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
-        if self.ep_reward[env_idx] > -500:
+        if self.ep_reward[env_idx] > -2000:
             if agent.ma_replay_buffer.size > self.batch_size:
                 self.log_data(env_idx, agent)
 
