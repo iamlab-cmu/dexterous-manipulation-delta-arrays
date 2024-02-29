@@ -24,6 +24,7 @@ import utils.SAC.sac as sac
 import utils.DDPG.ddpg as ddpg
 import utils.MASAC.masac as masac
 import utils.MATSAC.matsac as matsac
+import utils.MATDQN.matdqn as matdqn
 
 from utils.openai_utils.run_utils import setup_logger_kwargs
 
@@ -129,8 +130,11 @@ class DeltaArraySimEnvironment():
         self.grasping_agent = sac.SAC(single_agent_env_dict, self.hp_dict, logger_kwargs, train_or_test="test")
         self.grasping_agent.load_saved_policy('./models/trained_models/SAC_1_agent_stochastic/pyt_save/model.pt')
 
-        # self.pushing_agent = masac.MASAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
-        self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
+        if self.args.algo=="MATSAC":
+            # self.pushing_agent = masac.MASAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
+            self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
+        elif self.args.algo=="MATDQN":
+            self.pushing_agent = matdqn.MATDQN(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
 
         if self.train_or_test=="test":
             # self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/{args.name}_s69420/pyt_save/model.pt')
@@ -247,6 +251,7 @@ if __name__ == "__main__":
     parser.add_argument("-dev_rl", "--dev_rl", type=int, default=1, help="Device for RL")
     parser.add_argument("-bs", "--bs", type=int, default=256, help="Batch Size")
     parser.add_argument("-expl", "--expl", type=int, default=512, help="Exploration Cutoff")
+    parser.add_argument("-algo", "--algo", type=str, default="MATSAC", help="RL Algorithm")
     args = parser.parse_args()
 
     if args.vis_servo and not args.test:
