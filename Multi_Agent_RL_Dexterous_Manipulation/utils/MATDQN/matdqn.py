@@ -47,7 +47,11 @@ class MATDQN:
         if self.train_or_test == "train":
             print(f"\nNumber of parameters: {np.sum(var_counts)}\n")
         
-        self.optimizer_critic = optim.Adam(filter(lambda p: p.requires_grad, self.tf.decoder_critic.parameters()), lr=hp_dict['q_lr'])
+        if self.hp_dict['optim']=="adam":
+            self.optimizer_critic = optim.Adam(filter(lambda p: p.requires_grad, self.tf.decoder_critic.parameters()), lr=hp_dict['q_lr'])
+        elif self.hp_dict['optim']=="sgd":
+            self.optimizer_critic = optim.SGD(filter(lambda p: p.requires_grad, self.tf.decoder_critic.parameters()), lr=hp_dict['q_lr'])
+        self.scheduler = CosineAnnealingWarmRestarts(self.optimizer_critic, T_0=20, T_mult=2, eta_min=1e-6)
         # Set up model saving
         # if self.train_or_test == "train":
         #     self.logger.setup_pytorch_saver(self.tf)
@@ -72,6 +76,7 @@ class MATDQN:
             wandb.log({"Q loss":q_loss.cpu().detach().numpy()})
 
     def update(self, batch_size, current_episode):
+        scheduler.step(current_episode)
         data = self.ma_replay_buffer.sample_batch(batch_size)
         n_agents = int(torch.max(data['num_agents']))
         states, actions, rews, new_states, dones = data['obs'][:,:n_agents].to(self.device), data['act'][:,:n_agents].to(self.device), data['rew'].to(self.device), data['obs2'][:,:n_agents].to(self.device), data['done'].to(self.device)

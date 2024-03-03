@@ -402,7 +402,13 @@ class DeltaArraySim:
 
     def terminate(self, env_idx, agent):
         """ Update the replay buffer and reset the env """
-        # agent.replay_buffer.push(self.init_state[env_idx], self.action[env_idx], self.ep_reward[env_idx], self.final_state, True)
+        # Update policy
+        self.compute_reward(env_idx, t_step)
+        if self.agent.ma_replay_buffer.size > self.batch_size:
+            epoch = self.scale_epoch(self.current_episode)
+            for i in range(epoch):
+                self.agent.update(self.batch_size, self.current_episode)
+                
         if self.ep_reward[env_idx] > -2000:
             if agent.ma_replay_buffer.size > self.batch_size:
                 self.log_data(env_idx, agent)
@@ -518,12 +524,6 @@ class DeltaArraySim:
             elif t_step == 2:
                 self.set_attractor_target(env_idx, t_step, self.actions)
             elif t_step == (self.time_horizon-2):
-                # Update policy
-                self.compute_reward(env_idx, t_step)
-                if self.agent.ma_replay_buffer.size > self.batch_size:
-                    epoch = self.scale_epoch(self.current_episode)
-                    for i in range(epoch):
-                        self.agent.update(self.batch_size, self.current_episode)
                 self.terminate(env_idx, self.agent)
 
                 self.current_episode += 1
@@ -716,7 +716,7 @@ class DeltaArraySim:
             elif t_step == (self.time_horizon-3):
                 # Update policy
                 self.compute_reward(env_idx, t_step)
-                # print(f"Reward: {self.ep_reward[env_idx]}")
+                print(f"Reward: {self.ep_reward[env_idx]}")
                 
                 if 0 < self.current_episode < self.temp_cutoff_1:
                     self.vs_rews.append(self.ep_reward[env_idx])
