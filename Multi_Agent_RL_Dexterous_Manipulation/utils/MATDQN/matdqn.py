@@ -77,7 +77,7 @@ class MATDQN:
             wandb.log({"Q loss":q_loss.cpu().detach().numpy()})
 
     def update(self, batch_size, current_episode):
-        scheduler.step(current_episode)
+        self.scheduler.step(current_episode)
         data = self.ma_replay_buffer.sample_batch(batch_size)
         n_agents = int(torch.max(data['num_agents']))
         states, actions, rews, new_states, dones = data['obs'][:,:n_agents].to(self.device), data['act'][:,:n_agents].to(self.device), data['rew'].to(self.device), data['obs2'][:,:n_agents].to(self.device), data['done'].to(self.device)
