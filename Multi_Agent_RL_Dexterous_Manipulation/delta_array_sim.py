@@ -310,6 +310,13 @@ class DeltaArraySim:
                 self.init_grasp_state[env_idx, :self.n_idxs[env_idx], :2] = self.nn_bd_pts[env_idx]/self.img_size
                 self.final_state[env_idx, :self.n_idxs[env_idx], 4:6] = self.nn_helper.rb_pos_raw[tuple(zip(*self.active_idxs[env_idx]))]
                 
+                delta = self.goal_pose[env_idx] - self.init_pose[env_idx]
+                com = np.array(self.convert_pix_2_world(np.mean(init_bd_pts, axis=0)))
+                nn_bd_pts_world = [self.convert_pix_2_world(bd_pts) for bd_pts in self.nn_bd_pts[env_idx]]
+                nn_bd_pts_world = geom_utils.transform_pts_wrt_com(nn_bd_pts_world, delta, com)
+                
+                self.init_state[env_idx, :self.n_idxs[env_idx], :2] = nn_bd_pts_world
+                self.final_state[env_idx, :self.n_idxs[env_idx], :2] = nn_bd_pts_world
             else:
                 # We are not using min_dists for now. Try expt to see if it helps. 
                 # self.act_grasp_pix[env_idx, :self.n_idxs[env_idx], 0] = self.actions_grasp[env_idx, :self.n_idxs[env_idx], 0]/(self.delta_plane_x)*1080
@@ -321,13 +328,6 @@ class DeltaArraySim:
 
                 # min_dists, _ = self.nn_helper.get_min_dist(bd_cluster_centers, self.active_idxs[env_idx], self.act_pix[env_idx])
                 # obj_2d_tf = geom_utils.get_transform(init_bd_pts, self.bd_pts[env_idx])
-                delta = self.goal_pose[env_idx] - self.init_pose[env_idx]
-                com = np.array(self.convert_pix_2_world(np.mean(init_bd_pts, axis=0)))
-                nn_bd_pts_world = [self.convert_pix_2_world(bd_pts) for bd_pts in self.nn_bd_pts[env_idx]]
-                nn_bd_pts_world = geom_utils.transform_pts_wrt_com(nn_bd_pts_world, delta, com)
-                
-                self.init_state[env_idx, :self.n_idxs[env_idx], :2] = nn_bd_pts_world
-                self.final_state[env_idx, :self.n_idxs[env_idx], :2] = nn_bd_pts_world
 
                 _, final_nn_bd_pts = self.nn_helper.get_min_dist(bd_cluster_centers, self.active_idxs[env_idx], self.actions[env_idx])
                 self.final_state[env_idx, :self.n_idxs[env_idx], 2:4] = [self.convert_pix_2_world(bd_pts) for bd_pts in final_nn_bd_pts]
@@ -448,6 +448,9 @@ class DeltaArraySim:
             """ extract i, j, u, v for each robot """
             for i in range(len(self.active_idxs[env_idx])):
                 self.actions_grasp[env_idx][i] = agent.get_action(self.init_grasp_state[env_idx, i], deterministic=True) # For pretrained grasping policy, single state -> 2D action var
+                
+            # Add this here to bypass need to run gnras twice. 
+            self.init_state[env_idx, :self.n_idxs[env_idx], 4:6] = self.actions_grasp[env_idx, :self.n_idxs[env_idx]]
 
         elif (self.current_episode > self.exploration_cutoff) or test:
             self.pos[env_idx, :self.n_idxs[env_idx], 0] = np.array([i[0]*8+i[1] for i in self.active_idxs[env_idx]]) #.reshape((-1,))
@@ -514,11 +517,8 @@ class DeltaArraySim:
             # Gen actions from new policy and set attractor until max episodes
             if t_step == 0:
                 # self.start = time.time()
-                if self.hp_dict["add_vs_data"]:
-                    if np.random.rand() <= self.hp_dict['ratio']:
-                        self.vs_step_disc(env_idx, t_step)
-                    else:
-                        self.env_step(env_idx, t_step, self.agent)
+                if self.hp_dict["add_vs_data"] and (np.random.rand() <= self.hp_dict['ratio']):
+                    self.vs_step_disc(env_idx, t_step)
                 else:
                     self.env_step(env_idx, t_step, self.agent)
             elif t_step == 2:

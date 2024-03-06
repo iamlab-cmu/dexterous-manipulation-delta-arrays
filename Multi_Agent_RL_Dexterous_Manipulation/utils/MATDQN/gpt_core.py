@@ -104,8 +104,8 @@ class GPTLayer(nn.Module):
 class GPT(nn.Module):
     def __init__(self, state_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False):
         super(GPT, self).__init__()
-        self.state_enc = nn.Linear(state_dim, model_dim)
-        self.action_embedding = wt_init_(nn.Linear(action_dim, model_dim))
+        self.state_enc = wt_init_(nn.Linear(state_dim, model_dim))
+        self.action_enc = wt_init_(nn.Linear(action_dim, model_dim))
         self.pos_embedding = pos_embedding
         self.dropout = nn.Dropout(dropout)
 
@@ -117,20 +117,20 @@ class GPT(nn.Module):
             self.actor_mu_layer = wt_init_(nn.Linear(model_dim, action_dim))
         self.ReLU = nn.ReLU()
 
-    def forward(self, state, actions, pos):
+    def forward(self, states, actions, pos):
         """
         Input: state (bs, n_agents, state_dim)
                actions (bs, n_agents, action_dim)
         Output: decoder_output (bs, n_agents, model_dim)
         """
-        # act_enc = self.dropout(self.positional_encoding(F.ReLU(self.action_embedding(actions))))
-        state_enc = self.state_enc(state)
+        # act_enc = self.dropout(self.positional_encoding(F.ReLU(self.action_enc(actions))))
+        act_enc = self.action_enc(actions)
         pos_embed = self.pos_embedding(pos)
-        act_enc = pos_embed.squeeze(2) + self.ReLU(self.action_embedding(actions))
+        state_enc = pos_embed.squeeze(2) + self.ReLU(self.state_enc(states))
         for layer in self.decoder_layers:
-            act_enc = layer(act_enc, state_enc)
-        act_mean = self.actor_mu_layer(act_enc)
-        return act_mean
+            state_enc = layer(state_enc, act_enc)
+        out = self.actor_mu_layer(state_enc)
+        return out
         # act_mean = self.actor_mu_layer(act_enc)
         # act_std = self.actor_std_layer(act_enc)
         # act_std = torch.clamp(act_std, LOG_STD_MIN, LOG_STD_MAX)
