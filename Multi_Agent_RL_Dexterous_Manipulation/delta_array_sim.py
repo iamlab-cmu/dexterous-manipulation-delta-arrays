@@ -473,6 +473,7 @@ class DeltaArraySim:
 
         if not self.hp_dict["dont_log"]:
             wandb.log({"reward":self.ep_reward[env_idx]})
+            wandb.log({"Q loss":self.agent.q_loss})
         # log_utils.log_data(agent.logger, self.ep_reward[env_idx], self.current_episode, self.start_time)
 
     def scale_epoch(self, x, A=100/np.log(100000), B=1/1000, C=1000):

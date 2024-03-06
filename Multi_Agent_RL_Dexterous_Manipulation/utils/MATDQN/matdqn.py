@@ -53,6 +53,8 @@ class MATDQN:
         elif self.hp_dict['optim']=="sgd":
             self.optimizer_critic = optim.SGD(filter(lambda p: p.requires_grad, self.tf.decoder_critic.parameters()), lr=hp_dict['q_lr'])
         self.scheduler = CosineAnnealingWarmRestarts(self.optimizer_critic, T_0=20, T_mult=2, eta_min=1e-6)
+        
+        self.q_loss = None
         # Set up model saving
         # if self.train_or_test == "train":
         #     self.logger.setup_pytorch_saver(self.tf)
@@ -74,7 +76,7 @@ class MATDQN:
         self.optimizer_critic.step()
 
         if not self.hp_dict["dont_log"]:
-            wandb.log({"Q loss":q_loss.cpu().detach().numpy()})
+            self.q_loss = q_loss.cpu().detach().numpy()
 
     def update(self, batch_size, current_episode):
         self.scheduler.step(current_episode)
