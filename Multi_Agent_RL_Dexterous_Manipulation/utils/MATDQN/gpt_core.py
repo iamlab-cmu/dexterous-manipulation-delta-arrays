@@ -126,10 +126,10 @@ class GPT(nn.Module):
         # act_enc = self.dropout(self.positional_encoding(F.ReLU(self.action_enc(actions))))
         act_enc = self.action_enc(actions)
         pos_embed = self.pos_embedding(pos)
-        state_enc = pos_embed.squeeze(2) + self.ReLU(self.state_enc(states))
+        enc = pos_embed.squeeze(2) + self.ReLU(self.state_enc(states))
         for layer in self.decoder_layers:
-            state_enc = layer(state_enc, act_enc)
-        out = self.actor_mu_layer(state_enc)
+            enc = layer(enc, act_enc)
+        out = self.actor_mu_layer(enc)
         return out
         # act_mean = self.actor_mu_layer(act_enc)
         # act_std = self.actor_std_layer(act_enc)
