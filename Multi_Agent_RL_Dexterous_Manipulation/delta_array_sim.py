@@ -127,7 +127,7 @@ class DeltaArraySim:
         self.actions_grasp = np.zeros((self.scene.n_envs, self.max_agents, 2))
         self.act_grasp_pix = np.zeros((self.scene.n_envs, self.max_agents, 2))
         self.actions = np.zeros((self.scene.n_envs, self.max_agents, 2))
-        self.act_pix = np.zeros((self.scene.n_envs, self.max_agents, 2))
+        self.actions_rb = np.zeros((self.scene.n_envs, self.max_agents, 2))
         self.pos = np.zeros((self.scene.n_envs, self.max_agents, 1))
 
         # self.ep_rewards = []
@@ -305,10 +305,10 @@ class DeltaArraySim:
                 _, self.nn_bd_pts[env_idx] = self.nn_helper.get_min_dist(bd_cluster_centers, self.active_idxs[env_idx], self.actions[env_idx])
                 self.init_state[env_idx, :self.n_idxs[env_idx], 2:4] = [self.convert_pix_2_world(bd_pts) for bd_pts in self.nn_bd_pts[env_idx]]
                 self.init_state[env_idx, :self.n_idxs[env_idx], 4:6] = self.nn_helper.rb_pos_raw[tuple(zip(*self.active_idxs[env_idx]))]
+                self.final_state[env_idx, :self.n_idxs[env_idx], 4:6] = self.nn_helper.rb_pos_raw[tuple(zip(*self.active_idxs[env_idx]))]
 
                 self.init_grasp_state[env_idx, :self.n_idxs[env_idx], 2:4] = self.nn_helper.robot_positions[tuple(zip(*self.active_idxs[env_idx]))]/self.img_size
                 self.init_grasp_state[env_idx, :self.n_idxs[env_idx], :2] = self.nn_bd_pts[env_idx]/self.img_size
-                self.final_state[env_idx, :self.n_idxs[env_idx], 4:6] = self.nn_helper.rb_pos_raw[tuple(zip(*self.active_idxs[env_idx]))]
                 
             else:
                 # We are not using min_dists for now. Try expt to see if it helps. 
@@ -335,9 +335,9 @@ class DeltaArraySim:
                 # Convert action to normalized pixel values
                 # self.actions[env_idx, :self.n_idxs[env_idx]] = self.act_pix[env_idx, self.n_idxs[env_idx]]/self.img_size
 
-                self.init_state[env_idx, :self.n_idxs[env_idx], 4:6] = self.actions_grasp[env_idx, :self.n_idxs[env_idx]]
+                self.init_state[env_idx, :self.n_idxs[env_idx], 4:6] += self.actions_grasp[env_idx, :self.n_idxs[env_idx]]
                 # self.init_state[env_idx, :self.n_idxs[env_idx], 4:6] = self.init_state[env_idx, :self.n_idxs[env_idx], 4:6]/self.img_size
-                self.final_state[env_idx, :self.n_idxs[env_idx], 4:6] = self.actions[env_idx, :self.n_idxs[env_idx]]
+                self.final_state[env_idx, :self.n_idxs[env_idx], 4:6] += self.actions[env_idx, :self.n_idxs[env_idx]]
                 # self.final_state[env_idx, :self.n_idxs[env_idx], 4:6] += self.act_pix[env_idx, :self.n_idxs[env_idx]]
                 # self.final_state[env_idx, :self.n_idxs[env_idx], 4:6] = self.final_state[env_idx, :self.n_idxs[env_idx], 4:6]/self.img_size
                 
@@ -415,7 +415,7 @@ class DeltaArraySim:
 
             #normalize the reward for easier training
             # self.ep_reward[env_idx] = (self.ep_reward[env_idx] - -45)/90
-            agent.ma_replay_buffer.store(self.init_state[env_idx], self.actions[env_idx], self.pos[env_idx], self.ep_reward[env_idx], self.final_state[env_idx], True, self.n_idxs[env_idx])
+            agent.ma_replay_buffer.store(self.init_state[env_idx], self.actions_rb[env_idx], self.pos[env_idx], self.ep_reward[env_idx], self.final_state[env_idx], True, self.n_idxs[env_idx])
             # self.ep_rewards.append(self.ep_reward[env_idx])
             # agent.logger.store(EpRet=self.ep_reward[env_idx], EpLen=self.ep_len[env_idx])
             self.ep_reward[env_idx]
@@ -434,6 +434,7 @@ class DeltaArraySim:
         self.init_state[env_idx] = np.zeros((self.max_agents, self.state_dim))
         self.final_state[env_idx] = np.zeros((self.max_agents, self.state_dim))
         self.actions[env_idx] = np.zeros((self.max_agents, 2))
+        self.actions_rb[env_idx] = np.zeros((self.max_agents, 2))
         self.pos[env_idx] = np.zeros((self.max_agents, 1))
 
     def env_step(self, env_idx, t_step, agent, test = False):
@@ -451,12 +452,13 @@ class DeltaArraySim:
 
         elif (self.current_episode > self.exploration_cutoff) or test:
             self.pos[env_idx, :self.n_idxs[env_idx], 0] = np.array([i[0]*8+i[1] for i in self.active_idxs[env_idx]]) #.reshape((-1,))
-            self.actions[env_idx, :self.n_idxs[env_idx]] = self.actions_grasp[env_idx][:self.n_idxs[env_idx]] + agent.get_actions(self.init_state[env_idx, :self.n_idxs[env_idx]], self.pos[env_idx, :self.n_idxs[env_idx]], deterministic=test) # For MARL policy, multiple states -> 3D action var
+            self.actions_rb[env_idx, :self.n_idxs[env_idx]] = agent.get_actions(self.init_state[env_idx, :self.n_idxs[env_idx]], self.pos[env_idx, :self.n_idxs[env_idx]], deterministic=test)
+            self.actions[env_idx, :self.n_idxs[env_idx]] = self.actions_grasp[env_idx][:self.n_idxs[env_idx]] + self.actions_rb[env_idx, :self.n_idxs[env_idx]]
             self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(self.actions[env_idx, :self.n_idxs[env_idx]], -0.03, 0.03)
         else:
-            self.actions[env_idx, :self.n_idxs[env_idx]] = np.random.uniform(-0.03, 0.03, size=(self.n_idxs[env_idx], 2))
-            # self.actions[env_idx, :self.n_idxs] += np.ones((self.n_idxs, 2))*np.array((-0.01, 0))
-            # self.actions[env_idx, :self.n_idxs] = np.clip(self.actions[env_idx, :self.n_idxs], -0.03, 0.03)
+            self.actions_rb[env_idx, :self.n_idxs[env_idx]] = np.random.uniform(-0.03, 0.03, size=(self.n_idxs[env_idx], 2))
+            self.actions[env_idx, :self.n_idxs[env_idx]] = self.actions_grasp[env_idx][:self.n_idxs[env_idx]] + self.actions_rb[env_idx, :self.n_idxs[env_idx]]
+            self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(self.actions[env_idx, :self.n_idxs[env_idx]], -0.03, 0.03)
 
     def set_attractor_target(self, env_idx, t_step, actions, all_zeros=False):
         env_ptr = self.scene.env_ptrs[env_idx]
