@@ -99,6 +99,9 @@ class MATDQN:
             torch.save(self.tf.state_dict(), f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
     
     def cross_entropy_method(self, obs, pos, num_agents, iters=5, n_samples=512, top_k=20):
+        if num_agents < 2:
+            return np.zeros((1, 2))
+
         x_bounds = np.array([[-6.0, 6.0]] * num_agents)  # Shape: (num_agents, 2)
         y_bounds = np.array([[-6.0, 6.0]] * num_agents)  # Shape: (num_agents, 2)
 
@@ -111,7 +114,7 @@ class MATDQN:
             q_values = self.tf.decoder_critic(obs, act, pos).detach().cpu().numpy().squeeze()
 
             # Select top-k samples, vectorized sorting and indexing
-            if iteration==(iters-1):
+            if iteration>=(iters-1):
                 top_indices = np.argpartition(q_values, 1, axis=0)[:1] # Since our rewards are negative, we can use this logic.
                 top_samples = samples[top_indices, np.arange(num_agents)][0]
                 return top_samples
@@ -119,14 +122,14 @@ class MATDQN:
                 top_indices = np.argpartition(q_values, top_k, axis=0)[:top_k] # Since our rewards are negative, we can use this logic.
                 top_samples = samples[top_indices, np.arange(num_agents)]
 
-            for agent in range(num_agents):
-                agent_top_samples = top_samples[:, agent, :]  # Shape: (top_k, 2)
-                x_bounds[agent] = [np.min(agent_top_samples[:, 0]), np.max(agent_top_samples[:, 0])]
-                y_bounds[agent] = [np.min(agent_top_samples[:, 1]), np.max(agent_top_samples[:, 1])]
+                for agent in range(num_agents):
+                    agent_top_samples = top_samples[:, agent, :]  # Shape: (top_k, 2)
+                    x_bounds[agent] = [np.min(agent_top_samples[:, 0]), np.max(agent_top_samples[:, 0])]
+                    y_bounds[agent] = [np.min(agent_top_samples[:, 1]), np.max(agent_top_samples[:, 1])]
 
-                # Optionally, adjust the bounds slightly to ensure they don't collapse
-                x_bounds[agent] *= 1.1
-                y_bounds[agent] *= 1.1
+                    # Optionally, adjust the bounds slightly to ensure they don't collapse
+                    x_bounds[agent] *= 1.1
+                    y_bounds[agent] *= 1.1
 
     @torch.no_grad()
     def get_actions(self, obs, pos, deterministic=False):
