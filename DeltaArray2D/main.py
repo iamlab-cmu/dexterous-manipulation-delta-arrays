@@ -37,16 +37,15 @@ class DeltaArray2DEnv:
     def train(self):
         # len(obs) = total number of agents
         obs = self.env.reset()
-        print(obs[0].shape)
-
         action = torch.zeros((len(obs), self.n_envs, 2), device=self.env.world.device, dtype=torch.float32)
         action[0] = torch.ones((self.n_envs,2))*0.02
         for i in range(1000):
-            action[0] = action[0] * -1
             print(action[0])
             for _ in range(100):
                 obs, rews, dones, info = self.env.step(action)
                 frame = self.env.render(mode="human")
+            
+            action[0] = action[0] * -1
             # self.env.render(
             #         mode="rgb_array",
             #         agent_index_focus=None,

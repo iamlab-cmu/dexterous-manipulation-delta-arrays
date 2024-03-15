@@ -13,8 +13,7 @@ class DeltaArray2DSim(BaseScenario):
     def make_world(self, batch_dim:int, device:torch.device, **kwargs):
         world = World(batch_dim, device, substeps=1, contact_margin=1e-4) # Increase substeps if simulation seems unstable.
         self.shaping_factor = 100
-
-        self.u_range = 0.03
+        
         self.robot_positions = torch.zeros((64,2))
         for i in range(8):
             for j in range(8):
@@ -23,7 +22,7 @@ class DeltaArray2DSim(BaseScenario):
                 else:
                     finger_pos = torch.tensor((i*0.0375, j*0.043301))
                 self.robot_positions[i*8 + j] = finger_pos
-                agent = Agent(name=f"agent_{i}_{j}", shape=Sphere(0.0075), u_multiplier=1, collide=False, color=Color.RED)
+                agent = Agent(name=f"agent_{i}_{j}", shape=Sphere(0.0075), u_range=0.03, collide=False, color=Color.RED)
                 world.add_agent(agent)
         
 
