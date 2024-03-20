@@ -90,18 +90,21 @@ class DeltaArraySimEnvironment():
                     'q_obs_space': {'dim': 6},
                     "max_agents"    :64,}
         self.hp_dict = {
-                "exp_name"    :args.name,
-                "data_dir"    :"./data/rl_data",
-                "tau"         :0.005,
-                "gamma"       :0.99,
-                "q_lr"        :1e-3,
-                "pi_lr"       :1e-3,
-                "alpha"       :0.2,
-                "replay_size" :500000,
-                'seed'        :69420,
-                'optim'       :'sgd',
-                "batch_size"  :self.args.bs,
+                "exp_name"    : args.name,
+                "data_dir"    : "./data/rl_data",
+                "tau"         : 0.005,
+                "gamma"       : 0.99,
+                "q_lr"        : 1e-3,
+                "pi_lr"       : 1e-3,
+                "alpha"       : 0.2,
+                "replay_size" : 500000,
+                'seed'        : 69420,
+                'optim'       : 'sgd',
+                'epsilon'     : 0.9,
+                "batch_size"  : self.args.bs,
                 "exploration_cutoff": self.args.expl,
+                "robot_frame" : self.args.robot_frame,
+                "infer_every" : 4000,
 
                 # Multi Agent Part Below:
                 'state_dim'     : 6,
@@ -110,7 +113,7 @@ class DeltaArraySimEnvironment():
                 "model_dim"     : 128,
                 "num_heads"     : 8,
                 "dim_ff"        : 64,
-                "n_layers_dict" :{'encoder': 3, 'actor': 3, 'critic': 3},
+                "n_layers_dict" : {'encoder': 3, 'actor': 3, 'critic': 3},
                 "dropout"       : 0,
                 "delta_array_size": [8,8],
                 "add_vs_data"   : self.args.add_vs_data,
@@ -253,6 +256,7 @@ if __name__ == "__main__":
     parser.add_argument("-bs", "--bs", type=int, default=256, help="Batch Size")
     parser.add_argument("-expl", "--expl", type=int, default=512, help="Exploration Cutoff")
     parser.add_argument("-algo", "--algo", type=str, default="MATSAC", help="RL Algorithm")
+    parser.add_argument("-rf", "--robot_frame", action="store_true", help="Robot Frame Yes or No")
     args = parser.parse_args()
 
     if args.vis_servo and not args.test:

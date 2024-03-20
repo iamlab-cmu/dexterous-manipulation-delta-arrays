@@ -52,7 +52,7 @@ class MATDQN:
             self.optimizer_critic = optim.Adam(filter(lambda p: p.requires_grad, self.tf.decoder_critic.parameters()), lr=hp_dict['q_lr'])
         elif self.hp_dict['optim']=="sgd":
             self.optimizer_critic = optim.SGD(filter(lambda p: p.requires_grad, self.tf.decoder_critic.parameters()), lr=hp_dict['q_lr'])
-        self.scheduler = CosineAnnealingWarmRestarts(self.optimizer_critic, T_0=20, T_mult=2, eta_min=1e-6)
+        self.scheduler = CosineAnnealingWarmRestarts(self.optimizer_critic, T_0=5, T_mult=2, eta_min=1e-5)
         
         self.q_loss = None
         # Set up model saving
