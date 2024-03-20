@@ -394,7 +394,9 @@ class DeltaArraySim:
         
         # self.ep_reward[env_idx] = -10*np.linalg.norm(delta_2d_pose)
 
-        self.ep_reward[env_idx] = gaussian_reward_shaping(abs(delta_2d_pose), 15, 4500, -0.01, 5)
+        if not self.hp_dict["dont_log"]:
+            wandb.log({"euclidean distances plot (debug only)":np.linalg.norm(delta_2d_pose)})
+        self.ep_reward[env_idx] = gaussian_reward_shaping(np.linalg.norm(delta_2d_pose), 15, 4500, -0.01, 5)
         # if np.linalg.norm(delta_2d_pose) < 0.002:
         #     self.ep_reward[env_idx] = 3
         # else:
@@ -561,7 +563,8 @@ class DeltaArraySim:
             elif t_step == (self.time_horizon-2):
                 self.compute_reward(env_idx, t_step)
                 # print(f"Reward: {self.ep_reward[env_idx]}")
-                wandb.log({"Inference Reward":self.ep_reward[env_idx]})
+                if not self.hp_dict["dont_log"]:
+                    wandb.log({"Inference Reward":self.ep_reward[env_idx]})
                 self.reset(env_idx)
                 self.current_episode += 1
             elif t_step == self.time_horizon - 1:
