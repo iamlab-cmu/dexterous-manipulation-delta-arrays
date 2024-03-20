@@ -16,7 +16,6 @@ import networkx as nx
 from PIL import Image
 from scipy.spatial.transform import Rotation as R
 np.set_printoptions(precision=4)
-import wandb
 
 import torch
 import torchvision.transforms as transforms
@@ -33,14 +32,14 @@ from isaacgym_utils.math_utils import RigidTransform_to_transform
 from isaacgym_utils.draw import draw_transforms, draw_contacts, draw_camera
 
 import utils.nn_helper as helper
-import utils.log_utils as log_utils
+# import utils.log_utils as log_utils
 import utils.rl_utils as rl_utils
 # import utils.SAC.sac as sac
 # import utils.SAC.reinforce as reinforce
 import utils.geometric_utils as geom_utils
 
 class DeltaArraySim:
-    def __init__(self, scene, cfg, obj, obj_name, img_embed_model, transform, agents, hp_dict, num_tips = [8,8], max_agents=64):
+    def __init__(self, scene, cfg, obj, obj_name, img_embed_model, transform, agents, hp_dict, num_tips = [8,8], max_agents=64, writer=None):
         """ Main Vars """
         self.scene = scene
         self.cfg = cfg
@@ -51,6 +50,7 @@ class DeltaArraySim:
         self.obj_name = obj_name
         self.max_agents = max_agents
         self.hp_dict = hp_dict
+        self.writer = writer
         
         # Introduce delta robot EE in the env
         for i in range(self.num_tips[0]):
@@ -361,7 +361,7 @@ class DeltaArraySim:
                 #     plt.gca().set_aspect('equal')
                 #     plt.show()
 
-    def gaussian_reward_shaping(x, ampl, width, center=0, vertical_shift=0):
+    def gaussian_reward_shaping(self, x, ampl, width, center=0, vertical_shift=0):
         return ampl * np.exp(-width * (x - center)**2) - vertical_shift
 
     def compute_reward(self, env_idx, t_step):
@@ -395,8 +395,9 @@ class DeltaArraySim:
         # self.ep_reward[env_idx] = -10*np.linalg.norm(delta_2d_pose)
 
         if not self.hp_dict["dont_log"]:
-            wandb.log({"euclidean distances plot (debug only)":np.linalg.norm(delta_2d_pose)})
-        self.ep_reward[env_idx] = gaussian_reward_shaping(np.linalg.norm(delta_2d_pose), 15, 4500, -0.01, 5)
+            # wandb.log({"euclidean distances plot (debug only)":np.linalg.norm(delta_2d_pose)})
+            self.writer.add_scalar("euclidean distances plot (debug only)", np.linalg.norm(delta_2d_pose), self.current_episode)
+        self.ep_reward[env_idx] = self.gaussian_reward_shaping(np.linalg.norm(delta_2d_pose), 15, 4500, -0.01, 5)
         # if np.linalg.norm(delta_2d_pose) < 0.002:
         #     self.ep_reward[env_idx] = 3
         # else:
@@ -414,8 +415,7 @@ class DeltaArraySim:
             for i in range(epoch):
                 self.agent.update(self.batch_size, self.current_episode)
 
-        if agent.ma_replay_buffer.size > self.batch_size:
-            self.log_data(env_idx, agent)
+        self.log_data(env_idx, agent)
 
         agent.ma_replay_buffer.store(self.init_state[env_idx], self.actions_rb[env_idx], self.pos[env_idx], self.ep_reward[env_idx], self.final_state[env_idx], True, self.n_idxs[env_idx])
         self.ep_reward[env_idx]
@@ -472,9 +472,10 @@ class DeltaArraySim:
         """ Store data about training progress in systematic data structures """
 
         if not self.hp_dict["dont_log"]:
-            wandb.log({"reward":self.ep_reward[env_idx]})
-            wandb.log({"Q loss":np.clip(self.agent.q_loss, 0, 100)})
-        # log_utils.log_data(agent.logger, self.ep_reward[env_idx], self.current_episode, self.start_time)
+            self.writer.add_scalar("reward", self.ep_reward[env_idx], self.current_episode)
+            self.writer.add_scalar("Q Loss", self.agent.q_loss, self.current_episode)
+            # wandb.log({"reward":self.ep_reward[env_idx]})
+            # wandb.log({"Q loss":np.clip(self.agent.q_loss, 0, 100)})
 
     def scale_epoch(self, x, A=100/np.log(100000), B=1/1000, C=1000):
         if x <= C:
@@ -483,32 +484,29 @@ class DeltaArraySim:
             return int(min(50, 1 + A * np.log(B * (x - C) + 1)))
     
     def inverse_dynamics(self, scene, env_idx, t_step, _):
+        if (self.current_episode%self.hp_dict['infer_every']) < 10:
+            self.test_learned_policy(scene, env_idx, t_step, _)
+            return
         t_step = t_step % self.time_horizon
 
         # if (t_step == 0) and (self.ep_len[env_idx] == 0):
         #     if self.current_episode < self.max_episodes:
         #     else:
         #         pass # Kill the pipeline somehow?
-        if self.current_episode%self.hp_dict['infer_every'] < 100:
-            self.test_learned_policy(scene, env_idx, t_step, _)
             
         if self.ep_len[env_idx]==0:
-            # Call the pretrained policy for all NN robots and set attractors
             if t_step == 0:
-                # self.start = time.time()
                 img = self.get_camera_image(env_idx)
                 _, self.goal_bd_pts[env_idx] = self.get_boundary_pts(img)
                 self.set_block_pose(env_idx) # Reset block to current initial pose
                 self.set_all_fingers_pose(env_idx, pos_high=True) # Set all fingers to high pose
                 self.set_attractor_target(env_idx, t_step, None, all_zeros=True) # Set all fingers to high pose
-                # print("Time to get image and set attractor: ", time.time() - self.start)
             elif t_step == 1:
                 self.env_step(env_idx, t_step, self.pretrained_agent) #Store Init Pose
             elif (t_step == 2) and self.dont_skip_episode:
                 self.set_attractor_target(env_idx, t_step, self.actions_grasp)
             elif (t_step == self.time_horizon-1) and self.dont_skip_episode:
                 self.ep_len[env_idx] = 1
-                # print("Time until grasp: ", time.time() - self.start)
             elif not self.dont_skip_episode:
                 self.ep_len[env_idx] = 0
                 self.reset(env_idx)
@@ -516,7 +514,6 @@ class DeltaArraySim:
         else:
             # Gen actions from new policy and set attractor until max episodes
             if t_step == 0:
-                # self.start = time.time()
                 if self.hp_dict["add_vs_data"] and (np.random.rand() <= self.hp_dict['ratio']):
                     self.vs_step_disc(env_idx, t_step)
                 else:
@@ -530,14 +527,12 @@ class DeltaArraySim:
             elif t_step == self.time_horizon - 1:
                 self.set_block_pose(env_idx, goal=True) # Set block to next goal pose & Store Goal Pose for both states
                 self.ep_len[env_idx] = 0
-                # print("Time until 2nd episode execution: ", time.time() - self.start)
             
     def test_learned_policy(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
         env_ptr = self.scene.env_ptrs[env_idx]
         
         if self.ep_len[env_idx]==0:
-            # Call the pretrained policy for all NN robots and set attractors
             if t_step == 0:
                 img = self.get_camera_image(env_idx)
                 _, self.goal_bd_pts[env_idx] = self.get_boundary_pts(img)
@@ -554,17 +549,16 @@ class DeltaArraySim:
                 self.ep_len[env_idx] = 0
                 self.reset(env_idx)
         
-        else:
-            # Gen actions from new policy and set attractor until max episodes            
+        else:         
             if t_step == 0:
                 self.env_step(env_idx, t_step, self.agent, test=True) # Only Store Actions from MARL Policy
             elif t_step == 2:
                 self.set_attractor_target(env_idx, t_step, self.actions)
             elif t_step == (self.time_horizon-2):
                 self.compute_reward(env_idx, t_step)
-                # print(f"Reward: {self.ep_reward[env_idx]}")
                 if not self.hp_dict["dont_log"]:
-                    wandb.log({"Inference Reward":self.ep_reward[env_idx]})
+                    self.writer.add_scalar('Inference Reward', self.ep_reward[env_idx], self.current_episode)
+                    # wandb.log({"Inference Reward":self.ep_reward[env_idx]})
                 self.reset(env_idx)
                 self.current_episode += 1
             elif t_step == self.time_horizon - 1:

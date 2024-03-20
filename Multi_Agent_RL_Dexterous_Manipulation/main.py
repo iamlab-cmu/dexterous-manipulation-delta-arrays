@@ -4,7 +4,6 @@ import sys
 import time
 from pathlib import Path
 import argparse
-import wandb
 from autolab_core import YamlConfig, RigidTransform
 from isaacgym import gymapi
 from isaacgym_utils.scene import GymScene
@@ -14,6 +13,7 @@ from isaacgym_utils.math_utils import RigidTransform_to_transform, rpy_to_quat
 from isaacgym_utils.draw import draw_transforms, draw_contacts, draw_camera
 
 import torch
+from torch.utils.tensorboard import SummaryWriter
 import torchvision.transforms as transforms
 from torchvision.models import resnet18
 from scipy.spatial.distance import cosine
@@ -125,9 +125,10 @@ class DeltaArraySimEnvironment():
         if self.train_or_test=="train":
             if not self.hp_dict["dont_log"]:
                 logger_kwargs = setup_logger_kwargs(self.hp_dict['exp_name'], 69420, data_dir=self.hp_dict['data_dir'])
-                wandb.init(project="MARL_Dexterous_Manipulation",
-                        config=self.hp_dict,
-                        name = self.hp_dict['exp_name'])
+                writer = SummaryWriter(log_dir=f"./tensorboard/{self.hp_dict['exp_name']}")
+                # wandb.init(project="MARL_Dexterous_Manipulation/",
+                #         config=self.hp_dict,
+                #         name = self.hp_dict['exp_name'])
 
         # self.agent = ddpg.DDPG(env_dict, self.hp_dict, logger_kwargs)
         # self.agent = reinforce.REINFORCE(env_dict, 3e-3)
@@ -144,7 +145,7 @@ class DeltaArraySimEnvironment():
             # self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/{args.name}_s69420/pyt_save/model.pt')
             self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/pyt_save/model.pt')
         
-        self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.obj_name, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
+        self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.obj_name, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'], writer=writer)
         
         
         self.cam = GymCamera(self.scene, cam_props = self.cfg['camera'])
@@ -250,7 +251,7 @@ if __name__ == "__main__":
     parser.add_argument("-vsd", "--vs_data", type=float, help="% of data to use for visual servoing")
     parser.add_argument("-n", "--name", type=str, default="HAKUNA", help="Expt Name")
     parser.add_argument("-on", "--obj_name", type=str, default="disc", help="Object Name in env.yaml")
-    parser.add_argument("-dontlog", "--dont_log", action="store_true", help="Don't Log to Wandb")
+    parser.add_argument("-dontlog", "--dont_log", action="store_true", help="Don't Log Experiment")
     parser.add_argument("-dev_sim", "--dev_sim", type=int, default=5, help="Device for Sim")
     parser.add_argument("-dev_rl", "--dev_rl", type=int, default=1, help="Device for RL")
     parser.add_argument("-bs", "--bs", type=int, default=256, help="Batch Size")

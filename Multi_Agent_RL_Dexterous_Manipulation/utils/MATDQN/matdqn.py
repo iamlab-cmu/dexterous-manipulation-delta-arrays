@@ -3,7 +3,6 @@ import matplotlib.pyplot as plt
 from copy import deepcopy
 import time
 import itertools
-import wandb
 
 import torch
 import torch.nn as nn
