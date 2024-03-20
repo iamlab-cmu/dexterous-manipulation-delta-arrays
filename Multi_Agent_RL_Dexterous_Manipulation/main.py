@@ -159,6 +159,7 @@ class DeltaArraySimEnvironment():
         self.fingers.cam_name = self.cam_name
 
         self.scene.setup_all_envs(self.setup_scene)
+        print(self.hp_dict)
         self.setup_objects()
 
     def setup_scene(self, scene, _):

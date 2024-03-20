@@ -403,8 +403,6 @@ class DeltaArraySim:
         # else:
         #     self.ep_reward[env_idx] = -np.mean((100*delta_2d_pose)**2)
 
-        # print(np.linalg.norm(delta_2d_pose))
-        return True
 
     def terminate(self, env_idx, t_step, agent):
         """ Update the replay buffer and reset the env """
@@ -415,7 +413,8 @@ class DeltaArraySim:
             for i in range(epoch):
                 self.agent.update(self.batch_size, self.current_episode)
 
-        self.log_data(env_idx, agent)
+        if self.current_episode > self.scene.n_envs:
+            self.log_data(env_idx, agent)
 
         agent.ma_replay_buffer.store(self.init_state[env_idx], self.actions_rb[env_idx], self.pos[env_idx], self.ep_reward[env_idx], self.final_state[env_idx], True, self.n_idxs[env_idx])
         self.ep_reward[env_idx]
@@ -470,10 +469,10 @@ class DeltaArraySim:
             
     def log_data(self, env_idx, agent):
         """ Store data about training progress in systematic data structures """
-
-        if not self.hp_dict["dont_log"]:
+        print(self.current_episode)
+        if (not self.hp_dict["dont_log"]) and (agent.q_loss is not None):
             self.writer.add_scalar("reward", self.ep_reward[env_idx], self.current_episode)
-            self.writer.add_scalar("Q Loss", self.agent.q_loss, self.current_episode)
+            self.writer.add_scalar("Q Loss", agent.q_loss, self.current_episode)
             # wandb.log({"reward":self.ep_reward[env_idx]})
             # wandb.log({"Q loss":np.clip(self.agent.q_loss, 0, 100)})
 
