@@ -129,7 +129,7 @@ class DeltaArraySimEnvironment():
             if not self.hp_dict["dont_log"]:
                 logger_kwargs = setup_logger_kwargs(self.hp_dict['exp_name'], 69420, data_dir=self.hp_dict['data_dir'])
                 # writer = SummaryWriter(log_dir=f"./tensorboard/{self.hp_dict['exp_name']}")
-                wandb.init(project="MARL_Dexterous_Manipulation/",
+                wandb.init(project="MARL_Dexterous_Manipulation",
                         config=self.hp_dict,
                         name = self.hp_dict['exp_name'])
 
