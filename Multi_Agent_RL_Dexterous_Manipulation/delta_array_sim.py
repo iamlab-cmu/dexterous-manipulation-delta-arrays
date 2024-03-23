@@ -395,9 +395,9 @@ class DeltaArraySim:
         # self.ep_reward[env_idx] = self.gaussian_reward_shaping(np.linalg.norm(delta_2d_pose), 15, 4500, -0.01, 5)
         loss = 100*np.linalg.norm(delta_2d_pose)
         if loss < 1:
-            self.ep_reward[env_idx] = 0.5  * loss**2
+            self.ep_reward[env_idx] = -0.5  * loss**2
         else:
-            self.ep_reward[env_idx] = loss - 0.5
+            self.ep_reward[env_idx] = -loss + 0.5
 
 
         # if np.linalg.norm(delta_2d_pose) < 0.01:
