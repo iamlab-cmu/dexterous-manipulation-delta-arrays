@@ -106,6 +106,7 @@ class DeltaArraySimEnvironment():
                 "exploration_cutoff": self.args.expl,
                 "robot_frame" : self.args.robot_frame,
                 "infer_every" : 4000,
+                "eta_min"     : 1e-6,
 
                 # Multi Agent Part Below:
                 'state_dim'     : 6,
