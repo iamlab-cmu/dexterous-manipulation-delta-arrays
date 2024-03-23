@@ -15,6 +15,7 @@ import pandas as pd
 import networkx as nx
 from PIL import Image
 from scipy.spatial.transform import Rotation as R
+import wandb
 np.set_printoptions(precision=4)
 
 import torch
@@ -39,7 +40,7 @@ import utils.rl_utils as rl_utils
 import utils.geometric_utils as geom_utils
 
 class DeltaArraySim:
-    def __init__(self, scene, cfg, obj, obj_name, img_embed_model, transform, agents, hp_dict, num_tips = [8,8], max_agents=64, writer=None):
+    def __init__(self, scene, cfg, obj, obj_name, img_embed_model, transform, agents, hp_dict, num_tips = [8,8], max_agents=64):
         """ Main Vars """
         self.scene = scene
         self.cfg = cfg
@@ -50,7 +51,6 @@ class DeltaArraySim:
         self.obj_name = obj_name
         self.max_agents = max_agents
         self.hp_dict = hp_dict
-        self.writer = writer
         
         # Introduce delta robot EE in the env
         for i in range(self.num_tips[0]):
@@ -391,15 +391,17 @@ class DeltaArraySim:
         # rot_dif = abs(yaw - self.goal_pose[env_idx, 2])
         # rot_dif = rot_dif if rot_dif < np.pi else 2*np.pi - rot_dif
         # delta_2d_pose = [T[0] - self.goal_pose[env_idx, 0], T[1] - self.goal_pose[env_idx, 1], rot_dif]
-        
-        # self.ep_reward[env_idx] = -10*np.linalg.norm(delta_2d_pose)
 
-        if not self.hp_dict["dont_log"]:
-            # wandb.log({"euclidean distances plot (debug only)":np.linalg.norm(delta_2d_pose)})
-            self.writer.add_scalar("euclidean distances plot (debug only)", np.linalg.norm(delta_2d_pose), self.current_episode)
-        self.ep_reward[env_idx] = self.gaussian_reward_shaping(np.linalg.norm(delta_2d_pose), 15, 4500, -0.01, 5)
-        # if np.linalg.norm(delta_2d_pose) < 0.002:
-        #     self.ep_reward[env_idx] = 3
+        # self.ep_reward[env_idx] = self.gaussian_reward_shaping(np.linalg.norm(delta_2d_pose), 15, 4500, -0.01, 5)
+        loss = 100*np.linalg.norm(delta_2d_pose)
+        if loss < 1:
+            self.ep_reward[env_idx] = 0.5  * loss**2
+        else:
+            self.ep_reward[env_idx] = loss - 0.5
+
+
+        # if np.linalg.norm(delta_2d_pose) < 0.01:
+        #     self.ep_reward[env_idx] = -np.mean((100*delta_2d_pose)**2)
         # else:
         #     self.ep_reward[env_idx] = -np.mean((100*delta_2d_pose)**2)
 
@@ -469,12 +471,10 @@ class DeltaArraySim:
             
     def log_data(self, env_idx, agent):
         """ Store data about training progress in systematic data structures """
-        print(self.current_episode)
         if (not self.hp_dict["dont_log"]) and (agent.q_loss is not None):
-            self.writer.add_scalar("reward", self.ep_reward[env_idx], self.current_episode)
-            self.writer.add_scalar("Q Loss", agent.q_loss, self.current_episode)
-            # wandb.log({"reward":self.ep_reward[env_idx]})
-            # wandb.log({"Q loss":np.clip(self.agent.q_loss, 0, 100)})
+            wandb.log({"Delta Goal": np.linalg.norm(self.goal_pose[env_idx] - self.init_pose[env_idx])})
+            wandb.log({"Reward":self.ep_reward[env_idx]})
+            wandb.log({"Q loss":np.clip(self.agent.q_loss, 0, 100)})
 
     def scale_epoch(self, x, A=100/np.log(100000), B=1/1000, C=1000):
         if x <= C:
@@ -556,8 +556,7 @@ class DeltaArraySim:
             elif t_step == (self.time_horizon-2):
                 self.compute_reward(env_idx, t_step)
                 if not self.hp_dict["dont_log"]:
-                    self.writer.add_scalar('Inference Reward', self.ep_reward[env_idx], self.current_episode)
-                    # wandb.log({"Inference Reward":self.ep_reward[env_idx]})
+                    wandb.log({"Inference Reward":self.ep_reward[env_idx]})
                 self.reset(env_idx)
                 self.current_episode += 1
             elif t_step == self.time_horizon - 1:
@@ -711,7 +710,7 @@ class DeltaArraySim:
             elif t_step == (self.time_horizon-3):
                 # Update policy
                 self.compute_reward(env_idx, t_step)
-                print(f"Reward: {self.ep_reward[env_idx]}")
+                # print(f"Reward: {self.ep_reward[env_idx]}")
                 
                 if 0 < self.current_episode < self.temp_cutoff_1:
                     self.vs_rews.append(self.ep_reward[env_idx])

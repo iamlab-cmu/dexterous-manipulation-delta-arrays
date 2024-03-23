@@ -11,6 +11,7 @@ from isaacgym_utils.assets import GymBoxAsset, GymCapsuleAsset, GymURDFAsset
 from isaacgym_utils.camera import GymCamera
 from isaacgym_utils.math_utils import RigidTransform_to_transform, rpy_to_quat
 from isaacgym_utils.draw import draw_transforms, draw_contacts, draw_camera
+import wandb
 
 import torch
 from torch.utils.tensorboard import SummaryWriter
@@ -115,6 +116,7 @@ class DeltaArraySimEnvironment():
                 "dim_ff"        : 64,
                 "n_layers_dict" : {'encoder': 3, 'actor': 3, 'critic': 3},
                 "dropout"       : 0,
+                "max_grad_norm" : 1.0,
                 "delta_array_size": [8,8],
                 "add_vs_data"   : self.args.add_vs_data,
                 "ratio"         : self.args.vs_data,
@@ -125,10 +127,10 @@ class DeltaArraySimEnvironment():
         if self.train_or_test=="train":
             if not self.hp_dict["dont_log"]:
                 logger_kwargs = setup_logger_kwargs(self.hp_dict['exp_name'], 69420, data_dir=self.hp_dict['data_dir'])
-                writer = SummaryWriter(log_dir=f"./tensorboard/{self.hp_dict['exp_name']}")
-                # wandb.init(project="MARL_Dexterous_Manipulation/",
-                #         config=self.hp_dict,
-                #         name = self.hp_dict['exp_name'])
+                # writer = SummaryWriter(log_dir=f"./tensorboard/{self.hp_dict['exp_name']}")
+                wandb.init(project="MARL_Dexterous_Manipulation/",
+                        config=self.hp_dict,
+                        name = self.hp_dict['exp_name'])
 
         # self.agent = ddpg.DDPG(env_dict, self.hp_dict, logger_kwargs)
         # self.agent = reinforce.REINFORCE(env_dict, 3e-3)
@@ -145,7 +147,7 @@ class DeltaArraySimEnvironment():
             # self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/{args.name}_s69420/pyt_save/model.pt')
             self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/pyt_save/model.pt')
         
-        self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.obj_name, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'], writer=writer)
+        self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.obj_name, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
         
         
         self.cam = GymCamera(self.scene, cam_props = self.cfg['camera'])

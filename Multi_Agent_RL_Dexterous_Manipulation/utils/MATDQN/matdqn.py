@@ -72,6 +72,7 @@ class MATDQN:
 
         q_loss = F.mse_loss(q, q_next)
         q_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.tf.decoder_critic.parameters(), self.hp_dict['max_grad_norm'])
         self.optimizer_critic.step()
 
         if not self.hp_dict["dont_log"]:
