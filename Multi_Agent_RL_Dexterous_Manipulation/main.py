@@ -95,8 +95,9 @@ class DeltaArraySimEnvironment():
                 "data_dir"    : "./data/rl_data",
                 "tau"         : 0.005,
                 "gamma"       : 0.99,
-                "q_lr"        : 1e-3,
-                "pi_lr"       : 1e-3,
+                "q_lr"        : 1e-2,
+                "pi_lr"       : 1e-2,
+                "eta_min"     : 1e-5,
                 "alpha"       : 0.2,
                 "replay_size" : 500000,
                 'seed'        : 69420,
@@ -106,7 +107,6 @@ class DeltaArraySimEnvironment():
                 "exploration_cutoff": self.args.expl,
                 "robot_frame" : self.args.robot_frame,
                 "infer_every" : 4000,
-                "eta_min"     : 1e-6,
 
                 # Multi Agent Part Below:
                 'state_dim'     : 6,
