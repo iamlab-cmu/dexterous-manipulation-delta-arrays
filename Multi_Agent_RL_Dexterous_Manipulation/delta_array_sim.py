@@ -1,4 +1,5 @@
 import numpy as np
+import signal
 import sys
 import time
 import pickle as pkl
@@ -40,7 +41,7 @@ import utils.rl_utils as rl_utils
 import utils.geometric_utils as geom_utils
 
 class DeltaArraySim:
-    def __init__(self, scene, cfg, obj, obj_name, img_embed_model, transform, agents, hp_dict, num_tips = [8,8], max_agents=64):
+    def __init__(self, scene, cfg, obj, table, obj_name, img_embed_model, transform, agents, hp_dict, num_tips = [8,8], max_agents=64):
         """ Main Vars """
         self.scene = scene
         self.cfg = cfg
@@ -48,6 +49,7 @@ class DeltaArraySim:
         self.fingertips = np.zeros((8,8)).tolist()
         self.cam = 0
         self.object = obj
+        self.table = table
         self.obj_name = obj_name
         self.max_agents = max_agents
         self.hp_dict = hp_dict
@@ -117,7 +119,7 @@ class DeltaArraySim:
 
         self.goal_yaw_deg = np.zeros((self.scene.n_envs))
         self.n_idxs = np.zeros((self.scene.n_envs),dtype=np.int8)
-        self.init_pose = np.zeros((self.scene.n_envs, 3))
+        self.init_pose = np.zeros((self.scene.n_envs, 4))
         self.goal_pose = np.zeros((self.scene.n_envs, 3))
         self.state_dim = hp_dict['state_dim']
         self.init_state = np.zeros((self.scene.n_envs, self.max_agents, self.state_dim))
@@ -153,6 +155,10 @@ class DeltaArraySim:
         #     self.traj.extend(side_points)
         # self.traj.append([0, 0])
         # self.traj = np.array(self.traj[:num_steps])
+
+        self.temp_var = {'initial_l2_dist': [],
+                        'reward': [],
+                        'z_dist': []}
 
     def set_attractor_handles(self, env_idx):
         """ Creates an attractor handle for each fingertip """
@@ -242,7 +248,7 @@ class DeltaArraySim:
             com = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
             T = (com.p.x + np.random.uniform(-0.02, 0.02), com.p.y + np.random.uniform(-0.02, 0.02))
             # T = (com.p.x - 0.02, com.p.y + 0)
-            self.init_pose[env_idx] = np.array([T[0], T[1], yaw])
+            self.init_pose[env_idx] = np.array([T[0], T[1], yaw, com.p.z])
 
         block_p = gymapi.Vec3(*T, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
         self.object.set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p, r=object_r)])
@@ -305,7 +311,7 @@ class DeltaArraySim:
                 _, self.nn_bd_pts[env_idx] = self.nn_helper.get_min_dist(bd_cluster_centers, self.active_idxs[env_idx], self.actions[env_idx])
                 self.init_state[env_idx, :self.n_idxs[env_idx], :2] = [self.convert_pix_2_world(bd_pts) for bd_pts in self.nn_bd_pts[env_idx]]
 
-                delta = self.goal_pose[env_idx] - self.init_pose[env_idx]
+                delta = self.goal_pose[env_idx] - self.init_pose[env_idx][:3]
                 com = np.array(self.convert_pix_2_world(np.mean(boundary_pts, axis=0)))
                 nn_bd_pts_world = [self.convert_pix_2_world(bd_pts) for bd_pts in self.nn_bd_pts[env_idx]]
                 nn_bd_pts_world = geom_utils.transform_pts_wrt_com(nn_bd_pts_world, delta, com)
@@ -417,6 +423,7 @@ class DeltaArraySim:
 
         if self.current_episode > self.scene.n_envs:
             self.log_data(env_idx, agent)
+        # com = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
 
         agent.ma_replay_buffer.store(self.init_state[env_idx], self.actions_rb[env_idx], self.pos[env_idx], self.ep_reward[env_idx], self.final_state[env_idx], True, self.n_idxs[env_idx])
         self.ep_reward[env_idx]
@@ -426,6 +433,7 @@ class DeltaArraySim:
 
     def reset(self, env_idx):
         """ Normal reset OR Alt-terminate state when block degenerately collides with robot. This is due to an artifact of the simulation. """
+        self.table.set_rb_transforms(env_idx, 'table', [gymapi.Transform(p=gymapi.Vec3(0,0,0.5))])
         self.dont_skip_episode = True
         self.active_idxs[env_idx].clear()
         self.set_all_fingers_pose(env_idx, pos_high=True)
@@ -472,7 +480,7 @@ class DeltaArraySim:
     def log_data(self, env_idx, agent):
         """ Store data about training progress in systematic data structures """
         if (not self.hp_dict["dont_log"]) and (agent.q_loss is not None):
-            wandb.log({"Delta Goal": np.linalg.norm(self.goal_pose[env_idx] - self.init_pose[env_idx])})
+            wandb.log({"Delta Goal": np.linalg.norm(self.goal_pose[env_idx][:2] - self.init_pose[env_idx][:2])})
             wandb.log({"Reward":self.ep_reward[env_idx]})
             wandb.log({"Q loss":np.clip(self.agent.q_loss, 0, 100)})
 
@@ -557,6 +565,17 @@ class DeltaArraySim:
                 self.compute_reward(env_idx, t_step)
                 if not self.hp_dict["dont_log"]:
                     wandb.log({"Inference Reward":self.ep_reward[env_idx]})
+                
+                if self.hp_dict["print_summary"]:
+                    # print(f"Reward: {self.ep_reward[env_idx]}")
+                    
+                    com = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
+                    self.temp_var['z_dist'].append(np.linalg.norm(self.init_pose[env_idx][3] - com.p.z))
+                    self.temp_var['initial_l2_dist'].append(np.linalg.norm(self.goal_pose[env_idx][:2] - self.init_pose[env_idx][:2]))
+                    self.temp_var['reward'].append(self.ep_reward[env_idx])
+                    if self.current_episode%100 == 0:
+                        pkl.dump(self.temp_var, open(f"./init_vs_reward.pkl", "wb"))
+
                 self.reset(env_idx)
                 self.current_episode += 1
             elif t_step == self.time_horizon - 1:

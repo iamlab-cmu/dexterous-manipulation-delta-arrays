@@ -122,6 +122,7 @@ class DeltaArraySimEnvironment():
                 "add_vs_data"   : self.args.add_vs_data,
                 "ratio"         : self.args.vs_data,
                 "dont_log"      : self.args.dont_log,
+                'print_summary' : self.args.print_summary,
             }
         
         logger_kwargs = {}
@@ -148,7 +149,7 @@ class DeltaArraySimEnvironment():
             # self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/{args.name}_s69420/pyt_save/model.pt')
             self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/pyt_save/model.pt')
         
-        self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.obj_name, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
+        self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.table, self.obj_name, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
         
         
         self.cam = GymCamera(self.scene, cam_props = self.cfg['camera'])
@@ -262,6 +263,7 @@ if __name__ == "__main__":
     parser.add_argument("-expl", "--expl", type=int, default=512, help="Exploration Cutoff")
     parser.add_argument("-algo", "--algo", type=str, default="MATSAC", help="RL Algorithm")
     parser.add_argument("-rf", "--robot_frame", action="store_true", help="Robot Frame Yes or No")
+    parser.add_argument("-print", "--print_summary", action="store_true", help="Print Summary and Store in Pickle File")
     args = parser.parse_args()
 
     if args.vis_servo and not args.test:
