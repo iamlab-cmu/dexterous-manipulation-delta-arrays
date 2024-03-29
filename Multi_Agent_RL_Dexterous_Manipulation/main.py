@@ -264,6 +264,9 @@ if __name__ == "__main__":
     parser.add_argument("-algo", "--algo", type=str, default="MATSAC", help="RL Algorithm")
     parser.add_argument("-rf", "--robot_frame", action="store_true", help="Robot Frame Yes or No")
     parser.add_argument("-print", "--print_summary", action="store_true", help="Print Summary and Store in Pickle File")
+    parser.add_argument("-pilr", "--pilr", type=float, default=1e-2, help="% of data to use for visual servoing")
+    parser.add_argument("-qlr", "--qlr", type=float, default=1e-2, help="% of data to use for visual servoing")
+    parser.add_argument("-etamin", "--etamin", type=float, default=1e-5, help="% of data to use for visual servoing")
     args = parser.parse_args()
 
     if args.vis_servo and not args.test:
