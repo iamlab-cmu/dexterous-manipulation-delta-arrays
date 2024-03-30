@@ -102,8 +102,8 @@ class MATDQN:
         if num_agents < 2:
             return np.zeros((1, 2))
 
-        x_bounds = np.array([[-6.0, 6.0]] * num_agents)  # Shape: (num_agents, 2)
-        y_bounds = np.array([[-6.0, 6.0]] * num_agents)  # Shape: (num_agents, 2)
+        x_bounds = np.array([[-0.06, 0.06]] * num_agents)  # Shape: (num_agents, 2)
+        y_bounds = np.array([[-0.06, 0.06]] * num_agents)  # Shape: (num_agents, 2)
 
         for iteration in range(iters):
             x_samples = np.random.uniform(x_bounds[:, 0][:, np.newaxis], x_bounds[:, 1][:, np.newaxis], (n_samples, num_agents, 1))

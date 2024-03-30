@@ -573,7 +573,7 @@ class DeltaArraySim:
                     self.temp_var['z_dist'].append(np.linalg.norm(self.init_pose[env_idx][3] - com.p.z))
                     self.temp_var['initial_l2_dist'].append(np.linalg.norm(self.goal_pose[env_idx][:2] - self.init_pose[env_idx][:2]))
                     self.temp_var['reward'].append(self.ep_reward[env_idx])
-                    if self.current_episode%100 == 0:
+                    if self.current_episode%10 == 0:
                         pkl.dump(self.temp_var, open(f"./init_vs_reward.pkl", "wb"))
 
                 self.reset(env_idx)
