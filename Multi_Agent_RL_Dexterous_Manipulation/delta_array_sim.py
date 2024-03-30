@@ -564,7 +564,7 @@ class DeltaArraySim:
                 self.ep_len[env_idx] = 0
                 self.reset(env_idx)
             else:
-                self.video_frames[self.infer_iter, self.ep_len*(self.time_horizon-4) + t_step-3] = self.get_scene_image(env_idx)
+                self.video_frames[self.infer_iter, int((self.time_horizon-4)*self.ep_len[env_idx] + t_step-3)] = self.get_scene_image(env_idx)
         
         else:         
             if t_step == 0:
@@ -579,9 +579,9 @@ class DeltaArraySim:
 
                 if self.hp_dict['save_videos']:
                     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-                    out = cv2.VideoWriter(f'./data/rl_data/{self.hp_dict["exp_name"]}/videos/{time.ctime()}.mp4', fourcc, 30, (640, 480))
+                    out = cv2.VideoWriter(f'./data/rl_data/{self.hp_dict["exp_name"]}/videos/{time.ctime()}.mp4', fourcc, 100, (640, 480))
                     for image in self.video_frames[self.infer_iter]:
-                        out.write(image)
+                        out.write(image.astype(np.uint8))
                     out.release()
                 
                 if self.hp_dict["print_summary"]:
@@ -600,7 +600,7 @@ class DeltaArraySim:
                 self.set_block_pose(env_idx, goal=True) # Set block to next goal pose & Store Goal Pose for both states
                 self.ep_len[env_idx] = 0
             else:
-                self.video_frames[self.infer_iter, self.ep_len*(self.time_horizon-4) + t_step-2] = self.get_scene_image(env_idx)
+                self.video_frames[self.infer_iter, int((self.time_horizon-4)*self.ep_len[env_idx] + t_step-2)] = self.get_scene_image(env_idx)
 
     def vs_step(self, env_idx, t_step):
         
