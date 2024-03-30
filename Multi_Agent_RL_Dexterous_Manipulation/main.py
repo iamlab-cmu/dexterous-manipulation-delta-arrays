@@ -109,6 +109,7 @@ class DeltaArraySimEnvironment():
                 "robot_frame"       : self.args.robot_frame,
                 "infer_every"       : 4000,
                 "inference_length"  : 10,
+                'save_videos'       : args.save_vid,
 
                 # Multi Agent Part Below:
                 'state_dim'         : 6,
@@ -269,6 +270,7 @@ if __name__ == "__main__":
     parser.add_argument("-pilr", "--pilr", type=float, default=1e-2, help="% of data to use for visual servoing")
     parser.add_argument("-qlr", "--qlr", type=float, default=1e-2, help="% of data to use for visual servoing")
     parser.add_argument("-etamin", "--etamin", type=float, default=1e-5, help="% of data to use for visual servoing")
+    parser.add_argument("-savevid", "--save_vid", action="store_true", help="Save Videos at inference")
     args = parser.parse_args()
 
     if args.vis_servo and not args.test:

@@ -576,6 +576,8 @@ class DeltaArraySim:
 
                 if not self.hp_dict["dont_log"]:
                     wandb.log({"Inference Reward":self.ep_reward[env_idx]})
+
+                if self.hp_dict['save_videos']:
                     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
                     out = cv2.VideoWriter(f'./data/rl_data/{self.hp_dict["exp_name"]}/videos/{time.ctime()}.mp4', fourcc, 30, (640, 480))
                     for image in self.video_frames[self.infer_iter]:
