@@ -498,58 +498,56 @@ class DeltaArraySim:
             return int(min(50, 1 + A * np.log(B * (x - C) + 1)))
     
     def inverse_dynamics(self, scene, env_idx, t_step, _):
-        # self.infer_iter = self.current_episode%self.hp_dict['infer_every']
-        # if self.infer_iter < self.hp_dict['inference_length']:
-        #     self.test_learned_policy(scene, env_idx, t_step, _)
-        # else:
-        t_step = t_step % self.time_horizon
-
-        # if (t_step == 0) and (self.ep_len[env_idx] == 0):
-        #     if self.current_episode < self.max_episodes:
-        #     else:
-        #         pass # Kill the pipeline somehow?
-            
-        if self.ep_len[env_idx]==0:
-            if t_step == 0:
-                img = self.get_camera_image(env_idx)
-                _, self.goal_bd_pts[env_idx] = self.get_boundary_pts(img)
-                self.set_block_pose(env_idx) # Reset block to current initial pose
-                self.set_all_fingers_pose(env_idx, pos_high=True) # Set all fingers to high pose
-                self.set_attractor_target(env_idx, t_step, None, all_zeros=True) # Set all fingers to high pose
-            elif t_step == 1:
-                self.env_step(env_idx, t_step, self.pretrained_agent) #Store Init Pose
-            elif (t_step == 2) and self.dont_skip_episode:
-                self.set_attractor_target(env_idx, t_step, self.actions_grasp)
-            elif (t_step == self.time_horizon-1) and self.dont_skip_episode:
-                self.ep_len[env_idx] = 1
-            elif not self.dont_skip_episode:
-                self.ep_len[env_idx] = 0
-                self.reset(env_idx)
-
+        self.infer_iter = self.current_episode%self.hp_dict['infer_every']
+        if self.infer_iter < self.hp_dict['inference_length']:
+            self.test_learned_policy(scene, env_idx, t_step, _)
         else:
-            # Gen actions from new policy and set attractor until max episodes
-            if t_step == 0:
-                if self.hp_dict["add_vs_data"] and (np.random.rand() <= self.hp_dict['ratio']):
-                    self.vs_step_disc(env_idx, t_step)
-                else:
-                    self.env_step(env_idx, t_step, self.agent)
-            elif t_step == 2:
-                self.set_attractor_target(env_idx, t_step, self.actions)
-            elif t_step == (self.time_horizon-2):
-                self.terminate(env_idx, t_step, self.agent)
+            t_step = t_step % self.time_horizon
 
-                self.current_episode += 1
-            elif t_step == self.time_horizon - 1:
-                self.set_block_pose(env_idx, goal=True) # Set block to next goal pose & Store Goal Pose for both states
-                self.ep_len[env_idx] = 0
+            # if (t_step == 0) and (self.ep_len[env_idx] == 0):
+            #     if self.current_episode < self.max_episodes:
+            #     else:
+            #         pass # Kill the pipeline somehow?
+                
+            if self.ep_len[env_idx]==0:
+                if t_step == 0:
+                    img = self.get_camera_image(env_idx)
+                    _, self.goal_bd_pts[env_idx] = self.get_boundary_pts(img)
+                    self.set_block_pose(env_idx) # Reset block to current initial pose
+                    self.set_all_fingers_pose(env_idx, pos_high=True) # Set all fingers to high pose
+                    self.set_attractor_target(env_idx, t_step, None, all_zeros=True) # Set all fingers to high pose
+                elif t_step == 1:
+                    self.env_step(env_idx, t_step, self.pretrained_agent) #Store Init Pose
+                elif (t_step == 2) and self.dont_skip_episode:
+                    self.set_attractor_target(env_idx, t_step, self.actions_grasp)
+                elif (t_step == self.time_horizon-1) and self.dont_skip_episode:
+                    self.ep_len[env_idx] = 1
+                elif not self.dont_skip_episode:
+                    self.ep_len[env_idx] = 0
+                    self.reset(env_idx)
+
+            else:
+                # Gen actions from new policy and set attractor until max episodes
+                if t_step == 0:
+                    if self.hp_dict["add_vs_data"] and (np.random.rand() <= self.hp_dict['ratio']):
+                        self.vs_step_disc(env_idx, t_step)
+                    else:
+                        self.env_step(env_idx, t_step, self.agent)
+                elif t_step == 2:
+                    self.set_attractor_target(env_idx, t_step, self.actions)
+                elif t_step == (self.time_horizon-2):
+                    self.terminate(env_idx, t_step, self.agent)
+
+                    self.current_episode += 1
+                elif t_step == self.time_horizon - 1:
+                    self.set_block_pose(env_idx, goal=True) # Set block to next goal pose & Store Goal Pose for both states
+                    self.ep_len[env_idx] = 0
             
     def test_learned_policy(self, scene, env_idx, t_step, _):
-        """ TODO: This function is kinda jank rn.. Find ways to run it on a seaprate thread to record videos """
         t_step = t_step % self.time_horizon
         env_ptr = self.scene.env_ptrs[env_idx]
         
         if self.ep_len[env_idx]==0:
-            print("HAKUNA")
             if t_step == 0:
                 img = self.get_camera_image(env_idx)
                 _, self.goal_bd_pts[env_idx] = self.get_boundary_pts(img)
@@ -566,12 +564,9 @@ class DeltaArraySim:
                 self.ep_len[env_idx] = 0
                 self.reset(env_idx)
             # else:
-            #     now = time.time()
             #     self.video_frames[self.infer_iter, int((self.time_horizon-4)*self.ep_len[env_idx] + t_step-3)] = self.get_scene_image(env_idx)
-            #     print(time.time() - now)
         
-        else:
-            print("MATATA")
+        else:         
             if t_step == 0:
                 self.env_step(env_idx, t_step, self.agent, test=True) # Only Store Actions from MARL Policy
             elif t_step == 1:
@@ -582,12 +577,12 @@ class DeltaArraySim:
                 if not self.hp_dict["dont_log"]:
                     wandb.log({"Inference Reward":self.ep_reward[env_idx]})
 
-                if self.hp_dict['save_videos']:
-                    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-                    out = cv2.VideoWriter(f'./data/rl_data/{self.hp_dict["exp_name"]}/videos/{time.ctime()}.mp4', fourcc, 100, (640, 480))
-                    for image in self.video_frames[self.infer_iter]:
-                        out.write(image.astype(np.uint8))
-                    out.release()
+                # if self.hp_dict['save_videos']:
+                #     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                #     out = cv2.VideoWriter(f'./data/rl_data/{self.hp_dict["exp_name"]}/videos/{time.ctime()}.mp4', fourcc, 100, (640, 480))
+                #     for image in self.video_frames[self.infer_iter]:
+                #         out.write(image.astype(np.uint8))
+                #     out.release()
                 
                 if self.hp_dict["print_summary"]:
                     # print(f"Reward: {self.ep_reward[env_idx]}")
