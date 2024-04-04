@@ -100,6 +100,7 @@ class MATSAC:
         pi_loss = (self.hp_dict['alpha'] * logp_pi - q_pi).mean()
 
         pi_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.tf.decoder_critic.parameters(), self.hp_dict['max_grad_norm'])
         self.optimizer_actor.step()
 
         if not self.hp_dict["dont_log"]:
