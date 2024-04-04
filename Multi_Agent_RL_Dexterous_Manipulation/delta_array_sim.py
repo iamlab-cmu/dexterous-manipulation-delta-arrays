@@ -129,7 +129,7 @@ class DeltaArraySim:
         self.actions_grasp = np.zeros((self.scene.n_envs, self.max_agents, 2))
         self.act_grasp_pix = np.zeros((self.scene.n_envs, self.max_agents, 2))
         self.actions = np.zeros((self.scene.n_envs, self.max_agents, 2))
-        self.actions_rb = np.zeros((self.scene.n_envs, self.max_agents, 2))
+        # self.actions_rb = np.zeros((self.scene.n_envs, self.max_agents, 2))
         self.pos = np.zeros((self.scene.n_envs, self.max_agents, 1))
 
         # self.ep_rewards = []
@@ -142,6 +142,9 @@ class DeltaArraySim:
         self.temp_cutoff_2 = 2*self.temp_cutoff_1
         self.vs_rews = []
         self.rand_rews = []
+
+        """ Debugging and Visualization Vars """
+        self.video_frames = np.zeros((self.hp_dict['inference_length'], (self.time_horizon - 4)*2, 480, 640, 3))
 
         # Traj testing code for GFT debugging
         # self.og_gft = None
@@ -257,7 +260,9 @@ class DeltaArraySim:
         """ Render a camera image """
         self.scene.render_cameras()
         frames = self.cam.frames(env_idx, self.cam_name)
-        self.current_scene_frame[env_idx] = frames
+        # self.current_scene_frame[env_idx] = frames['color'].data.astype(np.uint8)
+        bgr_image = cv2.cvtColor(frames['color'].data.astype(np.uint8), cv2.COLOR_RGB2BGR)
+        return cv2.resize(bgr_image, (640, 480), interpolation=cv2.INTER_AREA)
 
     def get_camera_image(self, env_idx):
         self.scene.render_cameras()
@@ -425,7 +430,7 @@ class DeltaArraySim:
             self.log_data(env_idx, agent)
         # com = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
 
-        agent.ma_replay_buffer.store(self.init_state[env_idx], self.actions_rb[env_idx], self.pos[env_idx], self.ep_reward[env_idx], self.final_state[env_idx], True, self.n_idxs[env_idx])
+        agent.ma_replay_buffer.store(self.init_state[env_idx], self.actions[env_idx], self.pos[env_idx], self.ep_reward[env_idx], self.final_state[env_idx], True, self.n_idxs[env_idx])
         self.ep_reward[env_idx]
         self.reset(env_idx)
         if (self.current_episode%5000)==0:
@@ -441,7 +446,7 @@ class DeltaArraySim:
         self.init_state[env_idx] = np.zeros((self.max_agents, self.state_dim))
         self.final_state[env_idx] = np.zeros((self.max_agents, self.state_dim))
         self.actions[env_idx] = np.zeros((self.max_agents, 2))
-        self.actions_rb[env_idx] = np.zeros((self.max_agents, 2))
+        # self.actions_rb[env_idx] = np.zeros((self.max_agents, 2))
         self.pos[env_idx] = np.zeros((self.max_agents, 1))
 
     def env_step(self, env_idx, t_step, agent, test = False):
@@ -459,13 +464,15 @@ class DeltaArraySim:
 
         elif (np.random.rand() <= self.hp_dict['epsilon']) or test:
             self.pos[env_idx, :self.n_idxs[env_idx], 0] = np.array([i[0]*8+i[1] for i in self.active_idxs[env_idx]]) #.reshape((-1,))
-            self.actions_rb[env_idx, :self.n_idxs[env_idx]] = agent.get_actions(self.init_state[env_idx, :self.n_idxs[env_idx]], self.pos[env_idx, :self.n_idxs[env_idx]], deterministic=test)
-            self.actions[env_idx, :self.n_idxs[env_idx]] = self.actions_grasp[env_idx][:self.n_idxs[env_idx]] + self.actions_rb[env_idx, :self.n_idxs[env_idx]]
-            self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(self.actions[env_idx, :self.n_idxs[env_idx]], -0.03, 0.03)
+            # self.actions_rb[env_idx, :self.n_idxs[env_idx]] = agent.get_actions(self.init_state[env_idx, :self.n_idxs[env_idx]], self.pos[env_idx, :self.n_idxs[env_idx]], deterministic=test)
+            # self.actions[env_idx, :self.n_idxs[env_idx]] = self.actions_grasp[env_idx][:self.n_idxs[env_idx]] + self.actions_rb[env_idx, :self.n_idxs[env_idx]]
+            # self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(self.actions[env_idx, :self.n_idxs[env_idx]], -0.03, 0.03)
+            self.actions[env_idx, :self.n_idxs[env_idx]] = agent.get_actions(self.init_state[env_idx, :self.n_idxs[env_idx]], self.pos[env_idx, :self.n_idxs[env_idx]], deterministic=test)
         else:
-            self.actions_rb[env_idx, :self.n_idxs[env_idx]] = np.random.uniform(-0.06, 0.06, size=(self.n_idxs[env_idx], 2))
-            self.actions[env_idx, :self.n_idxs[env_idx]] = self.actions_grasp[env_idx][:self.n_idxs[env_idx]] + self.actions_rb[env_idx, :self.n_idxs[env_idx]]
-            self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(self.actions[env_idx, :self.n_idxs[env_idx]], -0.03, 0.03)
+            # self.actions_rb[env_idx, :self.n_idxs[env_idx]] = np.random.uniform(-0.06, 0.06, size=(self.n_idxs[env_idx], 2))
+            # self.actions[env_idx, :self.n_idxs[env_idx]] = self.actions_grasp[env_idx][:self.n_idxs[env_idx]] + self.actions_rb[env_idx, :self.n_idxs[env_idx]]
+            # self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(self.actions[env_idx, :self.n_idxs[env_idx]], -0.03, 0.03)
+            self.actions[env_idx, :self.n_idxs[env_idx]] = np.random.uniform(-0.06, 0.06, size=(self.n_idxs[env_idx], 2))
 
     def set_attractor_target(self, env_idx, t_step, actions, all_zeros=False):
         env_ptr = self.scene.env_ptrs[env_idx]
@@ -491,9 +498,10 @@ class DeltaArraySim:
             return int(min(50, 1 + A * np.log(B * (x - C) + 1)))
     
     def inverse_dynamics(self, scene, env_idx, t_step, _):
-        if (self.current_episode%self.hp_dict['infer_every']) < 10:
-            self.test_learned_policy(scene, env_idx, t_step, _)
-            return
+        # self.infer_iter = self.current_episode%self.hp_dict['infer_every']
+        # if self.infer_iter < self.hp_dict['inference_length']:
+        #     self.test_learned_policy(scene, env_idx, t_step, _)
+        # else:
         t_step = t_step % self.time_horizon
 
         # if (t_step == 0) and (self.ep_len[env_idx] == 0):
@@ -536,10 +544,12 @@ class DeltaArraySim:
                 self.ep_len[env_idx] = 0
             
     def test_learned_policy(self, scene, env_idx, t_step, _):
+        """ TODO: This function is kinda jank rn.. Find ways to run it on a seaprate thread to record videos """
         t_step = t_step % self.time_horizon
         env_ptr = self.scene.env_ptrs[env_idx]
         
         if self.ep_len[env_idx]==0:
+            print("HAKUNA")
             if t_step == 0:
                 img = self.get_camera_image(env_idx)
                 _, self.goal_bd_pts[env_idx] = self.get_boundary_pts(img)
@@ -555,16 +565,29 @@ class DeltaArraySim:
             elif not self.dont_skip_episode:
                 self.ep_len[env_idx] = 0
                 self.reset(env_idx)
+            # else:
+            #     now = time.time()
+            #     self.video_frames[self.infer_iter, int((self.time_horizon-4)*self.ep_len[env_idx] + t_step-3)] = self.get_scene_image(env_idx)
+            #     print(time.time() - now)
         
-        else:         
+        else:
+            print("MATATA")
             if t_step == 0:
                 self.env_step(env_idx, t_step, self.agent, test=True) # Only Store Actions from MARL Policy
-            elif t_step == 2:
+            elif t_step == 1:
                 self.set_attractor_target(env_idx, t_step, self.actions)
             elif t_step == (self.time_horizon-2):
                 self.compute_reward(env_idx, t_step)
+
                 if not self.hp_dict["dont_log"]:
                     wandb.log({"Inference Reward":self.ep_reward[env_idx]})
+
+                if self.hp_dict['save_videos']:
+                    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                    out = cv2.VideoWriter(f'./data/rl_data/{self.hp_dict["exp_name"]}/videos/{time.ctime()}.mp4', fourcc, 100, (640, 480))
+                    for image in self.video_frames[self.infer_iter]:
+                        out.write(image.astype(np.uint8))
+                    out.release()
                 
                 if self.hp_dict["print_summary"]:
                     # print(f"Reward: {self.ep_reward[env_idx]}")
@@ -581,6 +604,8 @@ class DeltaArraySim:
             elif t_step == self.time_horizon - 1:
                 self.set_block_pose(env_idx, goal=True) # Set block to next goal pose & Store Goal Pose for both states
                 self.ep_len[env_idx] = 0
+            # else:
+            #     self.video_frames[self.infer_iter, int((self.time_horizon-4)*self.ep_len[env_idx] + t_step-2)] = self.get_scene_image(env_idx)
 
     def vs_step(self, env_idx, t_step):
         

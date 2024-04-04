@@ -83,6 +83,7 @@ class DeltaArraySimEnvironment():
         # ])
         if not os.path.exists(f'./data/rl_data/{args.name}/pyt_save'):
             os.makedirs(f'./data/rl_data/{args.name}/pyt_save')
+            os.makedirs(f'./data/rl_data/{args.name}/videos')
 
         single_agent_env_dict = {'action_space': {'low': -0.03, 'high': 0.03, 'dim': 2},
                     'observation_space': {'dim': 4},}
@@ -91,38 +92,40 @@ class DeltaArraySimEnvironment():
                     'q_obs_space': {'dim': 6},
                     "max_agents"    :64,}
         self.hp_dict = {
-                "exp_name"    : args.name,
-                "data_dir"    : "./data/rl_data",
-                "tau"         : 0.005,
-                "gamma"       : 0.99,
-                "q_lr"        : 1e-2,
-                "pi_lr"       : 1e-2,
-                "eta_min"     : 1e-5,
-                "alpha"       : 0.2,
-                "replay_size" : 500000,
-                'seed'        : 69420,
-                'optim'       : 'sgd',
-                'epsilon'     : 0.9,
-                "batch_size"  : self.args.bs,
+                "exp_name"          : args.name,
+                "data_dir"          : "./data/rl_data",
+                "tau"               : 0.005,
+                "gamma"             : 0.99,
+                "q_lr"              : 1e-2,
+                "pi_lr"             : 1e-2,
+                "eta_min"           : 1e-5,
+                "alpha"             : 0.2,
+                "replay_size"       : 500000,
+                'seed'              : 69420,
+                'optim'             : 'sgd',
+                'epsilon'           : 0.9,
+                "batch_size"        : self.args.bs,
                 "exploration_cutoff": self.args.expl,
-                "robot_frame" : self.args.robot_frame,
-                "infer_every" : 4000,
+                "robot_frame"       : self.args.robot_frame,
+                "infer_every"       : 4000,
+                "inference_length"  : 10,
+                'save_videos'       : args.save_vid,
 
                 # Multi Agent Part Below:
-                'state_dim'     : 6,
-                "dev_sim"       : torch.device(f"cuda:{self.args.dev_sim}"),
-                "dev_rl"        : torch.device(f"cuda:{self.args.dev_rl}"),
-                "model_dim"     : 128,
-                "num_heads"     : 8,
-                "dim_ff"        : 64,
-                "n_layers_dict" : {'encoder': 3, 'actor': 3, 'critic': 3},
-                "dropout"       : 0,
-                "max_grad_norm" : 1.0,
-                "delta_array_size": [8,8],
-                "add_vs_data"   : self.args.add_vs_data,
-                "ratio"         : self.args.vs_data,
-                "dont_log"      : self.args.dont_log,
-                'print_summary' : self.args.print_summary,
+                'state_dim'         : 6,
+                "dev_sim"           : torch.device(f"cuda:{self.args.dev_sim}"),
+                "dev_rl"            : torch.device(f"cuda:{self.args.dev_rl}"),
+                "model_dim"         : 128,
+                "num_heads"         : 8,
+                "dim_ff"            : 64,
+                "n_layers_dict"     : {'encoder': 3, 'actor': 3, 'critic': 3},
+                "dropout"           : 0,
+                "max_grad_norm"     : 1.0,
+                "delta_array_size"  : [8,8],
+                "add_vs_data"       : self.args.add_vs_data,
+                "ratio"             : self.args.vs_data,
+                "dont_log"          : self.args.dont_log,
+                'print_summary'     : self.args.print_summary,
             }
         
         logger_kwargs = {}
@@ -267,6 +270,7 @@ if __name__ == "__main__":
     parser.add_argument("-pilr", "--pilr", type=float, default=1e-2, help="% of data to use for visual servoing")
     parser.add_argument("-qlr", "--qlr", type=float, default=1e-2, help="% of data to use for visual servoing")
     parser.add_argument("-etamin", "--etamin", type=float, default=1e-5, help="% of data to use for visual servoing")
+    parser.add_argument("-savevid", "--save_vid", action="store_true", help="Save Videos at inference")
     args = parser.parse_args()
 
     if args.vis_servo and not args.test:
