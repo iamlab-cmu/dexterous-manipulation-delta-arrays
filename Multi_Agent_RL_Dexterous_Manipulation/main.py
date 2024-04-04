@@ -87,7 +87,7 @@ class DeltaArraySimEnvironment():
 
         single_agent_env_dict = {'action_space': {'low': -0.03, 'high': 0.03, 'dim': 2},
                     'observation_space': {'dim': 4},}
-        ma_env_dict = {'action_space': {'low': -0.06, 'high': 0.06, 'dim': 2},
+        ma_env_dict = {'action_space': {'low': -0.03, 'high': 0.03, 'dim': 2},
                     'pi_obs_space': {'dim': 6},
                     'q_obs_space': {'dim': 6},
                     "max_agents"    :64,}

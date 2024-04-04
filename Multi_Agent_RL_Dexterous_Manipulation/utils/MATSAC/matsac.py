@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.utils.data as data
 import torch.nn.functional as F
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
 import utils.MATSAC.gpt_core as core
 # from utils.openai_utils.logx import EpochLogger
@@ -49,9 +50,19 @@ class MATSAC:
 
         self.critic_params = itertools.chain(self.tf.decoder_critic1.parameters(), self.tf.decoder_critic2.parameters())
         
-        self.optimizer_actor = optim.Adam(filter(lambda p: p.requires_grad, self.tf.decoder_actor.parameters()), lr=hp_dict['pi_lr'])
-        self.optimizer_critic = optim.Adam(filter(lambda p: p.requires_grad, self.critic_params), lr=hp_dict['q_lr'])
+        
 
+        if self.hp_dict['optim']=="adam":
+            self.optimizer_actor = optim.Adam(filter(lambda p: p.requires_grad, self.tf.decoder_actor.parameters()), lr=hp_dict['pi_lr'])
+            self.optimizer_critic = optim.Adam(filter(lambda p: p.requires_grad, self.critic_params), lr=hp_dict['q_lr'])
+        elif self.hp_dict['optim']=="sgd":
+            self.optimizer_actor = optim.SGD(filter(lambda p: p.requires_grad, self.tf.decoder_actor.parameters()), lr=hp_dict['pi_lr'])
+            self.optimizer_critic = optim.SGD(filter(lambda p: p.requires_grad, self.critic_params), lr=hp_dict['q_lr'])
+
+        self.scheduler = CosineAnnealingWarmRestarts(self.optimizer_critic, T_0=2, T_mult=2, eta_min=hp_dict['eta_min'])
+        self.scheduler = CosineAnnealingWarmRestarts(self.optimizer_critic, T_0=2, T_mult=2, eta_min=hp_dict['eta_min'])
+        
+        self.q_loss = None
         # Set up model saving
         # if self.train_or_test == "train":
         #     self.logger.setup_pytorch_saver(self.tf)
@@ -71,6 +82,7 @@ class MATSAC:
             q_next = r.unsqueeze(1)
         q_loss = F.mse_loss(q1, q_next) + F.mse_loss(q2, q_next)
         q_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.tf.decoder_critic.parameters(), self.hp_dict['max_grad_norm'])
         self.optimizer_critic.step()
 
         if not self.hp_dict["dont_log"]:
@@ -89,6 +101,7 @@ class MATSAC:
         pi_loss = (self.hp_dict['alpha'] * logp_pi - q_pi).mean()
 
         pi_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.tf.decoder_critic.parameters(), self.hp_dict['max_grad_norm'])
         self.optimizer_actor.step()
 
         if not self.hp_dict["dont_log"]:
@@ -108,9 +121,9 @@ class MATSAC:
         self.compute_q_loss(states, actions, new_states, rews, dones, pos)
 
         # Actor Update
-        with torch.autograd.set_detect_anomaly(True):
-            self.optimizer_actor.zero_grad()
-            self.compute_pi_loss(states, current_episode, pos)
+        # with torch.autograd.set_detect_anomaly(True):
+        self.optimizer_actor.zero_grad()
+        self.compute_pi_loss(states, current_episode, pos)
 
         # Target Update
         with torch.no_grad():
