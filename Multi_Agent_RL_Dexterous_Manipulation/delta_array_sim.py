@@ -472,7 +472,7 @@ class DeltaArraySim:
             # self.actions_rb[env_idx, :self.n_idxs[env_idx]] = np.random.uniform(-0.06, 0.06, size=(self.n_idxs[env_idx], 2))
             # self.actions[env_idx, :self.n_idxs[env_idx]] = self.actions_grasp[env_idx][:self.n_idxs[env_idx]] + self.actions_rb[env_idx, :self.n_idxs[env_idx]]
             # self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(self.actions[env_idx, :self.n_idxs[env_idx]], -0.03, 0.03)
-            self.actions[env_idx, :self.n_idxs[env_idx]] = np.random.uniform(-0.06, 0.06, size=(self.n_idxs[env_idx], 2))
+            self.actions[env_idx, :self.n_idxs[env_idx]] = np.random.uniform(-0.03, 0.03, size=(self.n_idxs[env_idx], 2))
 
     def set_attractor_target(self, env_idx, t_step, actions, all_zeros=False):
         env_ptr = self.scene.env_ptrs[env_idx]
@@ -487,9 +487,9 @@ class DeltaArraySim:
     def log_data(self, env_idx, agent):
         """ Store data about training progress in systematic data structures """
         if (not self.hp_dict["dont_log"]) and (agent.q_loss is not None):
-            wandb.log({"Delta Goal": np.linalg.norm(self.goal_pose[env_idx][:2] - self.init_pose[env_idx][:2])})
+            # wandb.log({"Delta Goal": np.linalg.norm(self.goal_pose[env_idx][:2] - self.init_pose[env_idx][:2])})
             wandb.log({"Reward":self.ep_reward[env_idx]})
-            wandb.log({"Q loss":np.clip(self.agent.q_loss, 0, 100)})
+            # wandb.log({"Q loss":np.clip(self.agent.q_loss, 0, 100)})
 
     def scale_epoch(self, x, A=100/np.log(100000), B=1/1000, C=1000):
         if x <= C:

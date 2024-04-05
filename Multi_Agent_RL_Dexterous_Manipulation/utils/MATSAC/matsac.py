@@ -87,6 +87,7 @@ class MATSAC:
         self.optimizer_critic.step()
 
         if not self.hp_dict["dont_log"]:
+            self.q_loss = q_loss.cpu().detach().numpy()
             wandb.log({"Q loss":q_loss.cpu().detach().numpy()})
 
     def compute_pi_loss(self, s1, current_episode, pos):
