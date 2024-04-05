@@ -68,8 +68,8 @@ class MATSAC:
         #     self.logger.setup_pytorch_saver(self.tf)
 
     def compute_q_loss(self, s1, a, s2, r, d, pos):
-        q1, _ = self.tf.decoder_critic1(s1, a, pos).mean(dim=1)
-        q2, _ = self.tf.decoder_critic2(s1, a, pos).mean(dim=1)
+        q1 = self.tf.decoder_critic1(s1, a, pos).mean(dim=1)
+        q2 = self.tf.decoder_critic2(s1, a, pos).mean(dim=1)
         
         with torch.no_grad():
             # next_state_enc = self.tf.encoder(s2)
@@ -95,8 +95,8 @@ class MATSAC:
         actions, logp_pi = self.tf.get_actions(s1, pos)
         # actions = self.tf.get_actions(s1, pos)
         
-        q1_pi, _ = self.tf.decoder_critic1(s1, actions, pos)
-        q2_pi, _ = self.tf.decoder_critic2(s1, actions, pos)
+        q1_pi = self.tf.decoder_critic1(s1, actions, pos)
+        q2_pi = self.tf.decoder_critic2(s1, actions, pos)
         q_pi = torch.min(q1_pi, q2_pi)
         pi_loss = (self.hp_dict['alpha'] * logp_pi - q_pi).mean()
 

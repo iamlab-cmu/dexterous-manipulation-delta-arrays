@@ -185,10 +185,11 @@ class Transformer(nn.Module):
         output_action_log_probs = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
 
         for i in range(n_agents):            
-            act_means = self.decoder_actor(states, shifted_actions, pos)[:, i, :]
-            std = torch.exp(self.log_std)
-            dist = torch.distributions.Normal(act_means, std)
-            action = act_means if deterministic else dist.sample()
+            act_mean = self.decoder_actor(states, shifted_actions, pos)[:, i, :]
+            std = torch.sigmoid(self.log_std)*0.5
+
+            dist = torch.distributions.Normal(act_mean, std)
+            action = act_mean if deterministic else dist.sample()
             action_log = dist.log_prob(action)
             output_actions[:, i, :] = action
             output_action_log_probs[:, i, :] = action_log
