@@ -191,10 +191,13 @@ class Transformer(nn.Module):
             dist = torch.distributions.Normal(act_mean, std)
             action = act_mean if deterministic else dist.sample()
             action_log = dist.log_prob(action)
+            output_actions = output_actions.clone()
             output_actions[:, i, :] = action
+            output_action_log_probs = output_action_log_probs.clone()
             output_action_log_probs[:, i, :] = action_log
 
             if (i+1) < n_agents:
+                shifted_actions = shifted_actions.clone()
                 shifted_actions[:, i+1, :] = action
         return output_actions, output_action_log_probs
 

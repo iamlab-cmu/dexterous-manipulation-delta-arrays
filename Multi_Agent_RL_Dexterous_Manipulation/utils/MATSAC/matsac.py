@@ -82,7 +82,8 @@ class MATSAC:
             q_next = r.unsqueeze(1)
         q_loss = F.mse_loss(q1, q_next) + F.mse_loss(q2, q_next)
         q_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.tf.decoder_critic.parameters(), self.hp_dict['max_grad_norm'])
+        torch.nn.utils.clip_grad_norm_(self.tf.decoder_critic1.parameters(), self.hp_dict['max_grad_norm'])
+        torch.nn.utils.clip_grad_norm_(self.tf.decoder_critic2.parameters(), self.hp_dict['max_grad_norm'])
         self.optimizer_critic.step()
 
         if not self.hp_dict["dont_log"]:
@@ -101,7 +102,7 @@ class MATSAC:
         pi_loss = (self.hp_dict['alpha'] * logp_pi - q_pi).mean()
 
         pi_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.tf.decoder_critic.parameters(), self.hp_dict['max_grad_norm'])
+        torch.nn.utils.clip_grad_norm_(self.tf.decoder_actor.parameters(), self.hp_dict['max_grad_norm'])
         self.optimizer_actor.step()
 
         if not self.hp_dict["dont_log"]:
