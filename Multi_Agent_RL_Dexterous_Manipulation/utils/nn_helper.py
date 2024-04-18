@@ -48,6 +48,55 @@ class NNHelper:
             xys.append(boundary_pts[np.argmin(distances)])
         return min_dists, np.array(xys)
 
+    def get_4_nn_robots(self, boundary_pts):
+        """
+        Returns the indices of the robots that are closest to the boundary points
+        """
+        com = np.mean(boundary_pts, axis=0)
+        hull = ConvexHull(boundary_pts)
+        hull = self.expand_hull(hull)
+        A, b = hull.equations[:, :-1], hull.equations[:, -1:]
+        idxs = set()
+        eps = np.finfo(np.float32).eps
+        neg_idxs = set()
+        for n, (i,j) in enumerate(boundary_pts):
+            idx = spatial.KDTree(self.kdtree_positions).query((i,j))[1]
+            if not (np.all(self.robot_positions[idx//8][idx%8] @ A.T + b.T < eps, axis=1)):
+                idxs.add((idx//8, idx%8))
+            else:
+                kdt_pos_copy = self.kdtree_positions.copy()
+                while np.all(kdt_pos_copy[idx] @ A.T + b.T < eps, axis=1):
+                    # x,y = kdt_pos_copy[idx]
+                    # idx2 = np.where(np.isclose(self.kdtree_positions[:,0], x) & np.isclose(self.kdtree_positions[:,1], y) )[0][0]
+                    # neg_idxs.add((idx2//8, idx2%8))
+
+                    kdt_pos_copy = np.delete(kdt_pos_copy, idx, axis=0)
+                    idx = spatial.KDTree(kdt_pos_copy).query((i,j))[1]
+                    
+                x,y = kdt_pos_copy[idx]
+                idx = np.where(np.isclose(self.kdtree_positions[:,0], x) & np.isclose(self.kdtree_positions[:,1], y) )[0][0]
+                idxs.add((idx//8, idx%8))
+
+        idxs = list(idxs)
+        positions = self.robot_positions[tuple(zip(*idxs))]
+        relative_points = positions - com
+
+        quadrants = np.zeros(positions.shape[0], dtype=int)
+        quadrants[(relative_points[:,0] >= 0) & (relative_points[:,1] > 0)] = 0
+        quadrants[(relative_points[:,0] < 0) & (relative_points[:,1] >= 0)] = 1
+        quadrants[(relative_points[:,0] <= 0) & (relative_points[:,1] < 0)] = 2
+        quadrants[(relative_points[:,0] > 0) & (relative_points[:,1] <= 0)] = 3
+
+        selected_points = []
+        for i in range(4):
+            in_quadrant = np.where(quadrants == i)[0]
+            if in_quadrant.size > 0:
+                distances = np.linalg.norm(relative_points[in_quadrant], axis=1)
+                min_index = in_quadrant[np.argmin(distances)]
+                selected_points.append(idxs[min_index])
+
+        return selected_points, None
+
     def get_nn_robots(self, boundary_pts):
         """
         Returns the indices of the robots that are closest to the boundary points

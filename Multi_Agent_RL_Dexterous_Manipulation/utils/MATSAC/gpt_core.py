@@ -115,9 +115,10 @@ class GPT(nn.Module):
             self.actor_mu_layer = wt_init_(nn.Linear(model_dim, 1))
         else:
             self.actor_mu_layer = wt_init_(nn.Linear(model_dim, action_dim))
+            self.actor_std_layer = wt_init_(nn.Linear(model_dim, action_dim))
         self.ReLU = nn.ReLU()
 
-    def forward(self, state, actions, pos):
+    def forward(self, state, actions, pos, idx):
         """
         Input: state (bs, n_agents, state_dim)
                actions (bs, n_agents, action_dim)
@@ -130,7 +131,10 @@ class GPT(nn.Module):
         for layer in self.decoder_layers:
             act_enc = layer(act_enc, state_enc)
         act_mean = self.actor_mu_layer(act_enc)
-        return act_mean
+        act_std = self.actor_std_layer(act_enc)
+        act_std = torch.clamp(act_std, LOG_STD_MIN, LOG_STD_MAX)
+        std = torch.exp(act_std)
+        return act_mean[:, idx, :], std[:, idx, :]
         # act_mean = self.actor_mu_layer(act_enc)
         # act_std = self.actor_std_layer(act_enc)
         # act_std = torch.clamp(act_std, LOG_STD_MIN, LOG_STD_MAX)
@@ -185,20 +189,30 @@ class Transformer(nn.Module):
         output_action_log_probs = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
 
         for i in range(n_agents):            
-            act_mean = self.decoder_actor(states, shifted_actions, pos)[:, i, :]
-            std = torch.sigmoid(self.log_std)*0.5
+            act_mean, std = self.decoder_actor(states, shifted_actions, pos, i)
+            # std = torch.sigmoid(self.log_std)*0.5
 
-            dist = torch.distributions.Normal(act_mean, std)
-            action = act_mean if deterministic else dist.sample()
-            action_log = dist.log_prob(action)
+            if deterministic:
+                output_action = self.act_limit * torch.tanh(act_mean)
+                output_action_log_prob = 0
+            else:
+                dist = torch.distributions.Normal(act_mean, std)
+                output_action = dist.rsample()
+
+                output_action_log_prob = dist.log_prob(output_action).sum(axis=-1)
+                output_action_log_prob = output_action_log_prob - (2*(np.log(2) - output_action - F.softplus(-2*output_action))).sum(axis=1)
+                
+                output_action = self.act_limit * torch.tanh(output_action)
+
+            
             output_actions = output_actions.clone()
-            output_actions[:, i, :] = action
+            output_actions[:, i, :] = output_action
             output_action_log_probs = output_action_log_probs.clone()
-            output_action_log_probs[:, i, :] = action_log
+            output_action_log_probs[:, i, :] = output_action_log_prob
 
             if (i+1) < n_agents:
                 shifted_actions = shifted_actions.clone()
-                shifted_actions[:, i+1, :] = action
+                shifted_actions[:, i+1, :] = output_action
         return output_actions, output_action_log_probs
 
 

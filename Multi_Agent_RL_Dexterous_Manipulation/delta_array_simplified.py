@@ -13,7 +13,6 @@ from matplotlib import cm
 import matplotlib.pyplot as plt
 import cv2
 import pandas as pd
-import networkx as nx
 from PIL import Image
 from scipy.spatial.transform import Rotation as R
 import wandb
@@ -64,9 +63,6 @@ class DeltaArraySim:
                 ))
         """ Data Collection Vars """
         self.img_size = np.array((1080, 1920))
-        self.envs_done = 0
-        cols = ['com_x1', 'com_y1', 'com_x2', 'com_y2'] + [f'robotx_{i}' for i in range(64)] + [f'roboty_{i}' for i in range(64)]
-        self.df = pd.DataFrame(columns=cols)
 
         self.lower_green_filter = np.array([35, 50, 50])
         self.upper_green_filter = np.array([85, 255, 255])
@@ -75,8 +71,7 @@ class DeltaArraySim:
         self.delta_plane_y = self.plane_size[1][1] - self.plane_size[0][1]
         self.delta_plane = np.array((self.delta_plane_x, -self.delta_plane_y))
         self.nn_helper = helper.NNHelper(self.plane_size, real_or_sim="sim")
-        # self.save_iters = 0
-        
+
         """ Fingertip Vars """
         self.finger_positions = np.zeros((8,8)).tolist()
         for i in range(self.num_tips[0]):
@@ -85,32 +80,25 @@ class DeltaArraySim:
                     self.finger_positions[i][j] = gymapi.Vec3(i*0.0375, j*0.043301 - 0.02165, 1.5)
                 else:
                     self.finger_positions[i][j] = gymapi.Vec3(i*0.0375, j*0.043301, 1.5)
-        self.neighborhood_fingers = [[] for _ in range(self.scene.n_envs)]
-        self.attraction_error = np.zeros((8,8))
         self.finga_q = gymapi.Quat(0, 0.707, 0, 0.707)
         self.active_idxs = {}
         self.active_IDs = set()
         
-        self.KMeans = KMeans(n_clusters=64, random_state=69, n_init='auto')
-
         """ Sim Util Vars """
         self.attractor_handles = {}
-        self.time_horizon = 155 # This acts as max_steps from Gym envs
-        # Max episodes to train policy for
+        self.time_horizon = 155
         self.max_episodes = 10000001
         # self.current_episode = -self.scene.n_envs
         self.current_episode = 0
         self.dont_skip_episode = True
 
         """ Visual Servoing and RL Vars """
+        self.KMeans = KMeans(n_clusters=64, random_state=69, n_init='auto')
         self.bd_pts = {}
         self.goal_bd_pts = {}
-        self.current_scene_frame = {}
         self.batch_size = hp_dict['batch_size']
         self.exploration_cutoff = hp_dict['exploration_cutoff']
         
-        self.model = img_embed_model
-        self.transform = transform
         if len(agents) == 1:
             self.agent = agents[0]
         else:
@@ -132,7 +120,6 @@ class DeltaArraySim:
         # self.actions_rb = np.zeros((self.scene.n_envs, self.max_agents, 2))
         self.pos = np.zeros((self.scene.n_envs, self.max_agents, 1))
 
-        # self.ep_rewards = []
         self.ep_reward = np.zeros(self.scene.n_envs)
         self.ep_len = np.zeros(self.scene.n_envs)
 
@@ -190,8 +177,6 @@ class DeltaArraySim:
             for j in range(self.num_tips[1]):
                 if pos_high:
                     self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)])
-                elif (i,j) in self.neighborhood_fingers[env_idx][1]:
-                    self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.45), r=self.finga_q)])
                 else:
                     self.fingertips[i][j].set_rb_transforms(env_idx, f'fingertip_{i}_{j}', [gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.47), r=self.finga_q)])
 
@@ -260,7 +245,6 @@ class DeltaArraySim:
         """ Render a camera image """
         self.scene.render_cameras()
         frames = self.cam.frames(env_idx, self.cam_name)
-        # self.current_scene_frame[env_idx] = frames['color'].data.astype(np.uint8)
         bgr_image = cv2.cvtColor(frames['color'].data.astype(np.uint8), cv2.COLOR_RGB2BGR)
         return cv2.resize(bgr_image, (640, 480), interpolation=cv2.INTER_AREA)
 
@@ -285,13 +269,6 @@ class DeltaArraySim:
         Get camera image -> Segment it -> Convert boundary to cartesian coordinate space in mm ->
         Get nearest robot to the boundary -> Crop the image around the robot -> Resize to 224x224 ->
         Randomize the colors to get rgb image.
-
-        Sets appropriate values for the following class variables:
-        self.active_idxs
-        self.actions
-        self.init_state
-        self.final_state
-        self.bd_pts
         """
         img = self.get_camera_image(env_idx)
         seg_map, boundary_pts = self.get_boundary_pts(img)
@@ -306,8 +283,7 @@ class DeltaArraySim:
             
             if not final:
                 # Get indices of nearest robots to the boundary. We are not using neg_idxs for now. 
-                idxs, neg_idxs = self.nn_helper.get_nn_robots(bd_cluster_centers)
-                self.active_idxs[env_idx] = list(idxs)
+                self.active_idxs[env_idx], _ = self.nn_helper.get_4_nn_robots(bd_cluster_centers, )
                 self.n_idxs[env_idx] = len(self.active_idxs[env_idx])
                 
                 self.actions[env_idx, :self.n_idxs[env_idx]] = np.array((0,0))
@@ -348,29 +324,29 @@ class DeltaArraySim:
                 
 ################################################################################################################################################################################
                 
-                # if self.current_episode > 0:
-                #     r_poses = self.nn_helper.rb_pos_raw[tuple(zip(*self.active_idxs[env_idx]))]
-                #     init_pts = self.init_state[env_idx, :self.n_idxs[env_idx], :2].copy()
-                #     init_bd_pts = np.array([self.convert_pix_2_world(bdpts) for bdpts in init_bd_pts])
-                #     goal_bd_pts = self.init_state[env_idx, :self.n_idxs[env_idx], 2:4].copy()
-                #     g_bd_pt2 = np.array([self.convert_pix_2_world(bdpts) for bdpts in self.goal_bd_pts[env_idx]])
-                #     final_bd_pts = self.final_state[env_idx, :self.n_idxs[env_idx], :2].copy()
-                #     act_grsp = self.actions_grasp[env_idx, :self.n_idxs[env_idx]].copy()
-                #     acts = self.actions[env_idx, :self.n_idxs[env_idx]].copy()
+                if self.current_episode > 0:
+                    r_poses = self.nn_helper.rb_pos_raw[tuple(zip(*self.active_idxs[env_idx]))]
+                    init_pts = self.init_state[env_idx, :self.n_idxs[env_idx], :2].copy()
+                    init_bd_pts = np.array([self.convert_pix_2_world(bdpts) for bdpts in init_bd_pts])
+                    goal_bd_pts = self.init_state[env_idx, :self.n_idxs[env_idx], 2:4].copy()
+                    g_bd_pt2 = np.array([self.convert_pix_2_world(bdpts) for bdpts in self.goal_bd_pts[env_idx]])
+                    final_bd_pts = self.final_state[env_idx, :self.n_idxs[env_idx], :2].copy()
+                    act_grsp = self.actions_grasp[env_idx, :self.n_idxs[env_idx]].copy()
+                    acts = self.actions[env_idx, :self.n_idxs[env_idx]].copy()
                     
-                #     # plt.figure(figsize=(10,17.78))
-                #     plt.scatter(r_poses[:, 0], r_poses[:, 1], c='#880000ff')
+                    # plt.figure(figsize=(10,17.78))
+                    plt.scatter(r_poses[:, 0], r_poses[:, 1], c='#880000ff')
 
-                #     plt.scatter(g_bd_pt2[:, 0], g_bd_pt2[:, 1], c='#ffa50066')
-                #     plt.scatter(init_bd_pts[:, 0], init_bd_pts[:, 1], c = '#00ff0066')
-                #     plt.scatter(init_pts[:, 0], init_pts[:, 1], c = '#00ff00ff')
-                #     plt.scatter(goal_bd_pts[:, 0], goal_bd_pts[:, 1], c='red')
-                #     plt.scatter(final_bd_pts[:, 0], final_bd_pts[:, 1], c='blue')
+                    plt.scatter(g_bd_pt2[:, 0], g_bd_pt2[:, 1], c='#ffa50066')
+                    plt.scatter(init_bd_pts[:, 0], init_bd_pts[:, 1], c = '#00ff0066')
+                    plt.scatter(init_pts[:, 0], init_pts[:, 1], c = '#00ff00ff')
+                    plt.scatter(goal_bd_pts[:, 0], goal_bd_pts[:, 1], c='red')
+                    plt.scatter(final_bd_pts[:, 0], final_bd_pts[:, 1], c='blue')
 
-                #     plt.quiver(r_poses[:, 0], r_poses[:, 1], act_grsp[:, 0], act_grsp[:, 1], scale=0.5, scale_units='xy')
-                #     plt.quiver(init_pts[:, 0], init_pts[:, 1], acts[:, 0], acts[:, 1], scale=1, scale_units='xy')
-                #     plt.gca().set_aspect('equal')
-                #     plt.show()
+                    plt.quiver(r_poses[:, 0], r_poses[:, 1], act_grsp[:, 0], act_grsp[:, 1], scale=0.5, scale_units='xy')
+                    plt.quiver(init_pts[:, 0], init_pts[:, 1], acts[:, 0], acts[:, 1], scale=1, scale_units='xy')
+                    plt.gca().set_aspect('equal')
+                    plt.show()
 
     def gaussian_reward_shaping(self, x, ampl, width, center=0, vertical_shift=0):
         return ampl * np.exp(-width * (x - center)**2) - vertical_shift
@@ -468,7 +444,6 @@ class DeltaArraySim:
             # self.actions[env_idx, :self.n_idxs[env_idx]] = self.actions_grasp[env_idx][:self.n_idxs[env_idx]] + self.actions_rb[env_idx, :self.n_idxs[env_idx]]
             # self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(self.actions[env_idx, :self.n_idxs[env_idx]], -0.03, 0.03)
             self.actions[env_idx, :self.n_idxs[env_idx]] = agent.get_actions(self.init_state[env_idx, :self.n_idxs[env_idx]], self.pos[env_idx, :self.n_idxs[env_idx]], deterministic=test)
-            print(self.actions[env_idx, :self.n_idxs[env_idx]])
         else:
             # self.actions_rb[env_idx, :self.n_idxs[env_idx]] = np.random.uniform(-0.06, 0.06, size=(self.n_idxs[env_idx], 2))
             # self.actions[env_idx, :self.n_idxs[env_idx]] = self.actions_grasp[env_idx][:self.n_idxs[env_idx]] + self.actions_rb[env_idx, :self.n_idxs[env_idx]]
