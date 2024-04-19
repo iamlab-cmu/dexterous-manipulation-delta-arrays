@@ -142,7 +142,7 @@ class MATSAC:
         pos = torch.as_tensor(pos, dtype=torch.int64).unsqueeze(0).to(self.device)
         with torch.no_grad():
             # actions, _ = self.tf.get_actions_gauss(state_enc, deterministic=deterministic)
-            actions, _ = self.tf.get_actions(obs, pos, deterministic=deterministic)
+            actions = self.tf.get_actions(obs, pos, deterministic=deterministic)
             return actions.detach().cpu().numpy()
         
     def load_saved_policy(self, path='./data/rl_data/backup/matsac_expt_grasp/pyt_save/model.pt'):

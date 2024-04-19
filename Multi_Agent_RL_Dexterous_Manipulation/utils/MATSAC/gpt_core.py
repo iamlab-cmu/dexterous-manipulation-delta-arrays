@@ -75,10 +75,10 @@ class FF_MLP(nn.Module):
         super(FF_MLP, self).__init__()
         self.fc1 = wt_init_(nn.Linear(model_dim, dim_ff))
         self.fc2 = wt_init_(nn.Linear(dim_ff, model_dim))
-        self.ReLU = nn.ReLU()
+        self.activation = nn.GELU()
 
     def forward(self, x):
-        return self.fc2(self.ReLU(self.fc1(x)))
+        return self.fc2(self.activation(self.fc1(x)))
 
 class GPTLayer(nn.Module):
     def __init__(self, model_dim, num_heads, max_agents, dim_ff, dropout):
@@ -115,8 +115,8 @@ class GPT(nn.Module):
             self.actor_mu_layer = wt_init_(nn.Linear(model_dim, 1))
         else:
             self.actor_mu_layer = wt_init_(nn.Linear(model_dim, action_dim))
-            self.actor_std_layer = wt_init_(nn.Linear(model_dim, action_dim))
-        self.ReLU = nn.ReLU()
+            # self.actor_std_layer = wt_init_(nn.Linear(model_dim, action_dim))
+        self.activation = nn.GELU()
 
     def forward(self, state, actions, pos, idx=None):
         """
@@ -127,17 +127,12 @@ class GPT(nn.Module):
         # act_enc = self.dropout(self.positional_encoding(F.ReLU(self.action_embedding(actions))))
         state_enc = self.state_enc(state)
         pos_embed = self.pos_embedding(pos)
-        act_enc = pos_embed.squeeze(2) + self.ReLU(self.action_embedding(actions))
+        act_enc = pos_embed.squeeze(2) + self.activation(self.action_embedding(actions))
         for layer in self.decoder_layers:
             act_enc = layer(act_enc, state_enc)
         act_mean = self.actor_mu_layer(act_enc)
-        if self.critic:
-            return act_mean
         
-        act_std = self.actor_std_layer(act_enc)
-        act_std = torch.clamp(act_std, LOG_STD_MIN, LOG_STD_MAX)
-        std = torch.exp(act_std)
-        return act_mean[:, idx, :], std[:, idx, :]
+        return act_mean
         # act_mean = self.actor_mu_layer(act_enc)
         # act_std = self.actor_std_layer(act_enc)
         # act_std = torch.clamp(act_std, LOG_STD_MIN, LOG_STD_MAX)
@@ -171,7 +166,7 @@ class Transformer(nn.Module):
         self.decoder_critic1 = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['critic'], critic=True)
         self.decoder_critic2 = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['critic'], critic=True)
 
-    def get_actions_lin(self, states, pos, deterministic=False):
+    def get_actions(self, states, pos, deterministic=False):
         """ Returns actor actions """
         bs, n_agents, _ = states.size()
         actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
@@ -184,39 +179,39 @@ class Transformer(nn.Module):
             actions[:, i, :] = self.act_limit * torch.tanh(updated_actions[:, i, :])
         return actions
 
-    def get_actions(self, states, pos, deterministic=False):
-        """ Returns actor actions, and their log probs. If deterministic=True, set action as the output of decoder. Else, sample from mean=dec output, std=exp(log_std) """
-        bs, n_agents, _ = states.size()
-        shifted_actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
-        output_actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
-        output_action_log_probs = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
+    # def get_actions(self, states, pos, deterministic=False):
+    #     """ Returns actor actions, and their log probs. If deterministic=True, set action as the output of decoder. Else, sample from mean=dec output, std=exp(log_std) """
+    #     bs, n_agents, _ = states.size()
+    #     shifted_actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
+    #     output_actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
+    #     output_action_log_probs = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
 
-        for i in range(n_agents):            
-            act_mean, std = self.decoder_actor(states, shifted_actions, pos, i)
-            # std = torch.sigmoid(self.log_std)*0.5
+    #     for i in range(n_agents):            
+    #         act_mean, std = self.decoder_actor(states, shifted_actions, pos, i)
+    #         # std = torch.sigmoid(self.log_std)*0.5
 
-            if deterministic:
-                output_action = self.act_limit * torch.tanh(act_mean)
-                output_action_log_prob = 0
-            else:
-                dist = torch.distributions.Normal(act_mean, std)
-                output_action = dist.rsample()
+    #         if deterministic:
+    #             output_action = self.act_limit * torch.tanh(act_mean)
+    #             output_action_log_prob = 0
+    #         else:
+    #             dist = torch.distributions.Normal(act_mean, std)
+    #             output_action = dist.rsample()
 
-                output_action_log_prob = dist.log_prob(output_action).sum(axis=-1)
-                output_action_log_prob = output_action_log_prob - (2*(np.log(2) - output_action - F.softplus(-2*output_action))).sum(axis=1)
+    #             output_action_log_prob = dist.log_prob(output_action).sum(axis=-1)
+    #             output_action_log_prob = output_action_log_prob - (2*(np.log(2) - output_action - F.softplus(-2*output_action))).sum(axis=1)
                 
-                output_action = self.act_limit * torch.tanh(output_action)
+    #             output_action = self.act_limit * torch.tanh(output_action)
 
             
-            output_actions = output_actions.clone()
-            output_actions[:, i, :] = output_action
-            output_action_log_probs = output_action_log_probs.clone()
-            output_action_log_probs[:, i, :] = output_action_log_prob
+    #         output_actions = output_actions.clone()
+    #         output_actions[:, i, :] = output_action
+    #         output_action_log_probs = output_action_log_probs.clone()
+    #         output_action_log_probs[:, i, :] = output_action_log_prob
 
-            if (i+1) < n_agents:
-                shifted_actions = shifted_actions.clone()
-                shifted_actions[:, i+1, :] = output_action
-        return output_actions, output_action_log_probs
+    #         if (i+1) < n_agents:
+    #             shifted_actions = shifted_actions.clone()
+    #             shifted_actions[:, i+1, :] = output_action
+    #     return output_actions, output_action_log_probs
 
 
     # def get_action_values(self, states, actions):
