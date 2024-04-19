@@ -94,13 +94,13 @@ class MATSAC:
         for p in self.critic_params:
             p.requires_grad = False
 
-        actions, logp_pi = self.tf.get_actions(s1, pos)
+        actions = self.tf.get_actions(s1, pos)
         # actions = self.tf.get_actions(s1, pos)
         
         q1_pi = self.tf.decoder_critic1(s1, actions, pos)
         q2_pi = self.tf.decoder_critic2(s1, actions, pos)
         q_pi = torch.min(q1_pi, q2_pi)
-        pi_loss = (self.hp_dict['alpha'] * logp_pi - q_pi).mean()
+        pi_loss = -q_pi.mean() #self.hp_dict['alpha'] * logp_pi 
 
         pi_loss.backward()
         torch.nn.utils.clip_grad_norm_(self.tf.decoder_actor.parameters(), self.hp_dict['max_grad_norm'])
