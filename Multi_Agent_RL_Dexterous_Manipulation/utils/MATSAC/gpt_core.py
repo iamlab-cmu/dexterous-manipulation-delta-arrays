@@ -118,7 +118,7 @@ class GPT(nn.Module):
             self.actor_std_layer = wt_init_(nn.Linear(model_dim, action_dim))
         self.ReLU = nn.ReLU()
 
-    def forward(self, state, actions, pos, idx):
+    def forward(self, state, actions, pos, idx=None):
         """
         Input: state (bs, n_agents, state_dim)
                actions (bs, n_agents, action_dim)
@@ -131,6 +131,9 @@ class GPT(nn.Module):
         for layer in self.decoder_layers:
             act_enc = layer(act_enc, state_enc)
         act_mean = self.actor_mu_layer(act_enc)
+        if self.critic:
+            return act_mean
+        
         act_std = self.actor_std_layer(act_enc)
         act_std = torch.clamp(act_std, LOG_STD_MIN, LOG_STD_MAX)
         std = torch.exp(act_std)
@@ -173,7 +176,7 @@ class Transformer(nn.Module):
         bs, n_agents, _ = states.size()
         actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
         for i in range(n_agents):
-            updated_actions = self.decoder_actor(states, actions, pos)
+            updated_actions = self.decoder_actor(states, actions, pos, i)
 
             # TODO: Ablate here with all actions cloned so that even previous actions are updated with new info. 
             # TODO: Does it cause instability? How to know if it does?
