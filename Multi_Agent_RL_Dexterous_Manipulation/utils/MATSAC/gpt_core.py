@@ -203,7 +203,7 @@ class Transformer(nn.Module):
                 output_action = dist.rsample()
 
                 output_action_log_prob = dist.log_prob(output_action).sum(axis=-1)
-                output_action_log_prob = output_action_log_prob - (2*(np.log(2) - output_action - F.softplus(-2*output_action))).sum(axis=2)
+                output_action_log_prob = output_action_log_prob - (2*(np.log(2) - output_action - F.softplus(-2*output_action))).sum(axis=1)
                 
                 output_action = self.act_limit * torch.tanh(output_action)
 
