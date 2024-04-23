@@ -4,6 +4,7 @@ import torch
 from torch.optim import Adam
 import time
 import utils.SAC.core as core
+import torch.nn as nn
 # from utils.openai_utils.logx import EpochLogger
 from utils.SAC.replay_buffer import ReplayBuffer
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
