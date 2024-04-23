@@ -4,17 +4,18 @@ import torch
 from torch.optim import Adam
 import time
 import utils.SAC.core as core
-from utils.openai_utils.logx import EpochLogger
+# from utils.openai_utils.logx import EpochLogger
 from utils.SAC.replay_buffer import ReplayBuffer
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 import itertools
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class SAC:
     def __init__(self, env_dict, hp_dict, logger_kwargs=dict(), train_or_test="train"):
-        if train_or_test == "train":
-            self.logger = EpochLogger(**logger_kwargs)
-            self.logger.save_config(locals())
+        # if train_or_test == "train":
+        #     self.logger = EpochLogger(**logger_kwargs)
+        #     self.logger.save_config(locals())
 
         self.train_or_test = train_or_test
         # torch.manual_seed(hp_dict['seed'])
@@ -23,11 +24,15 @@ class SAC:
         self.env_dict = env_dict
         self.obs_dim = self.env_dict['observation_space']['dim']
         self.act_dim = self.env_dict['action_space']['dim']
-
         self.act_limit = self.env_dict['action_space']['high']
+        self.device = self.hp_dict['dev_rl']
+        self.batch_size = self.hp_dict['batch_size']
 
         self.ac = core.MLPActorCritic(self.obs_dim, self.act_dim, self.act_limit)
         self.ac_targ = deepcopy(self.ac)
+
+        self.ac = self.ac.to(self.device)
+        self.ac_targ = self.ac_targ.to(self.device)
 
         # Freeze target networks with respect to optimizers (only update via polyak averaging)
         for p in self.ac_targ.parameters():
@@ -36,19 +41,26 @@ class SAC:
 
         # Count variables (protip: try to get a feel for how different size networks behave!)
         var_counts = tuple(core.count_vars(module) for module in [self.ac.pi, self.ac.q1, self.ac.q2])
-        if self.train_or_test == "train":
-            self.logger.log('\nNumber of parameters: \t pi: %d, \t q1: %d, \t q2: %d\n'%var_counts)
+        # if self.train_or_test == "train":
+        #     self.logger.log('\nNumber of parameters: \t pi: %d, \t q1: %d, \t q2: %d\n'%var_counts)
 
         self.q_params = itertools.chain(self.ac.q1.parameters(), self.ac.q2.parameters())
         self.pi_optimizer = Adam(self.ac.pi.parameters(), lr=hp_dict['pi_lr'])
         self.q_optimizer = Adam(self.q_params, lr=hp_dict['q_lr'])
 
+        self.scheduler_actor = CosineAnnealingWarmRestarts(self.pi_optimizer, T_0=2, T_mult=2, eta_min=hp_dict['eta_min'])
+        self.scheduler_critic = CosineAnnealingWarmRestarts(self.q_optimizer, T_0=2, T_mult=2, eta_min=hp_dict['eta_min'])
+
+        self.q_loss = None
         # Set up model saving
-        if self.train_or_test == "train":
-            self.logger.setup_pytorch_saver(self.ac)
+        # if self.train_or_test == "train":
+        #     self.logger.setup_pytorch_saver(self.ac)
 
     def compute_q_loss(self, data):
-        o, a, r, o2, d = data['obs'], data['act'], data['rew'], data['obs2'], data['done']
+        o, a, r, o2, d = data['obs'].to(self.device), data['act'].to(self.device), data['rew'].to(self.device), data['obs2'].to(self.device), data['done'].to(self.device)
+        o = torch.reshape(o, (self.batch_size, -1,))
+        a = torch.reshape(a, (self.batch_size, -1,))
+        o2 = torch.reshape(o2, (self.batch_size, -1,))
         q1 = self.ac.q1(o,a)
         q2 = self.ac.q2(o,a)
 
@@ -68,12 +80,22 @@ class SAC:
         loss_q2 = ((q2 - backup)**2).mean()
         loss_q = loss_q1 + loss_q2
 
-        q_info = dict(Q1Vals=q1.detach().numpy(),
-                        Q2Vals=q2.detach().numpy())
-        return loss_q, q_info
+        loss_q.backward()
+        ## Uncomment the below if graident is becoming unstable
+        # torch.nn.utils.clip_grad_norm_(self.optimizer_critic, self.hp_dict['max_grad_norm'])
+        self.q_optimizer.step()
+
+        if not self.hp_dict["dont_log"]:
+            self.q_loss = q_loss.cpu().detach().numpy()
+            wandb.log({"Q loss":q_loss.cpu().detach().numpy()})
 
     def compute_pi_loss(self, data):
-        o = data['obs']
+        for p in self.q_params:
+            p.requires_grad = False
+
+        o = data['obs'].to(self.device)
+        o = torch.reshape(o, (self.batch_size, -1,))
+        # print(o.shape)
         pi, logp_pi = self.ac.pi(o)
         q1_pi = self.ac.q1(o, pi)
         q2_pi = self.ac.q2(o, pi)
@@ -81,34 +103,27 @@ class SAC:
         # Entropy-regularized policy loss
         loss_pi = (self.hp_dict['alpha'] * logp_pi - q_pi).mean()
         # Useful info for logging
-        pi_info = dict(LogPi=logp_pi.detach().numpy())
-        return loss_pi, pi_info
+        
+        loss_pi.backward()
+        ## Uncomment the below if graident is becoming unstable
+        # torch.nn.utils.clip_grad_norm_(self.optimizer_actor, self.hp_dict['max_grad_norm'])
+        self.pi_optimizer.step()
+
+        if not self.hp_dict["dont_log"]:
+            wandb.log({"Pi loss":pi_loss.cpu().detach().numpy()})
+        
+        for p in self.critic_params:
+            p.requires_grad = True
 
     def update(self, batch_size):
         data = self.replay_buffer.sample_batch(batch_size)
         # First run one gradient descent step for Q.
         self.q_optimizer.zero_grad()
-        loss_q, q_info = self.compute_q_loss(data)
-        loss_q.backward()
-        self.q_optimizer.step()
-        # Record things
-        self.logger.store(LossQ=loss_q.item(), **q_info)
-
-        # Freeze Q-network so you don't waste computational effort 
-        # computing gradients for it during the policy learning step.
-        for p in self.q_params:
-            p.requires_grad = False
+        self.compute_q_loss(data)
 
         # Next run one gradient descent step for pi.
         self.pi_optimizer.zero_grad()
         loss_pi, pi_info = self.compute_pi_loss(data)
-        loss_pi.backward()
-        self.pi_optimizer.step()
-
-        # Unfreeze Q-network so you can optimize it at next DDPG step.
-        for p in self.q_params:
-            p.requires_grad = True
-        self.logger.store(LossPi=loss_pi.item(), **pi_info)
 
         # Finally, update target networks by polyak averaging.
         with torch.no_grad():
@@ -118,12 +133,17 @@ class SAC:
                 p_targ.data.mul_(1 - self.hp_dict['tau'])
                 p_targ.data.add_(self.hp_dict['tau'] * p.data)
 
-    def get_action(self, o, deterministic=False):
-        return self.ac.act(torch.as_tensor(torch.tensor(o, dtype=torch.float32).to(device), dtype=torch.float32), deterministic)
+        if (self.train_or_test == "train") and (current_episode % 5000) == 0:
+            torch.save(self.tf.state_dict(), f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
+
+    def get_actions(self, o, deterministic=False):
+        obs = torch.tensor(o, dtype=torch.float32).to(self.device)
+        obs = torch.reshape(obs, (-1,))
+        return self.ac.act(torch.as_tensor(obs, dtype=torch.float32), deterministic)
 
     def load_saved_policy(self, path):
-        self.ac.load_state_dict(torch.load(path))
-        self.ac.to(device)
+        self.ac.load_state_dict(torch.load(path, map_location=self.device))
+        # self.ac.to(device)
 
     def test_policy(self, o):
         with torch.no_grad():

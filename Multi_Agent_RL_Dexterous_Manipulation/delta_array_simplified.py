@@ -436,14 +436,17 @@ class DeltaArraySim:
         if self.ep_len[env_idx] == 0:
             """ extract i, j, u, v for each robot """
             for i in range(len(self.active_idxs[env_idx])):
-                self.actions_grasp[env_idx][i] = agent.get_action(self.init_grasp_state[env_idx, i], deterministic=True) # For pretrained grasping policy, single state -> 2D action var
+                self.actions_grasp[env_idx][i] = agent.get_actions(self.init_grasp_state[env_idx, i], deterministic=True) # For pretrained grasping policy, single state -> 2D action var
 
         elif (np.random.rand() <= self.hp_dict['epsilon']) or test:
             self.pos[env_idx, :self.n_idxs[env_idx], 0] = np.array([i[0]*8+i[1] for i in self.active_idxs[env_idx]]) #.reshape((-1,))
             # self.actions_rb[env_idx, :self.n_idxs[env_idx]] = agent.get_actions(self.init_state[env_idx, :self.n_idxs[env_idx]], self.pos[env_idx, :self.n_idxs[env_idx]], deterministic=test)
             # self.actions[env_idx, :self.n_idxs[env_idx]] = self.actions_grasp[env_idx][:self.n_idxs[env_idx]] + self.actions_rb[env_idx, :self.n_idxs[env_idx]]
             # self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(self.actions[env_idx, :self.n_idxs[env_idx]], -0.03, 0.03)
-            self.actions[env_idx, :self.n_idxs[env_idx]] = agent.get_actions(self.init_state[env_idx, :self.n_idxs[env_idx]], self.pos[env_idx, :self.n_idxs[env_idx]], deterministic=test)
+            # self.actions[env_idx, :self.n_idxs[env_idx]] = agent.get_actions(self.init_state[env_idx, :self.n_idxs[env_idx]], self.pos[env_idx, :self.n_idxs[env_idx]], deterministic=test)
+            act = agent.get_actions(self.init_state[env_idx, :self.n_idxs[env_idx]], deterministic=test)
+            self.actions[env_idx, :self.n_idxs[env_idx]] = act.reshape((4, 2))
+            self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(self.actions[env_idx, :self.n_idxs[env_idx]], -0.03, 0.03)
         else:
             # self.actions_rb[env_idx, :self.n_idxs[env_idx]] = np.random.uniform(-0.06, 0.06, size=(self.n_idxs[env_idx], 2))
             # self.actions[env_idx, :self.n_idxs[env_idx]] = self.actions_grasp[env_idx][:self.n_idxs[env_idx]] + self.actions_rb[env_idx, :self.n_idxs[env_idx]]

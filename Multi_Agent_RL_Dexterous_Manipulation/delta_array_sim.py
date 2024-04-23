@@ -468,6 +468,7 @@ class DeltaArraySim:
             # self.actions[env_idx, :self.n_idxs[env_idx]] = self.actions_grasp[env_idx][:self.n_idxs[env_idx]] + self.actions_rb[env_idx, :self.n_idxs[env_idx]]
             # self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(self.actions[env_idx, :self.n_idxs[env_idx]], -0.03, 0.03)
             self.actions[env_idx, :self.n_idxs[env_idx]] = agent.get_actions(self.init_state[env_idx, :self.n_idxs[env_idx]], self.pos[env_idx, :self.n_idxs[env_idx]], deterministic=test)
+            self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(self.actions[env_idx, :self.n_idxs[env_idx]], -0.03, 0.03)
             # print(self.actions[env_idx, :self.n_idxs[env_idx]])
         else:
             # self.actions_rb[env_idx, :self.n_idxs[env_idx]] = np.random.uniform(-0.06, 0.06, size=(self.n_idxs[env_idx], 2))
