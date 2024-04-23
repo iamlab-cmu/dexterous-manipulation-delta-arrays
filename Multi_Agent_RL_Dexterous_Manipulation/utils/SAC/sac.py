@@ -12,7 +12,7 @@ import itertools
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class SAC:
-    def __init__(self, env_dict, hp_dict, logger_kwargs=dict(), train_or_test="train"):
+    def __init__(self, env_dict, hp_dict, logger_kwargs=dict(), ma=False, train_or_test="train"):
         # if train_or_test == "train":
         #     self.logger = EpochLogger(**logger_kwargs)
         #     self.logger.save_config(locals())
@@ -28,7 +28,10 @@ class SAC:
         self.device = self.hp_dict['dev_rl']
         self.batch_size = self.hp_dict['batch_size']
 
-        self.ac = core.MLPActorCritic(self.obs_dim, self.act_dim, self.act_limit)
+        if ma:
+            self.ac = core.MLPActorCritic(self.obs_dim, self.act_dim, self.act_limit, hidden_sizes=[256, 512, 256], activation=nn.GELU)
+        else:
+            self.ac = core.MLPActorCritic(self.obs_dim, self.act_dim, self.act_limit)
         self.ac_targ = deepcopy(self.ac)
 
         self.ac = self.ac.to(self.device)
