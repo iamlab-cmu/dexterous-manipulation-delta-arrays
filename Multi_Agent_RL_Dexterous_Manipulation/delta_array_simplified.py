@@ -414,7 +414,7 @@ class DeltaArraySim:
             self.log_data(env_idx, agent)
         # com = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
 
-        agent.replay_buffer.store(self.init_state[env_idx], self.actions[env_idx], self.pos[env_idx], self.ep_reward[env_idx], self.final_state[env_idx], True, self.n_idxs[env_idx])
+        agent.replay_buffer.store(self.init_state[env_idx], self.actions[env_idx], self.ep_reward[env_idx], self.final_state[env_idx], True)
         self.ep_reward[env_idx]
         self.reset(env_idx)
         if (self.current_episode%5000)==0:
