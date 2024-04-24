@@ -119,7 +119,7 @@ class SAC:
         for p in self.critic_params:
             p.requires_grad = True
 
-    def update(self, batch_size):
+    def update(self, batch_size, current_episode):
         data = self.replay_buffer.sample_batch(batch_size)
         # First run one gradient descent step for Q.
         self.q_optimizer.zero_grad()
