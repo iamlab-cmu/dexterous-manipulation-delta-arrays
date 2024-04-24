@@ -90,7 +90,9 @@ class DeltaArraySim:
         self.max_episodes = 10000001
         # self.current_episode = -self.scene.n_envs
         self.current_episode = 0
-        self.dont_skip_episode = True
+        self.dont_skip_episode = {}
+        for i in range(self.scene.n_envs):
+            self.dont_skip_episode[i] = True
 
         """ Visual Servoing and RL Vars """
         self.KMeans = KMeans(n_clusters=64, random_state=69, n_init='auto')
@@ -274,7 +276,7 @@ class DeltaArraySim:
         seg_map, boundary_pts = self.get_boundary_pts(img)
         
         if len(boundary_pts) < 64:
-            self.dont_skip_episode = False
+            self.dont_skip_episode[env_idx] = False
             return None, None
         else:
             kmeans = self.KMeans.fit(boundary_pts)
@@ -285,6 +287,9 @@ class DeltaArraySim:
                 # Get indices of nearest robots to the boundary. We are not using neg_idxs for now. 
                 self.active_idxs[env_idx], _ = self.nn_helper.get_4_nn_robots(bd_cluster_centers, )
                 self.n_idxs[env_idx] = len(self.active_idxs[env_idx])
+                if self.n_idxs[env_idx] < 4:
+                    self.dont_skip_episode[env_idx] = False
+                    return
                 
                 self.actions[env_idx, :self.n_idxs[env_idx]] = np.array((0,0))
                 self.actions_grasp[env_idx, :self.n_idxs[env_idx]] = np.array((0,0))
@@ -314,6 +319,9 @@ class DeltaArraySim:
                     self.final_state[env_idx, :self.n_idxs[env_idx], 4:6] = raw_rb_pos
                 
             else:
+                if self.n_idxs[env_idx] < 4:
+                    self.dont_skip_episode[env_idx] = False
+                    return
                 _, final_nn_bd_pts = self.nn_helper.get_min_dist(bd_cluster_centers, self.active_idxs[env_idx], self.actions[env_idx])
                 self.final_state[env_idx, :self.n_idxs[env_idx], :2] = [self.convert_pix_2_world(bd_pts) for bd_pts in final_nn_bd_pts]
                 if self.hp_dict['robot_frame']:
@@ -324,29 +332,29 @@ class DeltaArraySim:
                 
 ################################################################################################################################################################################
                 
-                if self.current_episode > 0:
-                    r_poses = self.nn_helper.rb_pos_raw[tuple(zip(*self.active_idxs[env_idx]))]
-                    init_pts = self.init_state[env_idx, :self.n_idxs[env_idx], :2].copy()
-                    init_bd_pts = np.array([self.convert_pix_2_world(bdpts) for bdpts in init_bd_pts])
-                    goal_bd_pts = self.init_state[env_idx, :self.n_idxs[env_idx], 2:4].copy()
-                    g_bd_pt2 = np.array([self.convert_pix_2_world(bdpts) for bdpts in self.goal_bd_pts[env_idx]])
-                    final_bd_pts = self.final_state[env_idx, :self.n_idxs[env_idx], :2].copy()
-                    act_grsp = self.actions_grasp[env_idx, :self.n_idxs[env_idx]].copy()
-                    acts = self.actions[env_idx, :self.n_idxs[env_idx]].copy()
+                # if self.current_episode > 0:
+                #     r_poses = self.nn_helper.rb_pos_raw[tuple(zip(*self.active_idxs[env_idx]))]
+                #     init_pts = self.init_state[env_idx, :self.n_idxs[env_idx], :2].copy()
+                #     init_bd_pts = np.array([self.convert_pix_2_world(bdpts) for bdpts in init_bd_pts])
+                #     goal_bd_pts = self.init_state[env_idx, :self.n_idxs[env_idx], 2:4].copy()
+                #     g_bd_pt2 = np.array([self.convert_pix_2_world(bdpts) for bdpts in self.goal_bd_pts[env_idx]])
+                #     final_bd_pts = self.final_state[env_idx, :self.n_idxs[env_idx], :2].copy()
+                #     act_grsp = self.actions_grasp[env_idx, :self.n_idxs[env_idx]].copy()
+                #     acts = self.actions[env_idx, :self.n_idxs[env_idx]].copy()
                     
-                    # plt.figure(figsize=(10,17.78))
-                    plt.scatter(r_poses[:, 0], r_poses[:, 1], c='#880000ff')
+                #     # plt.figure(figsize=(10,17.78))
+                #     plt.scatter(r_poses[:, 0], r_poses[:, 1], c='#880000ff')
 
-                    plt.scatter(g_bd_pt2[:, 0], g_bd_pt2[:, 1], c='#ffa50066')
-                    plt.scatter(init_bd_pts[:, 0], init_bd_pts[:, 1], c = '#00ff0066')
-                    plt.scatter(init_pts[:, 0], init_pts[:, 1], c = '#00ff00ff')
-                    plt.scatter(goal_bd_pts[:, 0], goal_bd_pts[:, 1], c='red')
-                    plt.scatter(final_bd_pts[:, 0], final_bd_pts[:, 1], c='blue')
+                #     plt.scatter(g_bd_pt2[:, 0], g_bd_pt2[:, 1], c='#ffa50066')
+                #     plt.scatter(init_bd_pts[:, 0], init_bd_pts[:, 1], c = '#00ff0066')
+                #     plt.scatter(init_pts[:, 0], init_pts[:, 1], c = '#00ff00ff')
+                #     plt.scatter(goal_bd_pts[:, 0], goal_bd_pts[:, 1], c='red')
+                #     plt.scatter(final_bd_pts[:, 0], final_bd_pts[:, 1], c='blue')
 
-                    plt.quiver(r_poses[:, 0], r_poses[:, 1], act_grsp[:, 0], act_grsp[:, 1], scale=0.5, scale_units='xy')
-                    plt.quiver(init_pts[:, 0], init_pts[:, 1], acts[:, 0], acts[:, 1], scale=1, scale_units='xy')
-                    plt.gca().set_aspect('equal')
-                    plt.show()
+                #     plt.quiver(r_poses[:, 0], r_poses[:, 1], act_grsp[:, 0], act_grsp[:, 1], scale=0.5, scale_units='xy')
+                #     plt.quiver(init_pts[:, 0], init_pts[:, 1], acts[:, 0], acts[:, 1], scale=1, scale_units='xy')
+                #     plt.gca().set_aspect('equal')
+                #     plt.show()
 
     def gaussian_reward_shaping(self, x, ampl, width, center=0, vertical_shift=0):
         return ampl * np.exp(-width * (x - center)**2) - vertical_shift
@@ -397,7 +405,7 @@ class DeltaArraySim:
         """ Update the replay buffer and reset the env """
         # Update policy
         self.compute_reward(env_idx, t_step)
-        if self.agent.ma_replay_buffer.size > self.batch_size:
+        if self.agent.replay_buffer.size > self.batch_size:
             epoch = self.scale_epoch(self.current_episode)
             for i in range(epoch):
                 self.agent.update(self.batch_size, self.current_episode)
@@ -406,16 +414,16 @@ class DeltaArraySim:
             self.log_data(env_idx, agent)
         # com = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
 
-        agent.ma_replay_buffer.store(self.init_state[env_idx], self.actions[env_idx], self.pos[env_idx], self.ep_reward[env_idx], self.final_state[env_idx], True, self.n_idxs[env_idx])
+        agent.replay_buffer.store(self.init_state[env_idx], self.actions[env_idx], self.pos[env_idx], self.ep_reward[env_idx], self.final_state[env_idx], True, self.n_idxs[env_idx])
         self.ep_reward[env_idx]
         self.reset(env_idx)
         if (self.current_episode%5000)==0:
-            agent.ma_replay_buffer.save_RB()
+            agent.replay_buffer.save_RB()
 
     def reset(self, env_idx):
         """ Normal reset OR Alt-terminate state when block degenerately collides with robot. This is due to an artifact of the simulation. """
         self.table.set_rb_transforms(env_idx, 'table', [gymapi.Transform(p=gymapi.Vec3(0,0,0.5))])
-        self.dont_skip_episode = True
+        self.dont_skip_episode[env_idx] = True
         self.active_idxs[env_idx].clear()
         self.set_all_fingers_pose(env_idx, pos_high=True)
         self.ep_reward[env_idx] = 0
@@ -430,7 +438,7 @@ class DeltaArraySim:
             self.get_nearest_robots_and_state(env_idx, final=False)
             self.set_nn_fingers_pose_low(env_idx, self.active_idxs[env_idx])
 
-        if not self.dont_skip_episode:
+        if not self.dont_skip_episode[env_idx]:
             return
 
         if self.ep_len[env_idx] == 0:
@@ -497,11 +505,11 @@ class DeltaArraySim:
                     self.set_attractor_target(env_idx, t_step, None, all_zeros=True) # Set all fingers to high pose
                 elif t_step == 1:
                     self.env_step(env_idx, t_step, self.pretrained_agent) #Store Init Pose
-                elif (t_step == 2) and self.dont_skip_episode:
+                elif (t_step == 2) and self.dont_skip_episode[env_idx]:
                     self.set_attractor_target(env_idx, t_step, self.actions_grasp)
-                elif (t_step == self.time_horizon-1) and self.dont_skip_episode:
+                elif (t_step == self.time_horizon-1) and self.dont_skip_episode[env_idx]:
                     self.ep_len[env_idx] = 1
-                elif not self.dont_skip_episode:
+                elif (t_step == self.time_horizon-1) and (not self.dont_skip_episode[env_idx]):
                     self.ep_len[env_idx] = 0
                     self.reset(env_idx)
 
@@ -525,7 +533,6 @@ class DeltaArraySim:
     def test_learned_policy(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
         env_ptr = self.scene.env_ptrs[env_idx]
-        
         if self.ep_len[env_idx]==0:
             if t_step == 0:
                 img = self.get_camera_image(env_idx)
@@ -535,11 +542,11 @@ class DeltaArraySim:
                 self.set_attractor_target(env_idx, t_step, None, all_zeros=True) # Set all fingers to high pose
             elif t_step == 1:
                 self.env_step(env_idx, t_step, self.pretrained_agent) #Store Init Pose
-            elif (t_step == 2) and self.dont_skip_episode:
+            elif (t_step == 2) and self.dont_skip_episode[env_idx]:
                 self.set_attractor_target(env_idx, t_step, self.actions_grasp)
-            elif (t_step == self.time_horizon-1) and self.dont_skip_episode:
+            elif (t_step == self.time_horizon-1) and self.dont_skip_episode[env_idx]:
                 self.ep_len[env_idx] = 1
-            elif not self.dont_skip_episode:
+            elif (t_step == self.time_horizon-1) and (not self.dont_skip_episode[env_idx]):
                 self.ep_len[env_idx] = 0
                 self.reset(env_idx)
             # else:
@@ -587,7 +594,7 @@ class DeltaArraySim:
         seg_map, new_bd_pts = self.get_boundary_pts(img)
         
         if len(new_bd_pts) < 64:
-            self.dont_skip_episode = False
+            self.dont_skip_episode[env_idx] = False
             return None, None
         else:
             if self.current_episode >= 0:
@@ -646,7 +653,7 @@ class DeltaArraySim:
         seg_map, new_bd_pts = self.get_boundary_pts(img)
         
         if len(new_bd_pts) < 64:
-            self.dont_skip_episode = False
+            self.dont_skip_episode[env_idx] = False
             return None, None
         else:
             if self.current_episode >= 0:
@@ -711,11 +718,11 @@ class DeltaArraySim:
                 self.set_attractor_target(env_idx, t_step, None, all_zeros=True) # Set all fingers to high pose
             elif t_step == 1:
                 self.env_step(env_idx, t_step, self.pretrained_agent) #Store Init Pose
-            elif (t_step == 2) and self.dont_skip_episode:
+            elif (t_step == 2) and self.dont_skip_episode[env_idx]:
                 self.set_attractor_target(env_idx, t_step, self.actions_grasp)
-            elif (t_step == self.time_horizon-1) and self.dont_skip_episode:
+            elif (t_step == self.time_horizon-1) and self.dont_skip_episode[env_idx]:
                 self.ep_len[env_idx] = 1
-            elif not self.dont_skip_episode:
+            elif not self.dont_skip_episode[env_idx]:
                 self.ep_len[env_idx] = 0
                 self.reset(env_idx)
         
