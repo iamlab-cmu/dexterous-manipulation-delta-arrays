@@ -82,9 +82,9 @@ class SAC:
         # MSE loss against Bellman backup
         loss_q1 = ((q1 - backup)**2).mean()
         loss_q2 = ((q2 - backup)**2).mean()
-        loss_q = loss_q1 + loss_q2
+        q_loss = loss_q1 + loss_q2
 
-        loss_q.backward()
+        q_loss.backward()
         ## Uncomment the below if graident is becoming unstable
         # torch.nn.utils.clip_grad_norm_(self.optimizer_critic, self.hp_dict['max_grad_norm'])
         self.q_optimizer.step()
@@ -105,10 +105,10 @@ class SAC:
         q2_pi = self.ac.q2(o, pi)
         q_pi = torch.min(q1_pi, q2_pi)
         # Entropy-regularized policy loss
-        loss_pi = (self.hp_dict['alpha'] * logp_pi - q_pi).mean()
+        pi_loss = (self.hp_dict['alpha'] * logp_pi - q_pi).mean()
         # Useful info for logging
         
-        loss_pi.backward()
+        pi_loss.backward()
         ## Uncomment the below if graident is becoming unstable
         # torch.nn.utils.clip_grad_norm_(self.optimizer_actor, self.hp_dict['max_grad_norm'])
         self.pi_optimizer.step()
@@ -116,7 +116,7 @@ class SAC:
         if not self.hp_dict["dont_log"]:
             wandb.log({"Pi loss":pi_loss.cpu().detach().numpy()})
         
-        for p in self.critic_params:
+        for p in self.q_params:
             p.requires_grad = True
 
     def update(self, batch_size, current_episode):
@@ -127,7 +127,7 @@ class SAC:
 
         # Next run one gradient descent step for pi.
         self.pi_optimizer.zero_grad()
-        loss_pi, pi_info = self.compute_pi_loss(data)
+        self.compute_pi_loss(data)
 
         # Finally, update target networks by polyak averaging.
         with torch.no_grad():
