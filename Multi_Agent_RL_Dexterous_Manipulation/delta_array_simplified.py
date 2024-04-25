@@ -523,9 +523,8 @@ class DeltaArraySim:
                 elif t_step == 2:
                     self.set_attractor_target(env_idx, t_step, self.actions)
                 elif t_step == (self.time_horizon-2):
-                    self.terminate(env_idx, t_step, self.agent)
-
                     self.current_episode += 1
+                    self.terminate(env_idx, t_step, self.agent)
                 elif t_step == self.time_horizon - 1:
                     self.set_block_pose(env_idx, goal=True) # Set block to next goal pose & Store Goal Pose for both states
                     self.ep_len[env_idx] = 0
