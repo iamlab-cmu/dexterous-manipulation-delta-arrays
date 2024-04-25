@@ -20,10 +20,11 @@ from torchvision.models import resnet18
 from scipy.spatial.distance import cosine
 
 import delta_array_sim
+import delta_array_simplified
 import delta_array_real
 import utils.SAC.sac as sac
-import utils.DDPG.ddpg as ddpg
-import utils.MASAC.masac as masac
+# import utils.DDPG.ddpg as ddpg
+# import utils.MASAC.masac as masac
 import utils.MATSAC.matsac as matsac
 import utils.MATDQN.matdqn as matdqn
 
@@ -88,9 +89,14 @@ class DeltaArraySimEnvironment():
         single_agent_env_dict = {'action_space': {'low': -0.03, 'high': 0.03, 'dim': 2},
                     'observation_space': {'dim': 4},}
         ma_env_dict = {'action_space': {'low': -0.03, 'high': 0.03, 'dim': 2},
-                    'pi_obs_space': {'dim': 6},
-                    'q_obs_space': {'dim': 6},
-                    "max_agents"    :64,}
+                    'pi_obs_space'  : {'dim': 6},
+                    'q_obs_space'   : {'dim': 6},
+                    "max_agents"    : 64,}
+        
+        simplified_ma_env_dict = {'action_space': {'low': -0.03, 'high': 0.03, 'dim': 8},
+                    'observation_space'  : {'dim': 24},
+                    "max_agents"    : 4}
+        
         self.hp_dict = {
                 "exp_name"          : args.name,
                 "data_dir"          : "./data/rl_data",
@@ -139,7 +145,7 @@ class DeltaArraySimEnvironment():
 
         # self.agent = ddpg.DDPG(env_dict, self.hp_dict, logger_kwargs)
         # self.agent = reinforce.REINFORCE(env_dict, 3e-3)
-        self.grasping_agent = sac.SAC(single_agent_env_dict, self.hp_dict, logger_kwargs, train_or_test="test")
+        self.grasping_agent = sac.SAC(single_agent_env_dict, self.hp_dict, logger_kwargs, ma=False, train_or_test="test")
         self.grasping_agent.load_saved_policy('./models/trained_models/SAC_1_agent_stochastic/pyt_save/model.pt')
 
         if self.args.algo=="MATSAC":
@@ -147,12 +153,18 @@ class DeltaArraySimEnvironment():
             self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
         elif self.args.algo=="MATDQN":
             self.pushing_agent = matdqn.MATDQN(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
+        elif self.args.algo=="SAC":
+            self.pushing_agent = sac.SAC(simplified_ma_env_dict, self.hp_dict, logger_kwargs, ma=True, train_or_test="train")
 
         if self.train_or_test=="test":
             # self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/{args.name}_s69420/pyt_save/model.pt')
             self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/pyt_save/model.pt')
         
-        self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.table, self.obj_name, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
+
+        if self.args.fingers4:
+            self.fingers = delta_array_simplified.DeltaArraySim(self.scene, self.cfg, self.object, self.table, self.obj_name, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
+        else:
+            self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.table, self.obj_name, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
         
         
         self.cam = GymCamera(self.scene, cam_props = self.cfg['camera'])
@@ -271,6 +283,7 @@ if __name__ == "__main__":
     parser.add_argument("-qlr", "--qlr", type=float, default=1e-2, help="% of data to use for visual servoing")
     parser.add_argument("-etamin", "--etamin", type=float, default=1e-5, help="% of data to use for visual servoing")
     parser.add_argument("-savevid", "--save_vid", action="store_true", help="Save Videos at inference")
+    parser.add_argument("-fingers4", "--fingers4", action="store_true", help="Use simplified setup with only 4 fingers")
     args = parser.parse_args()
 
     if args.vis_servo and not args.test:

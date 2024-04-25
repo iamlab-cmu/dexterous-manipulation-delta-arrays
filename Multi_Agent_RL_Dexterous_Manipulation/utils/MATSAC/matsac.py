@@ -59,8 +59,8 @@ class MATSAC:
             self.optimizer_actor = optim.SGD(filter(lambda p: p.requires_grad, self.tf.decoder_actor.parameters()), lr=hp_dict['pi_lr'])
             self.optimizer_critic = optim.SGD(filter(lambda p: p.requires_grad, self.critic_params), lr=hp_dict['q_lr'])
 
-        self.scheduler = CosineAnnealingWarmRestarts(self.optimizer_critic, T_0=2, T_mult=2, eta_min=hp_dict['eta_min'])
-        self.scheduler = CosineAnnealingWarmRestarts(self.optimizer_critic, T_0=2, T_mult=2, eta_min=hp_dict['eta_min'])
+        self.scheduler_actor = CosineAnnealingWarmRestarts(self.optimizer_actor, T_0=2, T_mult=2, eta_min=hp_dict['eta_min'])
+        self.scheduler_critic = CosineAnnealingWarmRestarts(self.optimizer_critic, T_0=2, T_mult=2, eta_min=hp_dict['eta_min'])
         
         self.q_loss = None
         # Set up model saving
@@ -82,8 +82,7 @@ class MATSAC:
             q_next = r.unsqueeze(1)
         q_loss = F.mse_loss(q1, q_next) + F.mse_loss(q2, q_next)
         q_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.tf.decoder_critic1.parameters(), self.hp_dict['max_grad_norm'])
-        torch.nn.utils.clip_grad_norm_(self.tf.decoder_critic2.parameters(), self.hp_dict['max_grad_norm'])
+        torch.nn.utils.clip_grad_norm_(self.optimizer_critic, self.hp_dict['max_grad_norm'])
         self.optimizer_critic.step()
 
         if not self.hp_dict["dont_log"]:
@@ -103,7 +102,7 @@ class MATSAC:
         pi_loss = -q_pi.mean() #self.hp_dict['alpha'] * logp_pi 
 
         pi_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.tf.decoder_actor.parameters(), self.hp_dict['max_grad_norm'])
+        torch.nn.utils.clip_grad_norm_(self.optimizer_actor, self.hp_dict['max_grad_norm'])
         self.optimizer_actor.step()
 
         if not self.hp_dict["dont_log"]:
