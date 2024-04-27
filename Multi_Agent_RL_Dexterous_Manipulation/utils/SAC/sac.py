@@ -138,8 +138,8 @@ class SAC:
                 p_targ.data.mul_(1 - self.hp_dict['tau'])
                 p_targ.data.add_(self.hp_dict['tau'] * p.data)
 
-        if (self.train_or_test == "train") and (current_episode % 5000) == 0:
-            torch.save(self.tf.state_dict(), f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
+        if (current_episode % 10000) == 0:
+            torch.save(self.ac.state_dict(), f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
 
     def get_actions(self, o, deterministic=False):
         obs = torch.tensor(o, dtype=torch.float32).to(self.device)

@@ -33,3 +33,11 @@ class ReplayBuffer:
                      done=self.done_buf[idxs])
         return {k: torch.as_tensor(v, dtype=torch.float32) for k,v in batch.items()}
 
+
+    def save_RB(self):
+        dic = { "obs":self.obs_buf,
+                "obs2":self.obs2_buf,
+                "act":self.act_buf,
+                "rew":self.rew_buf,
+                "done":self.done_buf,}
+        pkl.dump(dic, open("replay_buffer_4_fingers.pkl", "wb"))
