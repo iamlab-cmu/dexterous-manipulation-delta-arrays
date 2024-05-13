@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<robot name="triangle_block">
+  <link name="block">
+    <visual>
+      <geometry>
+        <mesh filename="./config/assets/triangle.obj"/>
+      </geometry>
+    </visual>
+
+    <collision>
+      <geometry>
+        <mesh filename="./config/assets/triangle.obj"/>
+      </geometry>
+    </collision>
+  </link>
+
+</robot>

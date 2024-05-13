@@ -13,7 +13,7 @@ width, height = 1920, 1080
 
 glfw.init()
 glfw.window_hint(glfw.VISIBLE, 1)
-window = glfw.create_window(width, height, "Offscreen", None, None)
+window = glfw.create_window(width, height, "window", None, None)
 glfw.make_context_current(window)
 glfw.swap_interval(1)
 framebuffer_width, framebuffer_height = glfw.get_framebuffer_size(window)

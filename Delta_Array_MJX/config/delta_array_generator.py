@@ -33,19 +33,24 @@ for i in range(arr.shape[0]):
         xml_snippets.append(xml_snippet.strip())
 
 xml_snippets.append("""
-        <body name="transparent_table" pos="0.5 0.5 0.5">
-            <geom name="collision_geom" type="box" size="0.5 0.5 0.5" contype="1" conaffinity="1" material="collision_material"/>
-            <geom name="visual_geom" type="box" size="0.15 0.15 0.015" contype="0" conaffinity="0" material="visual_material"/>
+        
+        <body name="transparent_table" pos="0 0 0">
+            <geom name="collision_geom" type="box" size="1 1 1" contype="1" conaffinity="1"
+                material="collision_material" />
+            <geom name="visual_geom" type="box" size="0.15 0.15 0.015" contype="0" conaffinity="0"
+                material="visual_material" />
         </body>
-        <body name="block" pos="0.13125 0.1407285 1.021"> <!-- 1.021 = table height(1) + block height/2(0.01) + tolerance(0.001) -->
-            <freejoint/>
+        <body name="block" pos="0.13125 0.1407285 1.021"> <!-- 1.021 = table height(1) + block
+            height/2(0.01) + tolerance(0.001) -->
+            <freejoint />
             <body name="block_face" pos="0 0 -0.01">
-                <geom name="disc_face" size="0.025 0.05 0.0005" type="box" rgba="0 1 0 1"/>
+                <geom name="disc_face" size="0.025 0.05 0.0005" type="box" rgba="0 1 0 1" />
             </body>
             <body name="block_body" pos="0 0 0">
-                <geom name="disc_body" size="0.025 0.05 0.0095" type="box" rgba="0 0 1 1"/>
+                <geom name="disc_body" size="0.025 0.05 0.0095" type="box" rgba="0 0 1 1" />
             </body>
         </body>
+        
         <!-- <body name="fiducial_lt" pos="-0.06 -0.2035 1.021">
             <freejoint/>
             <geom mass="10000000" name="fiducial_lt" size="0.005 0.005 0.001" type="box" rgba="1 0 0 1"/>

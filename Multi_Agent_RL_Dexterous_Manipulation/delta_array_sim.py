@@ -460,7 +460,7 @@ class DeltaArraySim:
         if self.ep_len[env_idx] == 0:
             """ extract i, j, u, v for each robot """
             for i in range(len(self.active_idxs[env_idx])):
-                self.actions_grasp[env_idx][i] = agent.get_action(self.init_grasp_state[env_idx, i], deterministic=True) # For pretrained grasping policy, single state -> 2D action var
+                self.actions_grasp[env_idx][i] = agent.get_actions(self.init_grasp_state[env_idx, i], deterministic=True) # For pretrained grasping policy, single state -> 2D action var
 
         elif (np.random.rand() <= self.hp_dict['epsilon']) or test:
             self.pos[env_idx, :self.n_idxs[env_idx], 0] = np.array([i[0]*8+i[1] for i in self.active_idxs[env_idx]]) #.reshape((-1,))
@@ -574,6 +574,7 @@ class DeltaArraySim:
                 self.set_attractor_target(env_idx, t_step, self.actions)
             elif t_step == (self.time_horizon-2):
                 self.compute_reward(env_idx, t_step)
+                print(f"Reward: {self.ep_reward[env_idx]}")
 
                 if not self.hp_dict["dont_log"]:
                     wandb.log({"Inference Reward":self.ep_reward[env_idx]})
@@ -586,7 +587,6 @@ class DeltaArraySim:
                 #     out.release()
                 
                 if self.hp_dict["print_summary"]:
-                    # print(f"Reward: {self.ep_reward[env_idx]}")
                     
                     com = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
                     self.temp_var['z_dist'].append(np.linalg.norm(self.init_pose[env_idx][3] - com.p.z))
