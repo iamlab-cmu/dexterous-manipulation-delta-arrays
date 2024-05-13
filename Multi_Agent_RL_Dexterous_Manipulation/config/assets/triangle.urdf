@@ -3,13 +3,13 @@
   <link name="block">
     <visual>
       <geometry>
-        <mesh filename="./config/assets/triangle.obj"/>
+        <mesh filename="./config/assets/triangle.dae"/>
       </geometry>
     </visual>
 
     <collision>
       <geometry>
-        <mesh filename="./config/assets/triangle.obj"/>
+        <mesh filename="./config/assets/triangle.dae"/>
       </geometry>
     </collision>
   </link>

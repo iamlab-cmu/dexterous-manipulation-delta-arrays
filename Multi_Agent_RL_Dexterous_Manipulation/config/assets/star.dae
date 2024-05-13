@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <asset>
+    <contributor>
+      <author>Blender User</author>
+      <authoring_tool>Blender 4.1.1 commit date:2024-04-15, commit time:15:11, hash:e1743a0317bc</authoring_tool>
+    </contributor>
+    <created>2024-05-13T00:33:57</created>
+    <modified>2024-05-13T00:33:57</modified>
+    <unit name="meter" meter="1"/>
+    <up_axis>Z_UP</up_axis>
+  </asset>
+  <library_effects>
+    <effect id="Material_0_014-effect">
+      <profile_COMMON>
+        <technique sid="common">
+          <lambert>
+            <emission>
+              <color sid="emission">0 0 0 1</color>
+            </emission>
+            <diffuse>
+              <color sid="diffuse">1 0 0 1</color>
+            </diffuse>
+            <reflectivity>
+              <float sid="specular">0.5</float>
+            </reflectivity>
+          </lambert>
+        </technique>
+      </profile_COMMON>
+    </effect>
+    <effect id="Material_1_014-effect">
+      <profile_COMMON>
+        <technique sid="common">
+          <lambert>
+            <emission>
+              <color sid="emission">0 0 0 1</color>
+            </emission>
+            <diffuse>
+              <color sid="diffuse">0 1 0 1</color>
+            </diffuse>
+            <reflectivity>
+              <float sid="specular">0.5</float>
+            </reflectivity>
+          </lambert>
+        </technique>
+      </profile_COMMON>
+    </effect>
+  </library_effects>
+  <library_images/>
+  <library_materials>
+    <material id="Material_0_014-material" name="Material_0.014">
+      <instance_effect url="#Material_0_014-effect"/>
+    </material>
+    <material id="Material_1_014-material" name="Material_1.014">
+      <instance_effect url="#Material_1_014-effect"/>
+    </material>
+  </library_materials>
+  <library_geometries>
+    <geometry id="Star_002-mesh" name="Star.002">
+      <mesh>
+        <source id="Star_002-mesh-positions">
+          <float_array id="Star_002-mesh-positions-array" count="60">0.07999998 0 -0.00999999 0.07999998 0 0.00999999 0.02427047 0.01763355 -0.00999999 0.02427047 0.01763355 0.00999999 0.02472132 0.07608449 -0.00999999 0.02472132 0.07608449 0.00999999 -0.009270489 0.02853167 -0.00999999 -0.009270489 0.02853167 0.00999999 -0.06472134 0.04702281 -0.00999999 -0.06472134 0.04702281 0.00999999 -0.02999997 0 -0.00999999 -0.02999997 0 0.00999999 -0.06472134 -0.04702281 -0.00999999 -0.06472134 -0.04702281 0.00999999 -0.009270489 -0.02853167 -0.00999999 -0.009270489 -0.02853167 0.00999999 0.02472132 -0.07608449 -0.00999999 0.02472132 -0.07608449 0.00999999 0.02427047 -0.01763355 -0.00999999 0.02427047 -0.01763355 0.00999999</float_array>
+          <technique_common>
+            <accessor source="#Star_002-mesh-positions-array" count="20" stride="3">
+              <param name="X" type="float"/>
+              <param name="Y" type="float"/>
+              <param name="Z" type="float"/>
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="Star_002-mesh-normals">
+          <float_array id="Star_002-mesh-normals-array" count="108">-0.8044593 -0.5940078 0 0 0 1 0 0 1 -0.3163434 -0.9486448 0 0.8135266 -0.5815277 0 -0.9999702 0.007713019 0 -0.3016722 -0.9534117 0 -0.3016722 0.9534117 0 0.9999702 0.007713019 0 0.8135266 0.5815277 0 -0.3163434 0.9486448 0 -0.8044593 0.5940078 0 -0.8044593 -0.5940078 0 0 0 1 0 0 1 0 0 1 0 0 1 0 0 1 0 0 1 0 0 1 0 0 1 0 0 1 0 0 1 0 0 1 0 0 1 0 0 1 0 0 1 -0.3163434 -0.9486448 0 0.8135266 -0.5815277 0 -0.9999702 0.007713019 0 -0.3016722 -0.9534117 0 -0.3016722 0.9534117 0 0.9999702 0.007713019 0 0.8135266 0.5815277 0 -0.3163434 0.9486448 0 -0.8044593 0.5940078 0</float_array>
+          <technique_common>
+            <accessor source="#Star_002-mesh-normals-array" count="36" stride="3">
+              <param name="X" type="float"/>
+              <param name="Y" type="float"/>
+              <param name="Z" type="float"/>
+            </accessor>
+          </technique_common>
+        </source>
+        <vertices id="Star_002-mesh-vertices">
+          <input semantic="POSITION" source="#Star_002-mesh-positions"/>
+        </vertices>
+        <triangles material="Material_0_014-material" count="28">
+          <input semantic="VERTEX" source="#Star_002-mesh-vertices" offset="0"/>
+          <input semantic="NORMAL" source="#Star_002-mesh-normals" offset="1"/>
+          <p>9 0 10 0 11 0 7 2 15 2 19 2 6 3 9 3 8 3 4 4 7 4 6 4 2 5 5 5 4 5 0 6 3 6 2 6 19 7 0 7 18 7 17 8 18 8 19 8 14 9 17 9 16 9 12 10 15 10 14 10 11 11 12 11 13 11 9 12 8 12 10 12 19 20 1 20 3 20 3 21 5 21 7 21 7 22 9 22 11 22 11 23 13 23 15 23 15 24 17 24 19 24 19 25 3 25 7 25 7 26 11 26 15 26 6 27 7 27 9 27 4 28 5 28 7 28 2 29 3 29 5 29 0 30 1 30 3 30 19 31 1 31 0 31 17 32 16 32 18 32 14 33 15 33 17 33 12 34 13 34 15 34 11 35 10 35 12 35</p>
+        </triangles>
+        <triangles material="Material_1_014-material" count="8">
+          <input semantic="VERTEX" source="#Star_002-mesh-vertices" offset="0"/>
+          <input semantic="NORMAL" source="#Star_002-mesh-normals" offset="1"/>
+          <p>6 1 14 1 18 1 18 13 0 13 2 13 2 14 4 14 6 14 6 15 8 15 10 15 10 16 12 16 14 16 14 17 16 17 18 17 18 18 2 18 6 18 6 19 10 19 14 19</p>
+        </triangles>
+      </mesh>
+    </geometry>
+  </library_geometries>
+  <library_visual_scenes>
+    <visual_scene id="Scene" name="Scene">
+      <node id="Star" name="Star" type="NODE">
+        <matrix sid="transform">1 0 0 4.70925e-10 0 1 0 -1.0764e-9 0 0 1 0 0 0 0 1</matrix>
+        <instance_geometry url="#Star_002-mesh" name="Star">
+          <bind_material>
+            <technique_common>
+              <instance_material symbol="Material_0_014-material" target="#Material_0_014-material"/>
+              <instance_material symbol="Material_1_014-material" target="#Material_1_014-material"/>
+            </technique_common>
+          </bind_material>
+        </instance_geometry>
+      </node>
+    </visual_scene>
+  </library_visual_scenes>
+  <scene>
+    <instance_visual_scene url="#Scene"/>
+  </scene>
+</COLLADA>
