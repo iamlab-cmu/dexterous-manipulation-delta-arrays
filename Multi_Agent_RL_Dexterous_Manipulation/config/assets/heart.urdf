@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<robot name="heart_block">
+  <link name="block">
+    <visual>
+      <geometry>
+        <mesh filename="./config/assets/heart.dae"/>
+      </geometry>
+    </visual>
+
+    <collision>
+      <geometry>
+        <mesh filename="./config/assets/heart.dae"/>
+      </geometry>
+    </collision>
+  </link>
+
+</robot>

@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<robot name="parallelogram_block">
+  <link name="block">
+    <visual>
+      <geometry>
+        <mesh filename="./config/assets/parallelogram.dae"/>
+      </geometry>
+    </visual>
+
+    <collision>
+      <geometry>
+        <mesh filename="./config/assets/parallelogram.dae"/>
+      </geometry>
+    </collision>
+  </link>
+
+</robot>

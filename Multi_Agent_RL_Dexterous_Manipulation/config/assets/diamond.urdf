@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<robot name="diamond_block">
+  <link name="block">
+    <visual>
+      <geometry>
+        <mesh filename="./config/assets/diamond.dae"/>
+      </geometry>
+    </visual>
+
+    <collision>
+      <geometry>
+        <mesh filename="./config/assets/diamond.dae"/>
+      </geometry>
+    </collision>
+  </link>
+
+</robot>

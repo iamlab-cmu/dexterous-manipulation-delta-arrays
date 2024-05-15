@@ -27,6 +27,7 @@ import utils.SAC.sac as sac
 # import utils.MASAC.masac as masac
 import utils.MATSAC.matsac as matsac
 import utils.MATDQN.matdqn as matdqn
+import config.assets.obj_dict as obj_dict
 
 from utils.openai_utils.run_utils import setup_logger_kwargs
 
@@ -51,14 +52,17 @@ class DeltaArraySimEnvironment():
         #                     rb_props=self.cfg[self.obj_name]['rb_props'],
         #                     asset_options=self.cfg[self.obj_name]['asset_options'])
         
-        self.object = GymURDFAsset(self.cfg[self.obj_name]['urdf_path'], self.scene, 
-                            shape_props=self.cfg[self.obj_name]['shape_props'], 
-                            rb_props=self.cfg[self.obj_name]['rb_props'],
-                            asset_options=self.cfg[self.obj_name]['asset_options'],
-                            assets_root=Path('config'))
+        # self.object = GymURDFAsset(self.cfg[self.obj_name]['urdf_path'], self.scene, 
+        #                     shape_props=self.cfg[self.obj_name]['shape_props'], 
+        #                     rb_props=self.cfg[self.obj_name]['rb_props'],
+        #                     asset_options=self.cfg[self.obj_name]['asset_options'],
+        #                     assets_root=Path('config'))
+
+        self.objects = obj_dict.get_obj_dict(GymURDFAsset, self.scene, self.cfg)
 
         self.table = GymURDFAsset(self.cfg['table']['urdf_path'], self.scene,
                         asset_options=self.cfg['table']['asset_options'],
+                        rb_props=self.cfg[self.obj_name]['rb_props'],
                         shape_props=self.cfg['table']['shape_props'],
                         assets_root=Path('config'))
 
@@ -73,15 +77,6 @@ class DeltaArraySimEnvironment():
         #                     rb_props=self.cfg['fiducial']['rb_props'],
         #                     asset_options=self.cfg['fiducial']['asset_options'])
         
-        # self.model = resnet18(weights="ResNet18_Weights.DEFAULT")
-        # self.model = torch.nn.Sequential(*list(self.model.children())[:-1])
-        # self.model.eval()
-        # self.model = self.model.to(device)
-        # self.transform = transforms.Compose([
-        #     transforms.Resize(224),
-        #     transforms.ToTensor(),
-        #     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        # ])
         if not os.path.exists(f'./data/rl_data/{args.name}/pyt_save'):
             os.makedirs(f'./data/rl_data/{args.name}/pyt_save')
             os.makedirs(f'./data/rl_data/{args.name}/videos')
@@ -178,7 +173,6 @@ class DeltaArraySimEnvironment():
         self.fingers.cam_name = self.cam_name
 
         self.scene.setup_all_envs(self.setup_scene)
-        print(self.hp_dict)
         self.setup_objects()
 
     def setup_scene(self, scene, _):
@@ -196,10 +190,10 @@ class DeltaArraySimEnvironment():
         for i in self.scene.env_idxs:
             self.fingers.set_attractor_handles(i)
 
-        object_p = gymapi.Vec3(0.13125, 0.1407285, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
-        # object_r = gymapi.Quat(0.5, 0.5, 0.5, 0.5)
-        object_r = gymapi.Quat(0, 0, 0, 1)
-        object_transforms = [gymapi.Transform(p=object_p, r=object_r) for _ in range(self.scene.n_envs)]
+        object_p = gymapi.Vec3(0.13125, 0.1407285, self.cfg['object']['dims']['sz'] / 2 + 1.002)
+        # self.object_r = gymapi.Quat(0.5, 0.5, 0.5, 0.5)
+        # object_r = gymapi.Quat(-0.7071068, 0, 0, 0.7071068)
+        object_transforms = [gymapi.Transform(p=object_p, r=self.object_r) for _ in range(self.scene.n_envs)]
         table_transforms = [gymapi.Transform(p=gymapi.Vec3(0,0,0.5)) for _ in range(self.scene.n_envs)]
         # fiducial_rb = [gymapi.Transform(p=gymapi.Vec3(-0.2035, -0.06, 1.0052)) for _ in range(self.scene.n_envs)]
         # fiducial_lt = [gymapi.Transform(p=gymapi.Vec3(0.303107 + 0.182, 0.2625 + 0.06, 1.0052)) for _ in range(self.scene.n_envs)]
@@ -208,7 +202,7 @@ class DeltaArraySimEnvironment():
         for env_idx in self.scene.env_idxs:
             self.table.set_rb_transforms(env_idx, 'table', [table_transforms[env_idx]])
             
-            yaw = np.arctan2(2*(object_r.w*object_r.z + object_r.x*object_r.y), 1 - 2*(object_r.x**2 + object_r.y**2))
+            yaw = np.arctan2(2*(self.object_r.w*self.object_r.z + self.object_r.x*self.object_r.y), 1 - 2*(self.object_r.x**2 + self.object_r.y**2))
             T = np.array((np.random.uniform(0.009, 0.21), np.random.uniform(0.005, 0.25)))
             self.fingers.goal_pose[env_idx] = np.array([*T, yaw])
             
@@ -223,7 +217,9 @@ class DeltaArraySimEnvironment():
         if self.train_or_test=="train":
             self.scene.run(policy=self.fingers.inverse_dynamics)
         else:
-            if self.args.vis_servo:
+            if self.args.donothing:
+                self.scene.run(policy=self.fingers.do_nothing)
+            elif self.args.vis_servo:
                 self.scene.run(policy=self.fingers.visual_servoing)
                 # self.scene.run(policy=self.fingers.do_nothing)
             else:
@@ -270,7 +266,7 @@ if __name__ == "__main__":
     parser.add_argument("-avsd", "--add_vs_data", action="store_true", help="True for adding visual servoing data")
     parser.add_argument("-vsd", "--vs_data", type=float, help="% of data to use for visual servoing")
     parser.add_argument("-n", "--name", type=str, default="HAKUNA", help="Expt Name")
-    parser.add_argument("-on", "--obj_name", type=str, default="disc", help="Object Name in env.yaml")
+    parser.add_argument("-obj_name", "--obj_name", type=str, default="disc", help="Object Name in env.yaml")
     parser.add_argument("-dontlog", "--dont_log", action="store_true", help="Don't Log Experiment")
     parser.add_argument("-dev_sim", "--dev_sim", type=int, default=5, help="Device for Sim")
     parser.add_argument("-dev_rl", "--dev_rl", type=int, default=1, help="Device for RL")
@@ -284,6 +280,7 @@ if __name__ == "__main__":
     parser.add_argument("-etamin", "--etamin", type=float, default=1e-5, help="% of data to use for visual servoing")
     parser.add_argument("-savevid", "--save_vid", action="store_true", help="Save Videos at inference")
     parser.add_argument("-fingers4", "--fingers4", action="store_true", help="Use simplified setup with only 4 fingers")
+    parser.add_argument("-XX", "--donothing", action="store_true", help="Do nothing to test sim")
     args = parser.parse_args()
 
     if args.vis_servo and not args.test:

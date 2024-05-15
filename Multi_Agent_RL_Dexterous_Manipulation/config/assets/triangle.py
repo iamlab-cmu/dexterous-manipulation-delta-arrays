@@ -160,8 +160,46 @@ def create_star(context, outer_radius, inner_radius, height):
     mesh.from_pydata(vertices, [], faces)
     mesh.update()
     obj.select_set(True)
-
     return obj
+
+def create_heart(context, resolution, height, scale):
+    # Parametric function for a heart shape in 2D
+    def heart_shape(t):
+        x = 16 * math.sin(t)**3
+        y = 13 * math.cos(t) + 6 * math.cos(2*t) - 3 * math.cos(3*t) - math.cos(4*t)
+        return x, y
+
+    # Generate vertices for the top and bottom heart shapes
+    vertices = []
+    step = (2 * math.pi) / resolution
+    for i in range(resolution):
+        t = i * step
+        x, y = heart_shape(t)
+        # Scale and append the bottom vertices
+        vertices.append((scale * x, scale * y, -height / 2))
+        # Scale and append the top vertices
+        vertices.append((scale * x, scale * y, height / 2))
+
+    # Create faces for the walls
+    faces = []
+    for i in range(resolution):
+        bottom1 = 2 * i
+        bottom2 = (2 * (i + 1)) % (2 * resolution)  # Wrap around to the first vertex
+        top1 = bottom1 + 1
+        top2 = bottom2 + 1
+        faces.append((bottom1, bottom2, top2, top1))  # Connect each pair of vertices
+
+    # Creating the mesh
+    mesh_data = bpy.data.meshes.new("heart_mesh")
+    heart_obj = bpy.data.objects.new("Heart", mesh_data)
+    bpy.context.collection.objects.link(heart_obj)
+    bpy.context.view_layer.objects.active = heart_obj
+    heart_obj.select_set(True)
+    mesh_data.from_pydata(vertices, [], faces)
+    mesh_data.update()
+
+    return heart_obj
+
 
 # Clear the existing objects in the scene
 bpy.ops.object.select_all(action='DESELECT')
@@ -171,7 +209,8 @@ bpy.ops.object.delete()
 # obj = create_triangle(bpy.context)
 # obj = create_hexagon(bpy.context)
 # obj = create_crescent(bpy.context, inner_radius=0.04, outer_radius=0.08, height=0.02, angle_extent=150, resolution=30)
-obj = create_star(bpy.context, inner_radius=0.03, outer_radius=0.08, height=0.02)
+# obj = create_star(bpy.context, inner_radius=0.03, outer_radius=0.08, height=0.02)
+obj = create_heart(bpy.context, height=0.02, scale=0.01, resolution=100)
 
 
 # Setup materials

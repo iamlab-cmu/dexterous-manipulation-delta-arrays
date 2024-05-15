@@ -253,7 +253,7 @@ class DeltaArraySim:
             # T = (com.p.x - 0.02, com.p.y + 0)
             self.init_pose[env_idx] = np.array([T[0], T[1], yaw, com.p.z])
 
-        block_p = gymapi.Vec3(*T, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
+        block_p = gymapi.Vec3(*T, self.cfg['object']['dims']['sz'] / 2 + 1.002)
         self.object.set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p, r=object_r)])
 
     def get_scene_image(self, env_idx):
@@ -787,7 +787,7 @@ class DeltaArraySim:
             # 0.0, -0.02165, 0.2625, 0.303107
             # block_p = gymapi.Vec3(0 + 0.2625*t_step/self.time_horizon, 0.1407285, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
             xy = self.traj[(t_step-2)//2]
-            block_p = gymapi.Vec3(*xy, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
+            block_p = gymapi.Vec3(*xy, self.cfg['object']['dims']['sz'] / 2 + 1.002)
             block_r = gymapi.Quat(0,0,0,1)
             self.object.set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p, r=block_r)])
         else:
@@ -811,5 +811,5 @@ class DeltaArraySim:
         
         if t_step==150:
             img = self.get_camera_image(env_idx)
-            plt.imshow(img)
-            plt.show()
+            # plt.imshow(img)
+            # plt.show()

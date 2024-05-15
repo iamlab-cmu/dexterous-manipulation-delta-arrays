@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<robot name="semicircle_block">
+  <link name="block">
+    <visual>
+      <geometry>
+        <mesh filename="./config/assets/semicircle.dae"/>
+      </geometry>
+    </visual>
+
+    <collision>
+      <geometry>
+        <mesh filename="./config/assets/semicircle.dae"/>
+      </geometry>
+    </collision>
+  </link>
+
+</robot>

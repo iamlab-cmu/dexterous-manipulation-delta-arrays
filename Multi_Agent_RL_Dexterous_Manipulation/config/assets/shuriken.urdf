@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<robot name="shuriken_block">
+  <link name="block">
+    <visual>
+      <geometry>
+        <mesh filename="./config/assets/shuriken.dae"/>
+      </geometry>
+    </visual>
+
+    <collision>
+      <geometry>
+        <mesh filename="./config/assets/shuriken.dae"/>
+      </geometry>
+    </collision>
+  </link>
+
+</robot>
