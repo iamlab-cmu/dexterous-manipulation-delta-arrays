@@ -97,6 +97,7 @@ class DeltaArraySim:
 
         """ Sim Util Vars """
         self.attractor_handles = {}
+        self.obj_attr_handles = {}
         self.time_horizon = 155 # This acts as max_steps from Gym envs
         # Max episodes to train policy for
         self.max_episodes = 10000001
@@ -182,6 +183,16 @@ class DeltaArraySim:
                 attractor_props.rigid_handle = self.scene.gym.get_rigid_handle(env_ptr, f'fingertip_{i}_{j}', 'capsule')
                 self.attractor_handles[env_ptr][i][j] = self.scene.gym.create_rigid_body_attractor(env_ptr, attractor_props)
 
+        self.obj_attr_handles[env_ptr] = {}
+        for obj_name in self.obj_names:
+            attractor_props = gymapi.AttractorProperties()
+            attractor_props.stiffness = self.cfg['capsule']['attractor_props']['stiffness']
+            attractor_props.damping = self.cfg['capsule']['attractor_props']['damping']
+            attractor_props.axes = gymapi.AXIS_ALL
+
+            attractor_props.rigid_handle = self.scene.gym.get_rigid_handle(env_ptr, obj_name, 'object')
+            self.obj_attr_handles[env_ptr][obj_name] = self.scene.gym.create_rigid_body_attractor(env_ptr, attractor_props)
+
     def add_asset(self, scene):
         """ helper function to set up scene """
         for i in range(self.num_tips[0]):
@@ -241,9 +252,10 @@ class DeltaArraySim:
         # 0.0, -0.02165, 0.2625, 0.303107
 
         if goal:
-            self.object[env_idx].set_rb_transforms(env_idx, self.obj_name[env_idx], [gymapi.Transform(p=self.obj_dict[self.obj_name[env_idx]][1], r=self.obj_dict[self.obj_name[env_idx]][2])])
+            self.object[env_idx].set_rb_transforms(env_idx, self.obj_name[env_idx], [gymapi.Transform(p=self.obj_dict[self.obj_name[env_idx]][1], r=self.obj_dict[self.obj_name[env_idx]][3])])
+            self.scene.gym.set_attractor_target(self.scene.env_ptrs[env_idx], self.obj_attr_handles[self.scene.env_ptrs[env_idx]][self.obj_name[env_idx]], gymapi.Transform(p=self.obj_dict[self.obj_name[env_idx]][2], r=self.obj_dict[self.obj_name[env_idx]][3]))
             self.obj_name[env_idx] = random.choice(self.obj_names)
-            self.object[env_idx], object_p, object_r = self.obj_dict[self.obj_name[env_idx]]
+            self.object[env_idx], object_p, _, object_r = self.obj_dict[self.obj_name[env_idx]]
 
             yaw = np.random.uniform(-np.pi, np.pi)
             r = R.from_euler('xyz', [0, 0, yaw])

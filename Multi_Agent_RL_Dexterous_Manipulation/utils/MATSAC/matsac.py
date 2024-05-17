@@ -50,8 +50,6 @@ class MATSAC:
 
         self.critic_params = itertools.chain(self.tf.decoder_critic1.parameters(), self.tf.decoder_critic2.parameters())
         
-        
-
         if self.hp_dict['optim']=="adam":
             self.optimizer_actor = optim.Adam(filter(lambda p: p.requires_grad, self.tf.decoder_actor.parameters()), lr=hp_dict['pi_lr'])
             self.optimizer_critic = optim.Adam(filter(lambda p: p.requires_grad, self.critic_params), lr=hp_dict['q_lr'])
@@ -81,8 +79,9 @@ class MATSAC:
             # q_next = r + self.hp_dict['gamma'] * (1 - d) * (torch.min(next_q1, next_q2) - self.hp_dict['alpha'] * next_log_pi)
             q_next = r.unsqueeze(1)
         q_loss = F.mse_loss(q1, q_next) + F.mse_loss(q2, q_next)
-        q_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.critic_params, self.hp_dict['max_grad_norm'])
+        q_loss.backward()        
+        torch.nn.utils.clip_grad_norm_(self.tf.decoder_critic1.parameters(), self.hp_dict['max_grad_norm'])
+        torch.nn.utils.clip_grad_norm_(self.tf.decoder_critic2.parameters(), self.hp_dict['max_grad_norm'])
         self.optimizer_critic.step()
 
         if not self.hp_dict["dont_log"]:
