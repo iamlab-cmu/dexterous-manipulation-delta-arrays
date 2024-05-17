@@ -255,7 +255,7 @@ class DeltaArraySim:
             _, boundary_points, normals, initial_pose = self.bd_pts_dict[self.obj_name[env_idx]]
             tfed_bd_pts, _ = geom_utils.compute_transformation(boundary_points, normals, initial_pose, final_pose=(T[0], T[1], yaw))
             self.goal_bd_pts[env_idx] = tfed_bd_pts
-            print(f'{self.obj_name[env_idx]} goal yaw: {yaw}')
+            # print(f'{self.obj_name[env_idx]} goal yaw: {yaw}')
         else:
             r = R.from_euler('xyz', [0, 0, self.goal_yaw_deg[env_idx] + np.random.randint(-45, 45)], degrees=True)
             object_r = gymapi.Quat(*r.as_quat())
@@ -265,7 +265,7 @@ class DeltaArraySim:
             T = (com.p.x + np.random.uniform(-0.02, 0.02), com.p.y + np.random.uniform(-0.02, 0.02))
             # T = (com.p.x - 0.02, com.p.y + 0)
             self.init_pose[env_idx] = np.array([T[0], T[1], yaw, com.p.z])
-            print(f'{self.obj_name[env_idx]} init yaw: {yaw}')
+            # print(f'{self.obj_name[env_idx]} init yaw: {yaw}')
 
         block_p = gymapi.Vec3(*T, 1.002)
         self.object[env_idx].set_rb_transforms(env_idx, self.obj_name[env_idx], [gymapi.Transform(p=block_p, r=object_r)])
@@ -439,7 +439,7 @@ class DeltaArraySim:
                     self.final_state[env_idx, :self.n_idxs[env_idx], 4:6] = raw_rb_pos
                 
             else:
-                print(f'{self.obj_name[env_idx]} final yaw: {yaw}')
+                # print(f'{self.obj_name[env_idx]} final yaw: {yaw}')
                 _, final_nn_bd_pts = self.nn_helper.get_min_dist_world(tfed_bd_pts, self.active_idxs[env_idx], self.actions[env_idx])
                 self.final_state[env_idx, :self.n_idxs[env_idx], :2] = final_nn_bd_pts
                 if self.hp_dict['robot_frame']:
@@ -667,8 +667,8 @@ class DeltaArraySim:
         
         if self.ep_len[env_idx]==0:
             if t_step == 0:
-                img = self.get_camera_image(env_idx)
-                _, self.goal_bd_pts[env_idx] = self.get_boundary_pts(img)
+                # img = self.get_camera_image(env_idx)
+                # _, self.goal_bd_pts[env_idx] = self.get_boundary_pts(img)
                 self.set_block_pose(env_idx) # Reset block to current initial pose
                 self.set_all_fingers_pose(env_idx, pos_high=True) # Set all fingers to high pose
                 self.set_attractor_target(env_idx, t_step, None, all_zeros=True) # Set all fingers to high pose
