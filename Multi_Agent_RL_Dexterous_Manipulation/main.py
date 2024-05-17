@@ -119,7 +119,7 @@ class DeltaArraySimEnvironment():
                 "model_dim"         : 128,
                 "num_heads"         : 8,
                 "dim_ff"            : 64,
-                "n_layers_dict"     : {'encoder': 8, 'actor': 8, 'critic': 8},
+                "n_layers_dict"     : {'encoder': 6, 'actor': 6, 'critic': 6},
                 "dropout"           : 0,
                 "max_grad_norm"     : 1.0,
                 "delta_array_size"  : [8,8],

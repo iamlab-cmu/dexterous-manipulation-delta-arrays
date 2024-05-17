@@ -174,8 +174,8 @@ class NNHelper:
 
         idxs = set()
         neg_idxs = set()
-        # eps = np.finfo(np.float32).eps
-        eps = 1e-10
+        eps = np.finfo(np.float32).eps
+        # eps = 1e-10
         kdtree = KDTree(self.kdtree_positions_world)
 
         # Perform batch query to find nearest neighbors for all boundary points
@@ -208,7 +208,7 @@ class NNHelper:
         Expands the convex hull by the radius of the robot
         """
         if world:
-            robot_radius = 0.002
+            robot_radius = 0.003
         else:
             robot_radius = 30
         expanded_hull_vertices = []
