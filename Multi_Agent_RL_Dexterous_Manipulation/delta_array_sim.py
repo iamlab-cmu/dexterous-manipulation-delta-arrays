@@ -30,7 +30,7 @@ from visualization.visualizer3d import Visualizer3D as vis3d
 from isaacgym import gymapi
 from isaacgym_utils.scene import GymScene
 from isaacgym_utils.assets import GymBoxAsset, GymCapsuleAsset
-from isaacgym_utils.math_utils import RigidTransform_to_transform, angle_axis_between_quats
+from isaacgym_utils.math_utils import RigidTransform_to_transform, quat_to_rpy
 from isaacgym_utils.draw import draw_transforms, draw_contacts, draw_camera
 
 import utils.nn_helper as helper
@@ -248,7 +248,7 @@ class DeltaArraySim:
             r = R.from_euler('xyz', [0, 0, self.goal_yaw_deg[env_idx]], degrees=True)
             object_r = gymapi.Quat(*r.as_quat())
             # object_r = gymapi.Quat(0,0,0,1)
-            yaw = R.from_quat([object_r.x, object_r.y, object_r.z, object_r.w]).as_euler('xyz')[2]
+            yaw = quat_to_rpy(object_r)[2] #R.from_quat([object_r.x, object_r.y, object_r.z, object_r.w]).as_euler('xyz')[2]
             T = (np.random.uniform(0.009, 0.19), np.random.uniform(0.007, 0.23))
             self.goal_pose[env_idx] = np.array([T[0], T[1], yaw])
 
@@ -260,7 +260,7 @@ class DeltaArraySim:
             r = R.from_euler('xyz', [0, 0, self.goal_yaw_deg[env_idx] + np.random.randint(-45, 45)], degrees=True)
             object_r = gymapi.Quat(*r.as_quat())
             # object_r = gymapi.Quat(0,0,0,1)
-            yaw = R.from_quat([object_r.x, object_r.y, object_r.z, object_r.w]).as_euler('xyz')[2]
+            yaw = quat_to_rpy(object_r)[2] #R.from_quat([object_r.x, object_r.y, object_r.z, object_r.w]).as_euler('xyz')[2]
             com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
             T = (com.p.x + np.random.uniform(-0.02, 0.02), com.p.y + np.random.uniform(-0.02, 0.02))
             # T = (com.p.x - 0.02, com.p.y + 0)
@@ -397,7 +397,7 @@ class DeltaArraySim:
         _, boundary_points, normals, initial_pose = self.bd_pts_dict[self.obj_name[env_idx]]
 
         com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
-        roll, pitch, yaw = R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')
+        roll, pitch, yaw = quat_to_rpy(object_r) #R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')
         final_pose = (com.p.x, com.p.y, yaw)
         if (abs(roll) > 0.175)or(abs(pitch) > 0.175):
             self.dont_skip_episode = False
@@ -722,7 +722,7 @@ class DeltaArraySim:
         _, boundary_points, normals, initial_pose = self.bd_pts_dict[self.obj_name[env_idx]]
 
         com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
-        roll, pitch, yaw = R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')
+        roll, pitch, yaw = quat_to_rpy(object_r) # R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')
         final_pose = (com.p.x, com.p.y, yaw)
         if (abs(roll) > 0.175)or(abs(pitch) > 0.175):
             self.dont_skip_episode = False
@@ -929,7 +929,7 @@ class DeltaArraySim:
             self.set_block_pose(env_idx, goal=True)
 
             com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
-            roll, pitch, yaw = R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')
+            roll, pitch, yaw = quat_to_rpy(object_r) # R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')
             print(roll, pitch, yaw)
         # if t_step == 0:
         #     self.obj_name = self.obj_names.pop()
