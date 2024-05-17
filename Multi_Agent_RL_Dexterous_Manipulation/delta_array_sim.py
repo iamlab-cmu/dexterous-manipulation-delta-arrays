@@ -397,7 +397,7 @@ class DeltaArraySim:
         _, boundary_points, normals, initial_pose = self.bd_pts_dict[self.obj_name[env_idx]]
 
         com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
-        roll, pitch, yaw = quat_to_rpy(object_r) #R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')
+        roll, pitch, yaw = quat_to_rpy(com.r) #R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')
         final_pose = (com.p.x, com.p.y, yaw)
         if (abs(roll) > 0.175)or(abs(pitch) > 0.175):
             self.dont_skip_episode = False
@@ -722,7 +722,7 @@ class DeltaArraySim:
         _, boundary_points, normals, initial_pose = self.bd_pts_dict[self.obj_name[env_idx]]
 
         com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
-        roll, pitch, yaw = quat_to_rpy(object_r) # R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')
+        roll, pitch, yaw = quat_to_rpy(com.r) # R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')
         final_pose = (com.p.x, com.p.y, yaw)
         if (abs(roll) > 0.175)or(abs(pitch) > 0.175):
             self.dont_skip_episode = False
@@ -929,7 +929,7 @@ class DeltaArraySim:
             self.set_block_pose(env_idx, goal=True)
 
             com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
-            roll, pitch, yaw = quat_to_rpy(object_r) # R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')
+            roll, pitch, yaw = quat_to_rpy(com.r) # R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')
             print(roll, pitch, yaw)
         # if t_step == 0:
         #     self.obj_name = self.obj_names.pop()
