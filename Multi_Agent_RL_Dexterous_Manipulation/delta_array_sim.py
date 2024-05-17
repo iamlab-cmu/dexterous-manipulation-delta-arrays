@@ -30,7 +30,7 @@ from visualization.visualizer3d import Visualizer3D as vis3d
 from isaacgym import gymapi
 from isaacgym_utils.scene import GymScene
 from isaacgym_utils.assets import GymBoxAsset, GymCapsuleAsset
-from isaacgym_utils.math_utils import RigidTransform_to_transform
+from isaacgym_utils.math_utils import RigidTransform_to_transform, angle_axis_between_quats
 from isaacgym_utils.draw import draw_transforms, draw_contacts, draw_camera
 
 import utils.nn_helper as helper
@@ -41,16 +41,18 @@ import utils.rl_utils as rl_utils
 import utils.geometric_utils as geom_utils
 
 class DeltaArraySim:
-    def __init__(self, scene, cfg, obj, table, obj_name, img_embed_model, transform, agents, hp_dict, num_tips = [8,8], max_agents=64):
+    def __init__(self, scene, cfg, objs, table, img_embed_model, transform, agents, hp_dict, num_tips = [8,8], max_agents=64):
         """ Main Vars """
         self.scene = scene
         self.cfg = cfg
         self.num_tips = num_tips
         self.fingertips = np.zeros((8,8)).tolist()
         self.cam = 0
-        self.object = obj
+        self.obj_dict = objs
         self.table = table
-        self.obj_name = obj_name
+        self.obj_names = list(self.obj_dict.keys())
+        self.obj_name = {}
+        self.object = {}
         self.max_agents = max_agents
         self.hp_dict = hp_dict
         
@@ -103,6 +105,8 @@ class DeltaArraySim:
         self.dont_skip_episode = True
 
         """ Visual Servoing and RL Vars """
+        self.bd_pts_dict = pkl.load(open('./config/assets/obj_props.pkl', 'rb'))
+
         self.bd_pts = {}
         self.goal_bd_pts = {}
         self.current_scene_frame = {}
@@ -162,6 +166,7 @@ class DeltaArraySim:
         self.temp_var = {'initial_l2_dist': [],
                         'reward': [],
                         'z_dist': []}
+        # self.bd_pts_dict = {}
 
     def set_attractor_handles(self, env_idx):
         """ Creates an attractor handle for each fingertip """
@@ -234,27 +239,36 @@ class DeltaArraySim:
         """
         # T = [0.13125, 0.1407285]
         # 0.0, -0.02165, 0.2625, 0.303107
+
         if goal:
+            self.object[env_idx].set_rb_transforms(env_idx, self.obj_name[env_idx], [gymapi.Transform(p=self.obj_dict[self.obj_name[env_idx]][1], r=self.obj_dict[self.obj_name[env_idx]][2])])
+            self.obj_name[env_idx] = random.choice(self.obj_names)
+            self.object[env_idx], object_p, object_r = self.obj_dict[self.obj_name[env_idx]]
             self.goal_yaw_deg[env_idx] = np.random.randint(0, 180)
-            r = R.from_euler('xyz', [90, 0, self.goal_yaw_deg[env_idx]], degrees=True)
-            # object_r = gymapi.Quat(*r.as_quat())
-            object_r = gymapi.Quat(0,0,0,1)
+            r = R.from_euler('xyz', [0, 0, self.goal_yaw_deg[env_idx]], degrees=True)
+            object_r = gymapi.Quat(*r.as_quat())
+            # object_r = gymapi.Quat(0,0,0,1)
             yaw = R.from_quat([object_r.x, object_r.y, object_r.z, object_r.w]).as_euler('xyz')[2]
             T = (np.random.uniform(0.009, 0.19), np.random.uniform(0.007, 0.23))
             self.goal_pose[env_idx] = np.array([T[0], T[1], yaw])
 
+            _, boundary_points, normals, initial_pose = self.bd_pts_dict[self.obj_name[env_idx]]
+            tfed_bd_pts, _ = geom_utils.compute_transformation(boundary_points, normals, initial_pose, final_pose=(T[0], T[1], yaw))
+            self.goal_bd_pts[env_idx] = tfed_bd_pts
+            print(f'{self.obj_name[env_idx]} goal yaw: {yaw}')
         else:
-            r = R.from_euler('xyz', [90, 0, self.goal_yaw_deg[env_idx] + np.random.randint(-45, 45)], degrees=True)
-            # object_r = gymapi.Quat(*r.as_quat())
-            object_r = gymapi.Quat(0,0,0,1)
+            r = R.from_euler('xyz', [0, 0, self.goal_yaw_deg[env_idx] + np.random.randint(-45, 45)], degrees=True)
+            object_r = gymapi.Quat(*r.as_quat())
+            # object_r = gymapi.Quat(0,0,0,1)
             yaw = R.from_quat([object_r.x, object_r.y, object_r.z, object_r.w]).as_euler('xyz')[2]
-            com = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
+            com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
             T = (com.p.x + np.random.uniform(-0.02, 0.02), com.p.y + np.random.uniform(-0.02, 0.02))
             # T = (com.p.x - 0.02, com.p.y + 0)
             self.init_pose[env_idx] = np.array([T[0], T[1], yaw, com.p.z])
+            print(f'{self.obj_name[env_idx]} init yaw: {yaw}')
 
-        block_p = gymapi.Vec3(*T, self.cfg['object']['dims']['sz'] / 2 + 1.002)
-        self.object.set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p, r=object_r)])
+        block_p = gymapi.Vec3(*T, 1.002)
+        self.object[env_idx].set_rb_transforms(env_idx, self.obj_name[env_idx], [gymapi.Transform(p=block_p, r=object_r)])
 
     def get_scene_image(self, env_idx):
         """ Render a camera image """
@@ -371,9 +385,107 @@ class DeltaArraySim:
                 #     plt.quiver(init_pts[:, 0], init_pts[:, 1], acts[:, 0], acts[:, 1], scale=1, scale_units='xy')
                 #     plt.gca().set_aspect('equal')
                 #     plt.show()
+                #     
+    def get_nearest_robots_and_state_v2(self, env_idx, final=False, init_bd_pts=None):
+        """ 
+        A helper function to get the nearest robot to the block and crop the image around it 
+        Get camera image -> Segment it -> Convert boundary to cartesian coordinate space in mm ->
+        Get nearest robot to the boundary -> Crop the image around the robot -> Resize to 224x224 ->
+        Randomize the colors to get rgb image.
+        """
+        # WE ARE NOT USING NORMALS in Expt#0. Might use later. 
+        _, boundary_points, normals, initial_pose = self.bd_pts_dict[self.obj_name[env_idx]]
+
+        com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
+        roll, pitch, yaw = R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')
+        final_pose = (com.p.x, com.p.y, yaw)
+        if (abs(roll) > 0.175)or(abs(pitch) > 0.175):
+            self.dont_skip_episode = False
+            return None, None
+        else:
+            tfed_bd_pts, transformed_normals = geom_utils.compute_transformation(boundary_points, normals, initial_pose, final_pose)
+            self.bd_pts[env_idx] = tfed_bd_pts            
+            if not final:
+                # Get indices of nearest robots to the boundary. We are not using neg_idxs for now. 
+                idxs, neg_idxs = self.nn_helper.get_nn_robots_world(tfed_bd_pts)
+                self.active_idxs[env_idx] = list(idxs)
+                self.n_idxs[env_idx] = len(self.active_idxs[env_idx])
+                
+                self.actions[env_idx, :self.n_idxs[env_idx]] = np.array((0,0))
+                self.actions_grasp[env_idx, :self.n_idxs[env_idx]] = np.array((0,0))
+                
+                _, self.nn_bd_pts[env_idx] = self.nn_helper.get_min_dist_world(tfed_bd_pts, self.active_idxs[env_idx], self.actions[env_idx])
+                self.init_state[env_idx, :self.n_idxs[env_idx], :2] = self.nn_bd_pts[env_idx]
+
+                delta = self.goal_pose[env_idx] - self.init_pose[env_idx][:3]
+                com = np.mean(tfed_bd_pts, axis=0)
+                tfed_nn_bd_pts = geom_utils.transform_pts_wrt_com(self.nn_bd_pts[env_idx], delta, com)
+                
+                self.init_state[env_idx, :self.n_idxs[env_idx], 2:4] = tfed_nn_bd_pts
+                self.final_state[env_idx, :self.n_idxs[env_idx], 2:4] = tfed_nn_bd_pts
+
+                self.init_grasp_state[env_idx, :self.n_idxs[env_idx], 2:4] = self.nn_helper.rb_pos_pix[tuple(zip(*self.active_idxs[env_idx]))]/self.img_size
+                nn_bd_pts_pix = [self.convert_world_2_pix(bd_pts) for bd_pts in self.nn_bd_pts[env_idx]]
+                self.init_grasp_state[env_idx, :self.n_idxs[env_idx], :2] = nn_bd_pts_pix/self.img_size
+                
+                raw_rb_pos = self.nn_helper.rb_pos_world[tuple(zip(*self.active_idxs[env_idx]))]
+
+                if self.hp_dict['robot_frame']:
+                    self.init_state[env_idx, :self.n_idxs[env_idx], :2] -= raw_rb_pos
+                    self.init_state[env_idx, :self.n_idxs[env_idx], 2:4] -= raw_rb_pos
+                    self.final_state[env_idx, :self.n_idxs[env_idx], 2:4] -= raw_rb_pos
+                else:
+                    self.init_state[env_idx, :self.n_idxs[env_idx], 4:6] = raw_rb_pos
+                    self.final_state[env_idx, :self.n_idxs[env_idx], 4:6] = raw_rb_pos
+                
+            else:
+                print(f'{self.obj_name[env_idx]} final yaw: {yaw}')
+                _, final_nn_bd_pts = self.nn_helper.get_min_dist_world(tfed_bd_pts, self.active_idxs[env_idx], self.actions[env_idx])
+                self.final_state[env_idx, :self.n_idxs[env_idx], :2] = final_nn_bd_pts
+                if self.hp_dict['robot_frame']:
+                    self.final_state[env_idx, :self.n_idxs[env_idx], :2] -= self.nn_helper.rb_pos_world[tuple(zip(*self.active_idxs[env_idx]))]
+
+                self.init_state[env_idx, :self.n_idxs[env_idx], 4:6] += self.actions_grasp[env_idx, :self.n_idxs[env_idx]]
+                self.final_state[env_idx, :self.n_idxs[env_idx], 4:6] += self.actions[env_idx, :self.n_idxs[env_idx]]
+                
+################################################################################################################################################################################
+                
+                # if self.current_episode > 0:
+                #     r_poses = self.nn_helper.rb_pos_world[tuple(zip(*self.active_idxs[env_idx]))]
+                #     init_pts = self.init_state[env_idx, :self.n_idxs[env_idx], :2].copy()
+                #     goal_bd_pts = self.init_state[env_idx, :self.n_idxs[env_idx], 2:4].copy()
+                #     final_bd_pts = self.final_state[env_idx, :self.n_idxs[env_idx], :2].copy()
+                #     act_grsp = self.actions_grasp[env_idx, :self.n_idxs[env_idx]].copy()
+                #     acts = self.actions[env_idx, :self.n_idxs[env_idx]].copy()
+                    
+                #     plt.figure(figsize=(10,17.78))
+                #     plt.scatter(r_poses[:, 0], r_poses[:, 1], c='#880000ff')
+
+                #     plt.scatter(self.goal_bd_pts[env_idx][:, 0], self.goal_bd_pts[env_idx][:, 1], c='#ffa50066')
+                #     plt.scatter(init_bd_pts[:, 0], init_bd_pts[:, 1], c = '#00ff0066')
+                #     plt.scatter(init_pts[:, 0], init_pts[:, 1], c = '#00ff00ff')
+                #     plt.scatter(goal_bd_pts[:, 0], goal_bd_pts[:, 1], c='red')
+                #     plt.scatter(final_bd_pts[:, 0], final_bd_pts[:, 1], c='blue')
+
+                #     plt.quiver(r_poses[:, 0], r_poses[:, 1], act_grsp[:, 0], act_grsp[:, 1], scale=0.5, scale_units='xy')
+                #     plt.quiver(init_pts[:, 0], init_pts[:, 1], acts[:, 0], acts[:, 1], scale=1, scale_units='xy')
+                #     plt.gca().set_aspect('equal')
+                #     plt.show()
 
     def gaussian_reward_shaping(self, x, ampl, width, center=0, vertical_shift=0):
         return ampl * np.exp(-width * (x - center)**2) - vertical_shift
+
+    def reward_function(self, goal, final):
+        loss = 5 * np.linalg.norm(goal - final)
+        if loss < 1:
+            loss = -0.5  * loss**2
+        else:
+            loss = -loss + 0.5
+        return loss
+
+    def compute_reward_v2(self, env_idx, t_step):
+        self.get_nearest_robots_and_state_v2(env_idx, final=True)
+        self.ep_reward[env_idx] = self.reward_function(self.goal_bd_pts[env_idx], self.bd_pts[env_idx])
 
     def compute_reward(self, env_idx, t_step):
         """ 
@@ -384,14 +496,13 @@ class DeltaArraySim:
         """
         # This function is utterly incomplete. Fix it before running final init expt
         init_bd_pts = self.bd_pts[env_idx].copy()
-        self.get_nearest_robots_and_state(env_idx, final=True, init_bd_pts=init_bd_pts)
+        self.get_nearest_robots_and_state_v2(env_idx, final=True, init_bd_pts=init_bd_pts)
 
-        com_pix = np.mean(self.bd_pts[env_idx], axis=0)
+        com_world = np.mean(self.bd_pts[env_idx], axis=0)
 
         rot = geom_utils.get_transform(self.goal_bd_pts[env_idx], self.bd_pts[env_idx])[2]
-        delta_com = np.mean(self.goal_bd_pts[env_idx], axis=0) - com_pix
-        delta_com = self.scale_pix_2_world(delta_com)
-        if self.obj_name=="disc":
+        delta_com = np.mean(self.goal_bd_pts[env_idx], axis=0) - com_world
+        if self.obj_name[env_idx]=="disc":
             delta_2d_pose = np.array([*delta_com])
         else:
             delta_2d_pose = np.array([*delta_com, rot])
@@ -405,10 +516,16 @@ class DeltaArraySim:
 
         # self.ep_reward[env_idx] = self.gaussian_reward_shaping(np.linalg.norm(delta_2d_pose), 15, 4500, -0.01, 5)
         loss = 100*np.linalg.norm(delta_2d_pose)
+        loss2 = 100*np.linalg.norm(self.goal_bd_pts[env_idx] - self.bd_pts[env_idx])
         if loss < 1:
             self.ep_reward[env_idx] = -0.5  * loss**2
+            loss2 = -0.5  * loss2**2
         else:
             self.ep_reward[env_idx] = -loss + 0.5
+            loss2 = -loss2 + 0.5
+        
+        print("Old Losss: ", self.ep_reward[env_idx])
+        print("New Loss: ", loss2)
 
 
         # if np.linalg.norm(delta_2d_pose) < 0.01:
@@ -420,7 +537,7 @@ class DeltaArraySim:
     def terminate(self, env_idx, t_step, agent):
         """ Update the replay buffer and reset the env """
         # Update policy
-        self.compute_reward(env_idx, t_step)
+        self.compute_reward_v2(env_idx, t_step)
         if self.agent.ma_replay_buffer.size > self.batch_size:
             epoch = self.scale_epoch(self.current_episode)
             for i in range(epoch):
@@ -451,7 +568,7 @@ class DeltaArraySim:
 
     def env_step(self, env_idx, t_step, agent, test = False):
         if (self.ep_len[env_idx] == 0) and (t_step == 1):
-            self.get_nearest_robots_and_state(env_idx, final=False)
+            self.get_nearest_robots_and_state_v2(env_idx, final=False)
             self.set_nn_fingers_pose_low(env_idx, self.active_idxs[env_idx])
 
         if not self.dont_skip_episode:
@@ -513,8 +630,8 @@ class DeltaArraySim:
                 
             if self.ep_len[env_idx]==0:
                 if t_step == 0:
-                    img = self.get_camera_image(env_idx)
-                    _, self.goal_bd_pts[env_idx] = self.get_boundary_pts(img)
+                    # img = self.get_camera_image(env_idx)
+                    # _, self.goal_bd_pts[env_idx] = self.get_boundary_pts(img)
                     self.set_block_pose(env_idx) # Reset block to current initial pose
                     self.set_all_fingers_pose(env_idx, pos_high=True) # Set all fingers to high pose
                     self.set_attractor_target(env_idx, t_step, None, all_zeros=True) # Set all fingers to high pose
@@ -532,7 +649,7 @@ class DeltaArraySim:
                 # Gen actions from new policy and set attractor until max episodes
                 if t_step == 0:
                     if self.hp_dict["add_vs_data"] and (np.random.rand() <= self.hp_dict['ratio']):
-                        self.vs_step_disc(env_idx, t_step)
+                        self.vs_step(env_idx, t_step)
                     else:
                         self.env_step(env_idx, t_step, self.agent)
                 elif t_step == 2:
@@ -564,16 +681,13 @@ class DeltaArraySim:
             elif not self.dont_skip_episode:
                 self.ep_len[env_idx] = 0
                 self.reset(env_idx)
-            # else:
-            #     self.video_frames[self.infer_iter, int((self.time_horizon-4)*self.ep_len[env_idx] + t_step-3)] = self.get_scene_image(env_idx)
-        
         else:         
             if t_step == 0:
                 self.env_step(env_idx, t_step, self.agent, test=True) # Only Store Actions from MARL Policy
             elif t_step == 1:
                 self.set_attractor_target(env_idx, t_step, self.actions)
             elif t_step == (self.time_horizon-2):
-                self.compute_reward(env_idx, t_step)
+                self.compute_reward_v2(env_idx, t_step)
                 print(f"Reward: {self.ep_reward[env_idx]}")
 
                 if not self.hp_dict["dont_log"]:
@@ -588,7 +702,7 @@ class DeltaArraySim:
                 
                 if self.hp_dict["print_summary"]:
                     
-                    com = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
+                    com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
                     self.temp_var['z_dist'].append(np.linalg.norm(self.init_pose[env_idx][3] - com.p.z))
                     self.temp_var['initial_l2_dist'].append(np.linalg.norm(self.goal_pose[env_idx][:2] - self.init_pose[env_idx][:2]))
                     self.temp_var['reward'].append(self.ep_reward[env_idx])
@@ -605,48 +719,52 @@ class DeltaArraySim:
 
     def vs_step(self, env_idx, t_step):
         
-        img = self.get_camera_image(env_idx)
-        seg_map, new_bd_pts = self.get_boundary_pts(img)
-        
-        if len(new_bd_pts) < 64:
+        _, boundary_points, normals, initial_pose = self.bd_pts_dict[self.obj_name[env_idx]]
+
+        com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
+        roll, pitch, yaw = R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')
+        final_pose = (com.p.x, com.p.y, yaw)
+        if (abs(roll) > 0.175)or(abs(pitch) > 0.175):
             self.dont_skip_episode = False
             return None, None
         else:
+            tfed_bd_pts, transformed_normals = geom_utils.compute_transformation(boundary_points, normals, initial_pose, final_pose)
+            self.bd_pts[env_idx] = tfed_bd_pts
+
             if self.current_episode >= 0:
-                kmeans = self.KMeans.fit(new_bd_pts)
-                bd_cluster_centers = kmeans.cluster_centers_
-                self.act_grasp_pix[env_idx, :self.n_idxs[env_idx]] = self.scale_world_2_pix(self.actions_grasp[env_idx, :self.n_idxs[env_idx]])
-                _, self.nn_bd_pts[env_idx] = self.nn_helper.get_min_dist(bd_cluster_centers, self.active_idxs[env_idx], self.act_grasp_pix[env_idx, :self.n_idxs[env_idx]])
+                self.actions_grasp[env_idx, :self.n_idxs[env_idx]]
+                _, self.nn_bd_pts[env_idx] = self.nn_helper.get_min_dist_world(tfed_bd_pts, self.active_idxs[env_idx], self.actions_grasp[env_idx, :self.n_idxs[env_idx]])
                 # com = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
                 # yaw = R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')[2]
 
                 # delta_com = self.goal_pose[env_idx] - np.array([com.p.x, com.p.y, yaw])
                 # delta_com[:2] = self.scale_world_2_pix(delta_com[:2])
-                com_pix = np.mean(new_bd_pts, axis=0)
+                com_world = np.mean(tfed_bd_pts, axis=0)
 
-                rot = geom_utils.get_transform(self.goal_bd_pts[env_idx], new_bd_pts)[2]
-                delta_com = np.mean(self.goal_bd_pts[env_idx], axis=0) - com_pix
+                rot = geom_utils.get_transform(self.goal_bd_pts[env_idx], tfed_bd_pts)[2]
+                delta_com = np.mean(self.goal_bd_pts[env_idx], axis=0) - com_world
 
-                tf_pts = self.nn_bd_pts[env_idx] - com_pix
+                tf_pts = self.nn_bd_pts[env_idx] - com_world
                 rot_m = np.array([[np.cos(rot), -np.sin(rot)], [np.sin(rot), np.cos(rot)]])
-                tf_pts = com_pix + np.dot(tf_pts, rot_m)
+                tf_pts = com_world + np.dot(tf_pts, rot_m)
                 tf_pts += delta_com
                 displacement_vectors = tf_pts - self.nn_bd_pts[env_idx]
-                actions = self.act_grasp_pix[env_idx, :self.n_idxs[env_idx]] + displacement_vectors
+                actions = self.actions_grasp[env_idx, :self.n_idxs[env_idx]] + displacement_vectors
 
-                if self.hp_dict["add_vs_data"]:
-                    self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(self.scale_pix_2_world(actions), -0.03, 0.03)
-                else:
-                    if self.current_episode < self.temp_cutoff_1:
-                        self.actions[env_idx, :self.n_idxs[env_idx]] = [self.scale_pix_2_world(disp_vec) for disp_vec in displacement_vectors]
-                    elif self.current_episode < self.temp_cutoff_2:
-                        act_rand = np.random.uniform(-0.06, 0.06, size=(self.n_idxs[env_idx], 2))
-                        self.actions[env_idx, :self.n_idxs[env_idx]] = act_rand
-                    else:
-                        # Save vs_rews and rand_rews using pickle
-                        pkl.dump(self.vs_rews, open(f"./data/manip_data/vis_servoing/vs_rews.pkl", "wb"))
-                        pkl.dump(self.rand_rews, open(f"./data/manip_data/vis_servoing/rand_rews.pkl", "wb"))
-                        sys.exit(1)
+                self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(actions, -0.03, 0.03)
+                # if self.hp_dict["add_vs_data"]:
+                #     self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(actions, -0.03, 0.03)
+                # else:
+                    # if self.current_episode < self.temp_cutoff_1:
+                        # self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(actions, -0.03, 0.03)
+                    # elif self.current_episode < self.temp_cutoff_2:
+                    #     act_rand = np.random.uniform(-0.06, 0.06, size=(self.n_idxs[env_idx], 2))
+                    #     self.actions[env_idx, :self.n_idxs[env_idx]] = act_rand
+                    # else:
+                    #     # Save vs_rews and rand_rews using pickle
+                    #     pkl.dump(self.vs_rews, open(f"./data/manip_data/vis_servoing/vs_rews.pkl", "wb"))
+                    #     pkl.dump(self.rand_rews, open(f"./data/manip_data/vis_servoing/rand_rews.pkl", "wb"))
+                    #     sys.exit(1)
                 
                 
                 
@@ -726,8 +844,6 @@ class DeltaArraySim:
         if self.ep_len[env_idx]==0:
             # Call the pretrained policy for all NN robots and set attractors
             if t_step == 0:
-                img = self.get_camera_image(env_idx)
-                _, self.goal_bd_pts[env_idx] = self.get_boundary_pts(img)
                 self.set_block_pose(env_idx) # Reset block to current initial pose
                 self.set_all_fingers_pose(env_idx, pos_high=True) # Set all fingers to high pose
                 self.set_attractor_target(env_idx, t_step, None, all_zeros=True) # Set all fingers to high pose
@@ -746,16 +862,15 @@ class DeltaArraySim:
             if t_step == 0:
                 self.vs_step(env_idx, t_step) # Only Store Actions from MARL Policy
             elif t_step == 1:
-                self.set_attractor_target(env_idx, t_step, np.clip(self.actions_grasp + self.actions, -0.03, 0.03))
+                self.set_attractor_target(env_idx, t_step, self.actions)
             elif t_step == (self.time_horizon-3):
-                # Update policy
-                self.compute_reward(env_idx, t_step)
-                # print(f"Reward: {self.ep_reward[env_idx]}")
+                self.compute_reward_v2(env_idx, t_step)
+                print(f"Reward: {self.ep_reward[env_idx]}")
                 
-                if 0 < self.current_episode < self.temp_cutoff_1:
-                    self.vs_rews.append(self.ep_reward[env_idx])
-                elif self.temp_cutoff_1 <= self.current_episode < self.temp_cutoff_2:
-                    self.rand_rews.append(self.ep_reward[env_idx])
+                # if 0 < self.current_episode < self.temp_cutoff_1:
+                #     self.vs_rews.append(self.ep_reward[env_idx])
+                # elif self.temp_cutoff_1 <= self.current_episode < self.temp_cutoff_2:
+                #     self.rand_rews.append(self.ep_reward[env_idx])
                 self.reset(env_idx)
                 self.current_episode += 1
             elif t_step == (self.time_horizon - 2):
@@ -787,9 +902,9 @@ class DeltaArraySim:
             # 0.0, -0.02165, 0.2625, 0.303107
             # block_p = gymapi.Vec3(0 + 0.2625*t_step/self.time_horizon, 0.1407285, self.cfg[self.obj_name]['dims']['sz'] / 2 + 1.002)
             xy = self.traj[(t_step-2)//2]
-            block_p = gymapi.Vec3(*xy, self.cfg['object']['dims']['sz'] / 2 + 1.002)
+            block_p = gymapi.Vec3(*xy, 1.002)
             block_r = gymapi.Quat(0,0,0,1)
-            self.object.set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p, r=block_r)])
+            self.object[env_idx].set_rb_transforms(env_idx, self.obj_name[env_idx], [gymapi.Transform(p=block_p, r=block_r)])
         else:
             img = self.get_camera_image(env_idx)
             seg_map, boundary_pts = self.get_boundary_pts(img)
@@ -808,8 +923,37 @@ class DeltaArraySim:
                     self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.47), r=self.finga_q))     
                 else:
                     self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
-        
-        if t_step==150:
-            img = self.get_camera_image(env_idx)
-            # plt.imshow(img)
-            # plt.show()
+        if t_step==0:
+            self.set_block_pose(env_idx)
+        elif t_step == (self.time_horizon - 2):
+            self.set_block_pose(env_idx, goal=True)
+
+            com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
+            roll, pitch, yaw = R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')
+            print(roll, pitch, yaw)
+        # if t_step == 0:
+        #     self.obj_name = self.obj_names.pop()
+        #     self.object[env_idx], _, object_r = self.obj_dict[self.obj_name]
+        #     block_p = gymapi.Vec3(0.13125, 0.1407285, 1.002)
+        #     r = R.from_euler('xyz', [0, 0, 0], degrees=True)
+        #     object_r = gymapi.Quat(*r.as_quat())
+        #     self.object[env_idx].set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p, r=object_r)])
+        # elif t_step == 1:
+        #     img = self.get_camera_image(env_idx)
+        #     _, bd_pts_pix = self.get_boundary_pts(img)
+        #     bd_pts = np.array([self.convert_pix_2_world(bd_pt) for bd_pt in bd_pts_pix])
+        #     idxs = np.arange(len(bd_pts))
+        #     idxs = np.random.choice(idxs, 256, replace=False)
+        #     vertex_normals = geom_utils.compute_vertex_normals(bd_pts)
+        #     normals = geom_utils.ensure_consistent_normals(bd_pts, vertex_normals)
+
+        #     com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name)[0]
+        #     yaw = R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')[2]
+        #     pose = np.array([com.p.x, com.p.y, yaw])
+
+        #     print(self.obj_name, pose)
+        #     self.bd_pts_dict[self.obj_name] = (bd_pts_pix[idxs], bd_pts[idxs], normals[idxs], pose)
+        #     with open('./config/assets/obj_props.pkl', 'wb') as f:
+        #         pkl.dump(self.bd_pts_dict, f)
+        # elif t_step == 2:
+        #     self.object[env_idx].set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=gymapi.Vec3(0.13125, 5.1407285, 1.002), r=gymapi.Quat(0,0,0,1))])

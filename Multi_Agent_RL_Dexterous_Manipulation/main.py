@@ -46,7 +46,7 @@ class DeltaArraySimEnvironment():
         if not os.path.exists('./data/manip_data'):   
             os.makedirs('./data/manip_data')
 
-        self.obj_name = args.obj_name
+        # self.obj_name = args.obj_name
         # self.object = GymBoxAsset(self.scene, **self.cfg[self.obj_name]['dims'], 
         #                     shape_props=self.cfg[self.obj_name]['shape_props'], 
         #                     rb_props=self.cfg[self.obj_name]['rb_props'],
@@ -62,7 +62,7 @@ class DeltaArraySimEnvironment():
 
         self.table = GymURDFAsset(self.cfg['table']['urdf_path'], self.scene,
                         asset_options=self.cfg['table']['asset_options'],
-                        rb_props=self.cfg[self.obj_name]['rb_props'],
+                        rb_props=self.cfg['table']['rb_props'],
                         shape_props=self.cfg['table']['shape_props'],
                         assets_root=Path('config'))
 
@@ -157,9 +157,9 @@ class DeltaArraySimEnvironment():
         
 
         if self.args.fingers4:
-            self.fingers = delta_array_simplified.DeltaArraySim(self.scene, self.cfg, self.object, self.table, self.obj_name, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
+            self.fingers = delta_array_simplified.DeltaArraySim(self.scene, self.cfg, self.objects, self.table, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
         else:
-            self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.object, self.table, self.obj_name, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
+            self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.objects, self.table, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
         
         
         self.cam = GymCamera(self.scene, cam_props = self.cfg['camera'])
@@ -179,7 +179,10 @@ class DeltaArraySimEnvironment():
         # we'll sample block poses later
         self.fingers.add_asset(scene)
         # Add either rigid body or soft body as an asset to the scene
-        scene.add_asset(self.obj_name, self.object, gymapi.Transform()) 
+
+        for obj_name in self.objects.keys():
+            obj, object_p, object_r = self.objects[obj_name]
+            scene.add_asset(obj_name, obj, gymapi.Transform(p=object_p, r=object_r)) 
         scene.add_asset("table", self.table, gymapi.Transform())
         # scene.add_asset("fiducial_lt", self.fiducial_lt, gymapi.Transform()) 
         # scene.add_asset("fiducial_rb", self.fiducial_rb, gymapi.Transform()) 
@@ -190,10 +193,6 @@ class DeltaArraySimEnvironment():
         for i in self.scene.env_idxs:
             self.fingers.set_attractor_handles(i)
 
-        object_p = gymapi.Vec3(0.13125, 0.1407285, self.cfg['object']['dims']['sz'] / 2 + 1.002)
-        # self.object_r = gymapi.Quat(0.5, 0.5, 0.5, 0.5)
-        # object_r = gymapi.Quat(-0.7071068, 0, 0, 0.7071068)
-        object_transforms = [gymapi.Transform(p=object_p, r=self.object_r) for _ in range(self.scene.n_envs)]
         table_transforms = [gymapi.Transform(p=gymapi.Vec3(0,0,0.5)) for _ in range(self.scene.n_envs)]
         # fiducial_rb = [gymapi.Transform(p=gymapi.Vec3(-0.2035, -0.06, 1.0052)) for _ in range(self.scene.n_envs)]
         # fiducial_lt = [gymapi.Transform(p=gymapi.Vec3(0.303107 + 0.182, 0.2625 + 0.06, 1.0052)) for _ in range(self.scene.n_envs)]
@@ -201,12 +200,14 @@ class DeltaArraySimEnvironment():
         # fiducial_lt = [gymapi.Transform(p=gymapi.Vec3(0.2625 + 0.062, 0.303107 + 0.1855, 1.0052)) for _ in range(self.scene.n_envs)]
         for env_idx in self.scene.env_idxs:
             self.table.set_rb_transforms(env_idx, 'table', [table_transforms[env_idx]])
-            
-            yaw = np.arctan2(2*(self.object_r.w*self.object_r.z + self.object_r.x*self.object_r.y), 1 - 2*(self.object_r.x**2 + self.object_r.y**2))
-            T = np.array((np.random.uniform(0.009, 0.21), np.random.uniform(0.005, 0.25)))
-            self.fingers.goal_pose[env_idx] = np.array([*T, yaw])
-            
-            self.object.set_rb_transforms(env_idx, self.obj_name, [object_transforms[env_idx]])
+            # for obj_name in self.objects.keys():
+            #     obj, object_p, object_r = self.objects[obj_name]
+            #     object_transforms = [gymapi.Transform(p=object_p, r=object_r) for _ in range(self.scene.n_envs)]
+            #     obj.set_rb_transforms(env_idx, obj_name, [object_transforms[env_idx]])
+
+            self.fingers.obj_name[env_idx] = "disc"
+            self.fingers.object[env_idx] = self.objects["disc"][0]
+            self.fingers.set_block_pose(env_idx, goal=True)
             self.fingers.set_all_fingers_pose(env_idx)
             # self.fingers.set_block_pose(env_idx)
             # self.fiducial_lt.set_rb_transforms(env_idx, "fiducial_lt", [fiducial_lt[env_idx]])

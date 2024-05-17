@@ -40,16 +40,16 @@ import utils.rl_utils as rl_utils
 import utils.geometric_utils as geom_utils
 
 class DeltaArraySim:
-    def __init__(self, scene, cfg, obj, table, obj_name, img_embed_model, transform, agents, hp_dict, num_tips = [8,8], max_agents=64):
+    def __init__(self, scene, cfg, objs, table, img_embed_model, transform, agents, hp_dict, num_tips = [8,8], max_agents=64):
         """ Main Vars """
         self.scene = scene
         self.cfg = cfg
         self.num_tips = num_tips
         self.fingertips = np.zeros((8,8)).tolist()
         self.cam = 0
-        self.object = obj
+        self.objects = objs
         self.table = table
-        self.obj_name = obj_name
+        self.obj_names = list(self.objects.keys())
         self.max_agents = max_agents
         self.hp_dict = hp_dict
         self.n_envs = self.scene.n_envs

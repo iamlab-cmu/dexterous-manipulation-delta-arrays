@@ -2,13 +2,13 @@
 <robot name="block">
   <link name="block">
     <visual>
-      <origin xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
       <geometry>
         <mesh filename="config/assets/block.obj"/>
       </geometry>
     </visual>
     <collision>
-      <origin xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
       <geometry>
         <mesh filename="config/assets/block.obj"/>
       </geometry>

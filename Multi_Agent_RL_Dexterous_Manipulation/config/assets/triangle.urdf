@@ -2,12 +2,14 @@
 <robot name="triangle_block">
   <link name="block">
     <visual>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
       <geometry>
         <mesh filename="./config/assets/triangle.dae"/>
       </geometry>
     </visual>
 
     <collision>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
       <geometry>
         <mesh filename="./config/assets/triangle.dae"/>
       </geometry>

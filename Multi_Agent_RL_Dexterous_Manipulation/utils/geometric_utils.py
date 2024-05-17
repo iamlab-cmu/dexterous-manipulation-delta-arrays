@@ -13,6 +13,14 @@ from scipy.spatial import Delaunay
 from scipy.spatial.transform import Rotation as R
 from skimage.measure import find_contours
 
+# def compute_normal(p1, p2):
+#     d = np.array([p2[0] - p1[0], p2[1] - p1[1]])
+#     normal = np.array([d[1], -d[0]])
+#     norm = np.linalg.norm(normal)
+#     if norm == 0:
+#         return (0, 0)  # Avoid division by zero
+#     return normal / norm
+
 def transform_pts_wrt_com(points, transform, com):
     """
     Apply a 2D transformation to a set of points.
@@ -27,7 +35,7 @@ def get_transform(init_bd_pts, new_bd_pts):
     min_size = min(init_bd_pts.shape[0], new_bd_pts.shape[0])
     init_bd_pts = init_bd_pts[np.random.choice(init_bd_pts.shape[0], size=min_size, replace=False)]
     new_bd_pts = new_bd_pts[np.random.choice(new_bd_pts.shape[0], size=min_size, replace=False)]
-    M2 = icp(init_bd_pts, new_bd_pts, icp_radius=200)
+    M2 = icp(init_bd_pts, new_bd_pts, icp_radius=0.5)
     theta = np.arctan2(M2[1, 0], M2[0, 0])
     obj_2d_pose_delta = [M2[0,3], M2[1,3], theta]
     return obj_2d_pose_delta
@@ -166,3 +174,62 @@ class GFT:
             residual = rx_signal - self.og_gft_signals
             plt.scatter(*np.mean(residual, axis=1))
         plt.show()
+
+def compute_segment_normals(points):
+    """Compute normals for each segment between consecutive points."""
+    segment_normals = []
+    num_points = len(points)
+    for i in range(num_points):
+        p1 = points[i]
+        p2 = points[(i + 1) % num_points]
+        d = p2 - p1
+        # Compute the normal (rotated by 90 degrees)
+        normal = np.array([-d[1], d[0]])
+        normal /= np.linalg.norm(normal)
+        segment_normals.append(normal)
+    return np.array(segment_normals)
+
+def compute_vertex_normals(points):
+    """Compute normals at each vertex by averaging adjacent segment normals."""
+    segment_normals = compute_segment_normals(points)
+    num_points = len(points)
+    vertex_normals = []
+    for i in range(num_points):
+        prev_normal = segment_normals[i - 1]
+        next_normal = segment_normals[i]
+        avg_normal = (prev_normal + next_normal) / 2
+        avg_normal /= np.linalg.norm(avg_normal)
+        vertex_normals.append(avg_normal)
+    return np.array(vertex_normals)
+
+# Ensure normals are consistently pointing outward for a closed shape
+def ensure_consistent_normals(points, normals):
+    center = np.mean(points, axis=0)
+    consistent_normals = []
+    for point, normal in zip(points, normals):
+        vector_to_center = center - point
+        # If the dot product is negative, flip the normal
+        if np.dot(normal, vector_to_center) > 0:
+            normal = -normal
+        consistent_normals.append(normal)
+    return np.array(consistent_normals)
+
+def normalize_angle(theta):
+    """Normalize the angle to be within the range [-pi, pi]."""
+    return (theta + np.pi) % (2 * np.pi) - np.pi
+
+def compute_transformation(points, normals, initial_pose, final_pose):
+    """Compute the transformed points and normals given initial and final poses."""
+    x0, y0, theta0 = initial_pose
+    x1, y1, theta1 = final_pose
+    translation = np.array([x1 - x0, y1 - y0])
+    delta_theta = normalize_angle(theta1 - theta0)
+
+    rotation_matrix = np.array([
+        [np.cos(delta_theta), -np.sin(delta_theta)],
+        [np.sin(delta_theta), np.cos(delta_theta)]
+    ])
+
+    rotated_points = np.dot(points - np.array([x0, y0]), rotation_matrix.T) + np.array([x1, y1])
+    rotated_normals = np.dot(normals, rotation_matrix.T)
+    return rotated_points, rotated_normals
