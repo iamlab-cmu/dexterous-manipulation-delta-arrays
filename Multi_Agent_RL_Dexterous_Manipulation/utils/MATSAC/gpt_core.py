@@ -66,9 +66,14 @@ class IntegerEmbeddingModel(nn.Module):
     def __init__(self, num_embeddings, embedding_dim):
         super(IntegerEmbeddingModel, self).__init__()
         self.embedding = nn.Embedding(num_embeddings, embedding_dim)
+        self.linear1 = nn.Linear(embedding_dim, embedding_dim)
+        self.linear2 = nn.Linear(embedding_dim, embedding_dim) 
 
     def forward(self, x):
-        return self.embedding(x)
+        x = self.embedding(x)
+        x = F.relu(self.linear1(x))
+        x = F.relu(self.linear2(x))
+        return x
 
 class FF_MLP(nn.Module):
     def __init__(self, model_dim, dim_ff):
@@ -156,7 +161,7 @@ class Transformer(nn.Module):
         self.act_limit = action_limit
         self.action_dim = action_dim
         self.pos_embedding = IntegerEmbeddingModel(self.max_agents, embedding_dim=128)
-        self.pos_embedding.load_state_dict(torch.load("./utils/MATSAC/idx_embedding.pth", map_location=device))
+        self.pos_embedding.load_state_dict(torch.load("./utils/MATSAC/idx_embedding_new.pth", map_location=device))
         for param in self.pos_embedding.parameters():
             param.requires_grad = False
         log_std = -0.5 * torch.ones(action_dim)
