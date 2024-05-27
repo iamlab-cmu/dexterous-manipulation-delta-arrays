@@ -208,7 +208,7 @@ class NNHelper:
         Expands the convex hull by the radius of the robot
         """
         if world:
-            robot_radius = 0.003
+            robot_radius = 0.009
         else:
             robot_radius = 30
         expanded_hull_vertices = []

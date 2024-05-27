@@ -148,6 +148,12 @@ class DeltaArraySim:
         self.vs_rews = []
         self.rand_rews = []
 
+        """ Diffusion Policy Utils """
+        self.vis_servo_data = {}
+        for env_idx in range(self.scene.n_envs):
+            self.vis_servo_data[env_idx] = {'state': [], 'action': [], 'next_state':[], 'reward': [], 'obj_name': []}
+
+
         """ Debugging and Visualization Vars """
         self.video_frames = np.zeros((self.hp_dict['inference_length'], (self.time_horizon - 4)*2, 480, 640, 3))
 
@@ -550,20 +556,25 @@ class DeltaArraySim:
         """ Update the replay buffer and reset the env """
         # Update policy
         self.compute_reward_v2(env_idx, t_step)
-        if self.agent.ma_replay_buffer.size > self.batch_size:
-            epoch = self.scale_epoch(self.current_episode)
-            for i in range(epoch):
-                self.agent.update(self.batch_size, self.current_episode)
+        if (self.agent.ma_replay_buffer.size > self.batch_size) and (not self.hp_dict['vis_servo']):
+            # epoch = self.scale_epoch(self.current_episode)
+            # for i in range(epoch):
+            self.agent.update(self.batch_size, self.current_episode)
+        # else:
+        #     print(f"Reward: {self.ep_reward[env_idx]} @ {self.current_episode}")
 
         if self.current_episode > self.scene.n_envs:
             self.log_data(env_idx, agent)
         # com = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
 
-        agent.ma_replay_buffer.store(self.init_state[env_idx], self.actions[env_idx], self.pos[env_idx], self.ep_reward[env_idx], self.final_state[env_idx], True, self.n_idxs[env_idx])
-        self.ep_reward[env_idx]
+        agent.ma_replay_buffer.store(self.init_state[env_idx], self.actions[env_idx], self.pos[env_idx], self.ep_reward[env_idx], self.final_state[env_idx], True, self.n_idxs[env_idx], self.obj_name[env_idx])
+        if (self.current_episode%10000)==0:
+            print(f"Reward: {self.ep_reward[env_idx]} @ {self.current_episode}")
+            # agent.ma_replay_buffer.save_RB()
+
+        # if self.current_episode == 500000:
+        #     sys.exit(1)
         self.reset(env_idx)
-        if (self.current_episode%5000)==0:
-            agent.ma_replay_buffer.save_RB()
 
     def reset(self, env_idx):
         """ Normal reset OR Alt-terminate state when block degenerately collides with robot. This is due to an artifact of the simulation. """
@@ -719,7 +730,7 @@ class DeltaArraySim:
                     self.temp_var['initial_l2_dist'].append(np.linalg.norm(self.goal_pose[env_idx][:2] - self.init_pose[env_idx][:2]))
                     self.temp_var['reward'].append(self.ep_reward[env_idx])
                     if self.current_episode%10 == 0:
-                        pkl.dump(self.temp_var, open(f"./init_vs_reward.pkl", "wb"))
+                        pkl.dump(self.temp_var, open(f"./init_vs_reward_withcawr.pkl", "wb"))
 
                 self.reset(env_idx)
                 self.current_episode += 1
@@ -736,7 +747,7 @@ class DeltaArraySim:
         com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
         roll, pitch, yaw = R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')
         final_pose = (com.p.x, com.p.y, yaw)
-        if (abs(roll) > 0.175)or(abs(pitch) > 0.175):
+        if (abs(roll) > 0.4)or(abs(pitch) > 0.4):
             self.dont_skip_episode = False
             return None, None
         else:
@@ -876,15 +887,17 @@ class DeltaArraySim:
             elif t_step == 1:
                 self.set_attractor_target(env_idx, t_step, self.actions)
             elif t_step == (self.time_horizon-3):
-                self.compute_reward_v2(env_idx, t_step)
-                print(f"Reward: {self.ep_reward[env_idx]}")
+                # self.compute_reward_v2(env_idx, t_step)
                 
                 # if 0 < self.current_episode < self.temp_cutoff_1:
                 #     self.vs_rews.append(self.ep_reward[env_idx])
                 # elif self.temp_cutoff_1 <= self.current_episode < self.temp_cutoff_2:
                 #     self.rand_rews.append(self.ep_reward[env_idx])
-                self.reset(env_idx)
+                # self.reset(env_idx)
+
                 self.current_episode += 1
+                self.pos[env_idx, :self.n_idxs[env_idx], 0] = np.array([i[0]*8+i[1] for i in self.active_idxs[env_idx]])
+                self.terminate(env_idx, t_step, self.agent)
             elif t_step == (self.time_horizon - 2):
                 self.set_block_pose(env_idx, goal=True) # Set block to next goal pose & Store Goal Pose for both states
             elif t_step == (self.time_horizon - 1):
