@@ -155,7 +155,7 @@ class Transformer(nn.Module):
         self.max_agents = delta_array_size[0] * delta_array_size[1]
         self.act_limit = action_limit
         self.action_dim = action_dim
-        self.pos_embedding = IntegerEmbeddingModel(self.max_agents, model_dim)
+        self.pos_embedding = IntegerEmbeddingModel(self.max_agents, embedding_dim=128)
         self.pos_embedding.load_state_dict(torch.load("./utils/MATSAC/idx_embedding.pth", map_location=device))
         for param in self.pos_embedding.parameters():
             param.requires_grad = False
