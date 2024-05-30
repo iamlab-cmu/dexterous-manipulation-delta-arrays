@@ -146,7 +146,7 @@ class DiT(nn.Module):
     def __init__(self, state_dim, obj_name_enc_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False):
         super(DiT, self).__init__()
         self.state_enc = wt_init_(nn.Linear(state_dim, model_dim))
-        self.obj_name_enc = wt_init_(nn.Linear(obj_name_enc_dim, model_dim))
+        self.obj_name_enc = nn.Embedding(obj_name_enc_dim, model_dim)
         self.action_embedding = wt_init_(nn.Linear(action_dim, model_dim))
         self.pos_embedding = pos_embedding
         self.dropout = nn.Dropout(dropout)
@@ -163,10 +163,10 @@ class DiT(nn.Module):
         Output: decoder_output (bs, n_agents, model_dim)
         """
         state_enc = self.state_enc(state)
-        # obj_name_enc = self.obj_name_enc(obj_name_encs)
+        obj_name_enc = self.obj_name_enc(obj_name_encs)
         pos_embed = self.pos_embedding(pos)
 
-        conditional_enc = pos_embed.squeeze(2) + state_enc # + obj_name_enc
+        conditional_enc = pos_embed.squeeze(2) + state_enc + obj_name_enc.unsqueeze(1)
         act_enc = self.activation(self.action_embedding(actions))
         for layer in self.decoder_layers:
             act_enc = layer(act_enc, conditional_enc)

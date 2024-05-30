@@ -558,8 +558,8 @@ class DeltaArraySim:
         self.compute_reward_v2(env_idx, t_step)
         if (self.agent.ma_replay_buffer.size > self.batch_size) and (not self.hp_dict['vis_servo']):
             # epoch = self.scale_epoch(self.current_episode)
-            # for i in range(epoch):
-            self.agent.update(self.batch_size, self.current_episode)
+            for i in range(5):
+                self.agent.update(self.batch_size, self.current_episode)
         # else:
         #     print(f"Reward: {self.ep_reward[env_idx]} @ {self.current_episode}")
 
@@ -690,6 +690,7 @@ class DeltaArraySim:
         
         if self.ep_len[env_idx]==0:
             if t_step == 0:
+                # time.sleep(0.5)
                 # img = self.get_camera_image(env_idx)
                 # _, self.goal_bd_pts[env_idx] = self.get_boundary_pts(img)
                 self.set_block_pose(env_idx) # Reset block to current initial pose
@@ -710,6 +711,7 @@ class DeltaArraySim:
             elif t_step == 1:
                 self.set_attractor_target(env_idx, t_step, self.actions)
             elif t_step == (self.time_horizon-2):
+                init_bd_pts = self.bd_pts[env_idx].copy()
                 self.compute_reward_v2(env_idx, t_step)
                 print(f"Reward: {self.ep_reward[env_idx]}")
 
@@ -727,7 +729,8 @@ class DeltaArraySim:
                     
                     com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
                     self.temp_var['z_dist'].append(np.linalg.norm(self.init_pose[env_idx][3] - com.p.z))
-                    self.temp_var['initial_l2_dist'].append(np.linalg.norm(self.goal_pose[env_idx][:2] - self.init_pose[env_idx][:2]))
+                    # self.temp_var['initial_l2_dist'].append(np.linalg.norm(self.goal_pose[env_idx][:2] - self.init_pose[env_idx][:2]))
+                    self.temp_var['initial_l2_dist'].append(np.linalg.norm(self.goal_bd_pts[env_idx] - init_bd_pts))
                     self.temp_var['reward'].append(self.ep_reward[env_idx])
                     if self.current_episode%10 == 0:
                         pkl.dump(self.temp_var, open(f"./init_vs_reward_withcawr.pkl", "wb"))
