@@ -17,9 +17,10 @@ class MultiAgentReplayBuffer:
         self.rew_buf = np.zeros(size, dtype=np.float32)
         self.done_buf = np.zeros(size, dtype=np.float32)
         self.num_agents_buf = np.zeros(size, dtype=np.int32)
+        self.obj_names = [None]*size
         self.ptr, self.size, self.max_size = 0, 0, size
 
-    def store(self, obs, act, pos, rew, next_obs, done, n_agents):
+    def store(self, obs, act, pos, rew, next_obs, done, n_agents, obj_name):
         self.obs_buf[self.ptr] = obs
         self.obs2_buf[self.ptr] = next_obs
         self.act_buf[self.ptr] = act
@@ -27,6 +28,7 @@ class MultiAgentReplayBuffer:
         self.rew_buf[self.ptr] = rew
         self.done_buf[self.ptr] = done
         self.num_agents_buf[self.ptr] = n_agents
+        self.obj_names[self.ptr] = obj_name
         self.ptr = (self.ptr+1) % self.max_size
         self.size = min(self.size+1, self.max_size)
 
@@ -49,6 +51,7 @@ class MultiAgentReplayBuffer:
                 "pos":self.pos_buf,
                 "rew":self.rew_buf,
                 "done":self.done_buf,
-                "num_agents":self.num_agents_buf}
+                "num_agents":self.num_agents_buf,
+                'obj_names':self.obj_names}
         pkl.dump(dic, open("replay_buffer.pkl", "wb"))
         # np.savez("replay_buffer.npz", obs_buf=self.obs_buf, obs2_buf=self.obs2_buf, act_buf=self.act_buf, rew_buf=self.rew_buf, done_buf=self.done_buf, num_agents_buf=self.num_agents_buf)

@@ -116,10 +116,10 @@ class DeltaArraySimEnvironment():
                 'state_dim'         : 6,
                 "dev_sim"           : torch.device(f"cuda:{self.args.dev_sim}"),
                 "dev_rl"            : torch.device(f"cuda:{self.args.dev_rl}"),
-                "model_dim"         : 128,
+                "model_dim"         : 256,
                 "num_heads"         : 8,
-                "dim_ff"            : 64,
-                "n_layers_dict"     : {'encoder': 8, 'actor': 8, 'critic': 8},
+                "dim_ff"            : 128,
+                "n_layers_dict"     : {'encoder': 10, 'actor': 10, 'critic': 10},
                 "dropout"           : 0,
                 "max_grad_norm"     : 1.0,
                 "delta_array_size"  : [8,8],
@@ -127,6 +127,7 @@ class DeltaArraySimEnvironment():
                 "ratio"             : self.args.vs_data,
                 "dont_log"          : self.args.dont_log,
                 'print_summary'     : self.args.print_summary,
+                'vis_servo'         : self.args.vis_servo,
             }
         
         logger_kwargs = {}
