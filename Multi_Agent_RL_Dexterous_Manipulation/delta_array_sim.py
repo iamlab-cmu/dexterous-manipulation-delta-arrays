@@ -558,8 +558,8 @@ class DeltaArraySim:
         self.compute_reward_v2(env_idx, t_step)
         if (self.agent.ma_replay_buffer.size > self.batch_size) and (not self.hp_dict['vis_servo']):
             # epoch = self.scale_epoch(self.current_episode)
-            for i in range(5):
-                self.agent.update(self.batch_size, self.current_episode)
+            # for i in range(5):
+            self.agent.update(self.batch_size, self.current_episode)
         # else:
         #     print(f"Reward: {self.ep_reward[env_idx]} @ {self.current_episode}")
 
