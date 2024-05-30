@@ -283,6 +283,7 @@ if __name__ == "__main__":
     parser.add_argument("-savevid", "--save_vid", action="store_true", help="Save Videos at inference")
     parser.add_argument("-fingers4", "--fingers4", action="store_true", help="Use simplified setup with only 4 fingers")
     parser.add_argument("-XX", "--donothing", action="store_true", help="Do nothing to test sim")
+    parser.add_argument("-gradnorm", "--gradnorm", type=float, default=1.0, help="Grad norm for training")
     args = parser.parse_args()
 
     if args.vis_servo and not args.test:
