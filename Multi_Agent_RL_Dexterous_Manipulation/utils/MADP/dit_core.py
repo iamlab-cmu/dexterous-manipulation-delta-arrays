@@ -271,7 +271,8 @@ class DiffusionTransformer(nn.Module):
         self.denoising_params = denoising_params
 
         # Below diffusion coefficients and posterior variables copied from DiT git repo
-        self.betas = get_named_beta_schedule('squaredcos_cap_v2', denoising_params['num_train_timesteps'])
+        # self.betas = get_named_beta_schedule('squaredcos_cap_v2', denoising_params['num_train_timesteps'])
+        self.betas = get_named_beta_schedule('linear', 1000)
         alphas = 1.0 - self.betas
         self.alphas_cumprod = np.cumprod(alphas, axis=0)
         self.alphas_cumprod_prev = np.append(1.0, self.alphas_cumprod[:-1])
