@@ -116,14 +116,14 @@ class MATSAC:
     def update(self, batch_size, current_episode):
         self.internal_updates_counter += 1
         if self.internal_updates_counter == 1:
-            for param_group in optimizer_critic.param_groups:
+            for param_group in self.optimizer_critic.param_groups:
                 param_group['lr'] = 1e-6
-            for param_group in optimizer_actor.param_groups:
+            for param_group in self.optimizer_actor.param_groups:
                 param_group['lr'] = 1e-6
         elif self.internal_updates_counter == 10001:
-            for param_group in optimizer_critic.param_groups:
+            for param_group in self.optimizer_critic.param_groups:
                 param_group['lr'] = self.hp_dict['q_lr']
-            for param_group in optimizer_actor.param_groups:
+            for param_group in self.optimizer_actor.param_groups:
                 param_group['lr'] = self.hp_dict['pi_lr']
 
         data = self.ma_replay_buffer.sample_batch(batch_size)
