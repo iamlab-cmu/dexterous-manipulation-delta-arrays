@@ -526,6 +526,9 @@ class DeltaArraySim:
         init_bd_pts = self.bd_pts[env_idx].copy()
         final_pose = self.get_nearest_robots_and_state_v2(env_idx, final=True, init_bd_pts=init_bd_pts)
         
+        if final_pose is None:
+            self.ep_reward[env_idx] = -5
+            return
         
         if self.obj_name[env_idx]=="disc":
             self.ep_reward[env_idx] = 0
