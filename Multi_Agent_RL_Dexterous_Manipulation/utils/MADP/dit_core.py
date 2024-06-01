@@ -62,6 +62,10 @@ def wt_init_(l, activation = "relu"):
 def count_vars(module):
     return sum([np.prod(p.shape) for p in module.parameters()])
 
+def modulate(x, shift, scale):
+    return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
+
+
 # def CAWR_with_Warmup(optimizer, num_warmup_steps, num_training_steps, num_cycles = 0.5, last_epoch = -1
 #     ) -> LambdaLR:
 
@@ -168,8 +172,51 @@ class DiTLayer(nn.Module):
         x = x + self.dropout(ff_embed)
         return x
 
+class DiTBlock(nn.Module):
+    """
+    A DiT block with adaptive layer norm zero (adaLN-Zero) conditioning.
+    """
+    def __init__(self, model_dim, num_heads, max_agents, dim_ff, dropout):
+        super().__init__()
+        self.attn = MultiHeadAttention(model_dim, num_heads, max_agents, masked=False)
+        self.mlp = FF_MLP(model_dim, dim_ff)
+        self.adaLN_modulation = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(model_dim, 6 * model_dim, bias=True)
+        )
+        self.layer_norm1 = nn.LayerNorm(model_dim, elementwise_affine=False, eps=1e-6)
+        self.layer_norm2 = nn.LayerNorm(model_dim, elementwise_affine=False, eps=1e-6)
+        self.layer_norm3 = nn.LayerNorm(model_dim, elementwise_affine=False, eps=1e-6)
+
+    def forward(self, x, cond):
+        x = self.layer_norm1(x)
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(cond).chunk(6, dim=1)
+        x = x + gate_msa.unsqueeze(1) * self.attn(modulate(self.layer_norm2(x), shift_msa, scale_msa))
+        x = x + gate_mlp.unsqueeze(1) * self.mlp(modulate(self.layer_norm3(x), shift_mlp, scale_mlp))
+        return x
+
+class FinalLayer(nn.Module):
+    """
+    The final layer of DiT.
+    """
+    def __init__(self, model_dim, action_dim):
+        super().__init__()
+        self.norm_final = nn.LayerNorm(model_dim, elementwise_affine=False, eps=1e-6)
+        self.linear = nn.Linear(model_dim, action_dim, bias=True)
+        self.adaLN_modulation = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(model_dim, 2 * model_dim, bias=True)
+        )
+
+    def forward(self, x, c):
+        shift, scale = self.adaLN_modulation(c).chunk(2, dim=1)
+        x = modulate(self.norm_final(x), shift, scale)
+        x = self.linear(x)
+        return x
+
+
 class DiT(nn.Module):
-    def __init__(self, state_dim, obj_name_enc_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False):
+    def __init__(self, state_dim, obj_name_enc_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers):
         super(DiT, self).__init__()
         self.state_enc = wt_init_(nn.Linear(state_dim, model_dim))
         self.obj_name_enc = nn.Embedding(obj_name_enc_dim, model_dim)
@@ -177,9 +224,11 @@ class DiT(nn.Module):
         self.pos_embedding = pos_embedding
         self.dropout = nn.Dropout(dropout)
 
-        self.decoder_layers = nn.ModuleList([DiTLayer(model_dim, num_heads, max_agents, dim_ff, dropout) for _ in range(n_layers)])
-        self.final_layer = wt_init_(nn.Linear(model_dim, action_dim))
-            # self.actor_std_layer = wt_init_(nn.Linear(model_dim, action_dim))
+        # self.decoder_layers = nn.ModuleList([DiTLayer(model_dim, num_heads, max_agents, dim_ff, dropout) for _ in range(n_layers)])
+        self.decoder_layers = nn.ModuleList([DiTBlock(model_dim, num_heads, max_agents, dim_ff, dropout) for _ in range(n_layers)])
+        # self.final_layer = wt_init_(nn.Linear(model_dim, action_dim))
+        self.final_layer = wt_init_(FinalLayer(model_dim, action_dim))
+        # self.actor_std_layer = wt_init_(nn.Linear(model_dim, action_dim))
         self.activation = nn.GELU()
 
     def forward(self, actions, state, obj_name_encs, pos):
@@ -196,7 +245,7 @@ class DiT(nn.Module):
         act_enc = self.activation(self.action_embedding(actions))
         for layer in self.decoder_layers:
             act_enc = layer(act_enc, conditional_enc)
-        pred_noise = self.final_layer(act_enc)
+        pred_noise = self.final_layer(act_enc, conditional_enc)
         return pred_noise
 
 class DiffusionTransformer(nn.Module):
