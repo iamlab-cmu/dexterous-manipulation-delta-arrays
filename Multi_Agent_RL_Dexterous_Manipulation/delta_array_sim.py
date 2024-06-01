@@ -9,6 +9,7 @@ from scipy import spatial
 from sklearn.cluster import KMeans
 from scipy.spatial import ConvexHull
 from scipy.interpolate import interp1d
+from sklearn.preprocessing import LabelEncoder
 from matplotlib import cm
 import matplotlib.pyplot as plt
 import cv2
@@ -152,7 +153,9 @@ class DeltaArraySim:
         self.vis_servo_data = {}
         for env_idx in range(self.scene.n_envs):
             self.vis_servo_data[env_idx] = {'state': [], 'action': [], 'next_state':[], 'reward': [], 'obj_name': []}
-
+        
+        names = ['block', 'disc', 'hexagon', 'parallelogram', 'semicircle', 'shuriken', 'star', 'trapezium', 'triangle']
+        self.obj_name_encoder = LabelEncoder()
 
         """ Debugging and Visualization Vars """
         self.video_frames = np.zeros((self.hp_dict['inference_length'], (self.time_horizon - 4)*2, 480, 640, 3))
@@ -420,7 +423,7 @@ class DeltaArraySim:
             self.dont_skip_episode = False
             return None, None
         else:
-            final_pose = (com.p.x, com.p.y, yaw)
+            final_pose = np.array((com.p.x, com.p.y, yaw))
             tfed_bd_pts, transformed_normals = geom_utils.compute_transformation(boundary_points, normals, initial_pose, final_pose)
             self.bd_pts[env_idx] = tfed_bd_pts            
             if not final:
@@ -489,22 +492,29 @@ class DeltaArraySim:
                 #     plt.quiver(init_pts[:, 0], init_pts[:, 1], acts[:, 0], acts[:, 1], scale=1, scale_units='xy')
                 #     plt.gca().set_aspect('equal')
                 #     plt.show()
+        return final_pose
 
-    def gaussian_reward_shaping(self, x, ampl, width, center=0, vertical_shift=0):
-        return ampl * np.exp(-width * (x - center)**2) - vertical_shift
+    # def gaussian_reward_shaping(self, x, ampl, width, center=0, vertical_shift=0):
+    #     return ampl * np.exp(-width * (x - center)**2) - vertical_shift
 
-    def reward_function(self, goal, final):
-        loss = 5 * np.linalg.norm(goal - final)
-        if loss < 1:
-            loss = -0.5  * loss**2
-        else:
-            loss = -loss + 0.5
-        return loss
+    # def reward_function(self, goal, final):
+    #     loss = 5 * np.linalg.norm(goal - final)
+    #     if loss < 1:
+    #         loss = -0.5  * loss**2
+    #     else:
+    #         loss = -loss + 0.5
+    #     return loss
 
-    def compute_reward_v2(self, env_idx, t_step):
-        self.get_nearest_robots_and_state_v2(env_idx, final=True)
-        self.ep_reward[env_idx] = self.reward_function(self.goal_bd_pts[env_idx], self.bd_pts[env_idx])
-
+    # def compute_reward_v2(self, env_idx, t_step):
+    #     self.get_nearest_robots_and_state_v2(env_idx, final=True)
+    #     self.ep_reward[env_idx] = self.reward_function(self.goal_bd_pts[env_idx], self.bd_pts[env_idx])
+    
+    def angle_difference(self, theta1, theta2):
+        """ Calculate the shortest path difference between two angles """
+        delta_theta = theta1 - theta2
+        delta_theta = (delta_theta + np.pi) % (2 * np.pi) - np.pi
+        return np.abs(delta_theta)
+    
     def compute_reward(self, env_idx, t_step):
         """ 
         Computes the reward for the quasi-static phase
@@ -514,36 +524,47 @@ class DeltaArraySim:
         """
         # This function is utterly incomplete. Fix it before running final init expt
         init_bd_pts = self.bd_pts[env_idx].copy()
-        self.get_nearest_robots_and_state_v2(env_idx, final=True, init_bd_pts=init_bd_pts)
-
-        com_world = np.mean(self.bd_pts[env_idx], axis=0)
-
-        rot = geom_utils.get_transform(self.goal_bd_pts[env_idx], self.bd_pts[env_idx])[2]
-        delta_com = np.mean(self.goal_bd_pts[env_idx], axis=0) - com_world
+        final_pose = self.get_nearest_robots_and_state_v2(env_idx, final=True, init_bd_pts=init_bd_pts)
+        
+        
         if self.obj_name[env_idx]=="disc":
-            delta_2d_pose = np.array([*delta_com])
+            self.ep_reward[env_idx] = 0
         else:
-            delta_2d_pose = np.array([*delta_com, rot])
-
-        # com = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
-        # yaw = R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')[2]
-        
-        # rot_dif = abs(yaw - self.goal_pose[env_idx, 2])
-        # rot_dif = rot_dif if rot_dif < np.pi else 2*np.pi - rot_dif
-        # delta_2d_pose = [T[0] - self.goal_pose[env_idx, 0], T[1] - self.goal_pose[env_idx, 1], rot_dif]
-
-        # self.ep_reward[env_idx] = self.gaussian_reward_shaping(np.linalg.norm(delta_2d_pose), 15, 4500, -0.01, 5)
-        loss = 100*np.linalg.norm(delta_2d_pose)
-        loss2 = 100*np.linalg.norm(self.goal_bd_pts[env_idx] - self.bd_pts[env_idx])
+            self.ep_reward[env_idx] = -2*self.angle_difference(final_pose[2], self.goal_pose[env_idx, 2])
+        loss = 100*np.linalg.norm(self.goal_pose[env_idx][:2] - final_pose[:2])
         if loss < 1:
-            self.ep_reward[env_idx] = -0.5  * loss**2
-            loss2 = -0.5  * loss2**2
+            self.ep_reward[env_idx] -= 0.5  * loss**2
         else:
-            self.ep_reward[env_idx] = -loss + 0.5
-            loss2 = -loss2 + 0.5
+            self.ep_reward[env_idx] -= loss - 0.5
         
-        print("Old Losss: ", self.ep_reward[env_idx])
-        print("New Loss: ", loss2)
+        # com_world = np.mean(self.bd_pts[env_idx], axis=0)
+
+        # rot = geom_utils.get_transform(self.goal_bd_pts[env_idx], self.bd_pts[env_idx])[2]
+        # delta_com = np.mean(self.goal_bd_pts[env_idx], axis=0) - com_world
+        # if self.obj_name[env_idx]=="disc":
+        #     delta_2d_pose = np.array([*delta_com])
+        # else:
+        #     delta_2d_pose = np.array([*delta_com, rot])
+
+        # # com = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
+        # # yaw = R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')[2]
+        
+        # # rot_dif = abs(yaw - self.goal_pose[env_idx, 2])
+        # # rot_dif = rot_dif if rot_dif < np.pi else 2*np.pi - rot_dif
+        # # delta_2d_pose = [T[0] - self.goal_pose[env_idx, 0], T[1] - self.goal_pose[env_idx, 1], rot_dif]
+
+        # # self.ep_reward[env_idx] = self.gaussian_reward_shaping(np.linalg.norm(delta_2d_pose), 15, 4500, -0.01, 5)
+        # loss = 100*np.linalg.norm(delta_2d_pose)
+        # loss2 = 100*np.linalg.norm(self.goal_bd_pts[env_idx] - self.bd_pts[env_idx])
+        # if loss < 1:
+        #     self.ep_reward[env_idx] = -0.5  * loss**2
+        #     loss2 = -0.5  * loss2**2
+        # else:
+        #     self.ep_reward[env_idx] = -loss + 0.5
+        #     loss2 = -loss2 + 0.5
+        
+        # print("Old Losss: ", self.ep_reward[env_idx])
+        # print("New Loss: ", loss2)
 
 
         # if np.linalg.norm(delta_2d_pose) < 0.01:
@@ -555,7 +576,7 @@ class DeltaArraySim:
     def terminate(self, env_idx, t_step, agent):
         """ Update the replay buffer and reset the env """
         # Update policy
-        self.compute_reward_v2(env_idx, t_step)
+        self.compute_reward(env_idx, t_step)
         if (self.agent.ma_replay_buffer.size > self.batch_size) and (not self.hp_dict['vis_servo']):
             # epoch = self.scale_epoch(self.current_episode)
             # for i in range(5):
@@ -712,7 +733,7 @@ class DeltaArraySim:
                 self.set_attractor_target(env_idx, t_step, self.actions)
             elif t_step == (self.time_horizon-2):
                 init_bd_pts = self.bd_pts[env_idx].copy()
-                self.compute_reward_v2(env_idx, t_step)
+                self.compute_reward(env_idx, t_step)
                 print(f"Reward: {self.ep_reward[env_idx]}")
 
                 if not self.hp_dict["dont_log"]:
@@ -743,6 +764,62 @@ class DeltaArraySim:
             # else:
             #     self.video_frames[self.infer_iter, int((self.time_horizon-4)*self.ep_len[env_idx] + t_step-2)] = self.get_scene_image(env_idx)
 
+    def diffusion_step(self, env_idx, agent):
+            states = torch.tensor(self.init_state[env_idx, :self.n_idxs[env_idx]], dtype=torch.float32).unsqueeze(0)
+            obj_name_enc = torch.tensor(self.obj_name_encoder.fit_transform(np.array(self.obj_name[env_idx]).ravel())).to(torch.int64)
+            pos = torch.tensor(self.pos[env_idx, :self.n_idxs[env_idx]], dtype=torch.float32).unsqueeze(0)
+            # print(states.shape, obj_name_enc.shape, pos.shape)
+            noise = torch.randn((1, self.n_idxs[env_idx], 2))
+            denoised_actions = agent.actions_from_denoising_diffusion(noise, states, obj_name_enc, pos)
+            self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(denoised_actions.squeeze().detach().cpu().numpy(), -0.03, 0.03)
+
+    def test_diffusion_policy(self, scene, env_idx, t_step, _):
+        t_step = t_step % self.time_horizon
+        env_ptr = self.scene.env_ptrs[env_idx]
+        
+        if self.ep_len[env_idx]==0:
+            if t_step == 0:
+                # time.sleep(0.5)
+                # img = self.get_camera_image(env_idx)
+                # _, self.goal_bd_pts[env_idx] = self.get_boundary_pts(img)
+                self.set_block_pose(env_idx) # Reset block to current initial pose
+                self.set_all_fingers_pose(env_idx, pos_high=True) # Set all fingers to high pose
+                self.set_attractor_target(env_idx, t_step, None, all_zeros=True) # Set all fingers to high pose
+            elif t_step == 1:
+                self.env_step(env_idx, t_step, self.pretrained_agent) #Store Init Pose
+            elif (t_step == 2) and self.dont_skip_episode:
+                self.set_attractor_target(env_idx, t_step, self.actions_grasp)
+            elif (t_step == self.time_horizon-1) and self.dont_skip_episode:
+                self.ep_len[env_idx] = 1
+            elif not self.dont_skip_episode:
+                self.ep_len[env_idx] = 0
+                self.reset(env_idx)
+        else:         
+            if t_step == 0:
+                self.diffusion_step(env_idx, self.agent) # Only Store Actions from MARL Policy
+            elif t_step == 1:
+                self.set_attractor_target(env_idx, t_step, self.actions)
+            elif t_step == (self.time_horizon-2):
+                init_bd_pts = self.bd_pts[env_idx].copy()
+                self.compute_reward(env_idx, t_step)
+                print(f"Reward: {self.ep_reward[env_idx]}")
+
+                if self.hp_dict["print_summary"]:
+                    
+                    com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
+                    self.temp_var['z_dist'].append(np.linalg.norm(self.init_pose[env_idx][3] - com.p.z))
+                    # self.temp_var['initial_l2_dist'].append(np.linalg.norm(self.goal_pose[env_idx][:2] - self.init_pose[env_idx][:2]))
+                    self.temp_var['initial_l2_dist'].append(np.linalg.norm(self.goal_bd_pts[env_idx] - init_bd_pts))
+                    self.temp_var['reward'].append(self.ep_reward[env_idx])
+                    if self.current_episode%100 == 0:
+                        with open(f"./init_vs_reward_diff_policy.pkl", "wb") as f:
+                            pkl.dump(self.temp_var, f)
+                self.reset(env_idx)
+                self.current_episode += 1
+            elif t_step == self.time_horizon - 1:
+                self.set_block_pose(env_idx, goal=True) # Set block to next goal pose & Store Goal Pose for both states
+                self.ep_len[env_idx] = 0
+
     def vs_step(self, env_idx, t_step):
         
         _, boundary_points, normals, initial_pose = self.bd_pts_dict[self.obj_name[env_idx]]
@@ -758,7 +835,6 @@ class DeltaArraySim:
             self.bd_pts[env_idx] = tfed_bd_pts
 
             if self.current_episode >= 0:
-                self.actions_grasp[env_idx, :self.n_idxs[env_idx]]
                 _, self.nn_bd_pts[env_idx] = self.nn_helper.get_min_dist_world(tfed_bd_pts, self.active_idxs[env_idx], self.actions_grasp[env_idx, :self.n_idxs[env_idx]])
                 # com = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
                 # yaw = R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')[2]
@@ -777,32 +853,25 @@ class DeltaArraySim:
                 displacement_vectors = tf_pts - self.nn_bd_pts[env_idx]
                 actions = self.actions_grasp[env_idx, :self.n_idxs[env_idx]] + displacement_vectors
 
-                self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(actions, -0.03, 0.03)
-                # if self.hp_dict["add_vs_data"]:
-                #     self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(actions, -0.03, 0.03)
-                # else:
-                    # if self.current_episode < self.temp_cutoff_1:
-                        # self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(actions, -0.03, 0.03)
-                    # elif self.current_episode < self.temp_cutoff_2:
-                    #     act_rand = np.random.uniform(-0.06, 0.06, size=(self.n_idxs[env_idx], 2))
-                    #     self.actions[env_idx, :self.n_idxs[env_idx]] = act_rand
-                    # else:
-                    #     # Save vs_rews and rand_rews using pickle
-                    #     pkl.dump(self.vs_rews, open(f"./data/manip_data/vis_servoing/vs_rews.pkl", "wb"))
-                    #     pkl.dump(self.rand_rews, open(f"./data/manip_data/vis_servoing/rand_rews.pkl", "wb"))
-                    #     sys.exit(1)
+                # self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(actions, -0.03, 0.03)
+                self.actions[env_idx, :self.n_idxs[env_idx]] = np.random.uniform(-0.03, 0.03, size=(self.n_idxs[env_idx], 2))
                 
-                
-                
-                # r_poses = self.nn_helper.robot_positions[tuple(zip(*self.active_idxs[env_idx]))]
-                # # Plot robot positions of n_idxs
-                # plt.scatter(r_poses[:, 0], r_poses[:, 1], c='#880000ff')
+                # print(self.obj_name[env_idx])
+                # r_poses = self.nn_helper.rb_pos_world[tuple(zip(*self.active_idxs[env_idx]))]
+                # init_pts = self.init_state[env_idx, :self.n_idxs[env_idx], :2].copy() + r_poses
+                # goal_bd_pts = self.init_state[env_idx, :self.n_idxs[env_idx], 2:4].copy() + r_poses
+                # act_grsp = self.actions_grasp[env_idx, :self.n_idxs[env_idx]].copy()
+                # acts = self.actions[env_idx, :self.n_idxs[env_idx]].copy()
+                # r_poses2 = r_poses + act_grsp
+            
+                # plt.scatter(r_poses[:, 0], r_poses[:, 1], c='#ddddddff')
+                # plt.scatter(init_pts[:, 0], init_pts[:, 1], c = '#00ff00ff')
+                # plt.scatter(goal_bd_pts[:, 0], goal_bd_pts[:, 1], c='red')
 
-                # plt.scatter(new_bd_pts[:, 0], new_bd_pts[:, 1], c = 'green')
-                # plt.scatter(self.goal_bd_pts[env_idx][:, 0], self.goal_bd_pts[env_idx][:, 1], c='orange')
-                # plt.scatter(tf_pts[:, 0], tf_pts[:, 1], c='blue')
-                # plt.scatter(self.nn_bd_pts[env_idx][:, 0], self.nn_bd_pts[env_idx][:, 1], c='#ff0000ff')
-                # plt.quiver(self.nn_bd_pts[env_idx][:, 0], self.nn_bd_pts[env_idx][:, 1], displacement_vector[:, 0], displacement_vector[:, 1], scale=1, scale_units='xy')
+                # plt.quiver(r_poses[:, 0], r_poses[:, 1], act_grsp[:, 0], act_grsp[:, 1], color='#0000ff88')
+                # plt.quiver(r_poses2[:, 0], r_poses2[:, 1], acts[:, 0], acts[:, 1], color='#ff000088')
+                # # plt.quiver(r_poses2[:, 0], r_poses2[:, 1], act_gt[:, 0], act_gt[:, 1], color='#aaff5588')
+
                 # plt.gca().set_aspect('equal')
                 # plt.show()
 
@@ -836,10 +905,12 @@ class DeltaArraySim:
                 actions = self.act_grasp_pix[env_idx, :self.n_idxs[env_idx]] + displacement_vectors
 
                 if self.hp_dict["add_vs_data"]:
-                    self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(self.scale_pix_2_world(actions), -0.03, 0.03)
+                    # self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(self.scale_pix_2_world(actions), -0.03, 0.03)
+                    self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(actions, -0.03, 0.03)
                 else:
                     if self.current_episode < self.temp_cutoff_1:
-                        self.actions[env_idx, :self.n_idxs[env_idx]] = [self.scale_pix_2_world(disp_vec) for disp_vec in displacement_vectors]
+                        # self.actions[env_idx, :self.n_idxs[env_idx]] = [self.scale_pix_2_world(disp_vec) for disp_vec in displacement_vectors]
+                        self.actions[env_idx, :self.n_idxs[env_idx]] = displacement_vectors
                     elif self.current_episode < self.temp_cutoff_2:
                         act_rand = np.random.uniform(-0.06, 0.06, size=(self.n_idxs[env_idx], 2))
                         self.actions[env_idx, :self.n_idxs[env_idx]] = act_rand
@@ -870,6 +941,7 @@ class DeltaArraySim:
         if self.ep_len[env_idx]==0:
             # Call the pretrained policy for all NN robots and set attractors
             if t_step == 0:
+                # time.sleep(0.5)
                 self.set_block_pose(env_idx) # Reset block to current initial pose
                 self.set_all_fingers_pose(env_idx, pos_high=True) # Set all fingers to high pose
                 self.set_attractor_target(env_idx, t_step, None, all_zeros=True) # Set all fingers to high pose

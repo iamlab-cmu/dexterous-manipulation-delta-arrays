@@ -61,6 +61,7 @@ class MATSAC:
         self.scheduler_critic = CosineAnnealingWarmRestarts(self.optimizer_critic, T_0=2, T_mult=2, eta_min=hp_dict['eta_min'])
         
         self.q_loss = None
+        self.internal_updates_counter = 0
         # Set up model saving
         # if self.train_or_test == "train":
         #     self.logger.setup_pytorch_saver(self.tf)
@@ -78,8 +79,10 @@ class MATSAC:
             # next_q2 = self.tf_target.decoder_critic2(next_state_enc, next_actions)
             # q_next = r + self.hp_dict['gamma'] * (1 - d) * (torch.min(next_q1, next_q2) - self.hp_dict['alpha'] * next_log_pi)
             q_next = r.unsqueeze(1)
-        q_loss = F.mse_loss(q1, q_next) + F.mse_loss(q2, q_next)
-        q_loss.backward()        
+        q_loss1 = F.mse_loss(q1, q_next)
+        q_loss1.backward()        
+        q_loss2 = F.mse_loss(q2, q_next)
+        q_loss2.backward()
         torch.nn.utils.clip_grad_norm_(self.tf.decoder_critic1.parameters(), self.hp_dict['max_grad_norm'])
         torch.nn.utils.clip_grad_norm_(self.tf.decoder_critic2.parameters(), self.hp_dict['max_grad_norm'])
         self.optimizer_critic.step()
@@ -111,6 +114,18 @@ class MATSAC:
             p.requires_grad = True
 
     def update(self, batch_size, current_episode):
+        self.internal_updates_counter += 1
+        if self.internal_updates_counter == 1:
+            for param_group in optimizer_critic.param_groups:
+                param_group['lr'] = 1e-6
+            for param_group in optimizer_actor.param_groups:
+                param_group['lr'] = 1e-6
+        elif self.internal_updates_counter == 10001:
+            for param_group in optimizer_critic.param_groups:
+                param_group['lr'] = self.hp_dict['q_lr']
+            for param_group in optimizer_actor.param_groups:
+                param_group['lr'] = self.hp_dict['pi_lr']
+
         data = self.ma_replay_buffer.sample_batch(batch_size)
         n_agents = int(torch.max(data['num_agents']))
         states, actions, rews, new_states, dones = data['obs'][:,:n_agents].to(self.device), data['act'][:,:n_agents].to(self.device), data['rew'].to(self.device), data['obs2'][:,:n_agents].to(self.device), data['done'].to(self.device)

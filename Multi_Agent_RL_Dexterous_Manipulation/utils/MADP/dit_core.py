@@ -6,9 +6,11 @@ from tqdm import tqdm
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.optim.lr_scheduler import LambdaLR
 import torch.utils.data as data
 import torch.nn.functional as F
 from einops import rearrange, reduce
+from torch.optim.lr_scheduler import _LRScheduler
 
 LOG_STD_MAX = 2
 LOG_STD_MIN = -20
@@ -60,6 +62,17 @@ def wt_init_(l, activation = "relu"):
 def count_vars(module):
     return sum([np.prod(p.shape) for p in module.parameters()])
 
+# def CAWR_with_Warmup(optimizer, num_warmup_steps, num_training_steps, num_cycles = 0.5, last_epoch = -1
+#     ) -> LambdaLR:
+
+#     def lr_lambda(current_step):
+#         if current_step < num_warmup_steps:
+#             return float(current_step) / float(max(1, num_warmup_steps))
+#         progress = float(current_step - num_warmup_steps) / float(max(1, num_training_steps - num_warmup_steps))
+#         return max(0.0, 0.5 * (1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress)))
+#     return LambdaLR(optimizer, lr_lambda, last_epoch)
+
+
 class MultiHeadAttention(nn.Module):
     def __init__(self, model_dim, num_heads, max_agents, masked):
         super(MultiHeadAttention, self).__init__()
@@ -107,9 +120,22 @@ class IntegerEmbeddingModel(nn.Module):
     def __init__(self, num_embeddings, embedding_dim):
         super(IntegerEmbeddingModel, self).__init__()
         self.embedding = nn.Embedding(num_embeddings, embedding_dim)
+        self.linear1 = nn.Linear(embedding_dim, embedding_dim)
+        self.linear2 = nn.Linear(embedding_dim, embedding_dim) 
 
     def forward(self, x):
-        return self.embedding(x)
+        x = self.embedding(x)
+        x = F.relu(self.linear1(x))
+        x = F.relu(self.linear2(x))
+        return x
+
+# class IntegerEmbeddingModel(nn.Module):
+#     def __init__(self, num_embeddings, embedding_dim):
+#         super(IntegerEmbeddingModel, self).__init__()
+#         self.embedding = nn.Embedding(num_embeddings, embedding_dim)
+
+#     def forward(self, x):
+#         return self.embedding(x)
 
 class FF_MLP(nn.Module):
     def __init__(self, model_dim, dim_ff):
@@ -256,7 +282,8 @@ class DiffusionTransformer(nn.Module):
                 ### p_sample
                 noise = torch.randn(shape, device=self.device)
                 nonzero_mask = ((t != 0).float().view(-1, *([1] * (len(shape) - 1))))
-                actions = model_mean + nonzero_mask * torch.exp(0.5*model_log_variance) * noise
+                # actions = model_mean + nonzero_mask * torch.exp(0.5*model_log_variance) * noise
+                actions = model_mean + nonzero_mask * model_variance * noise
         return actions
 
     def get_actions(self, states, pos, deterministic=False):
