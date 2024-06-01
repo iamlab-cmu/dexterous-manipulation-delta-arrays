@@ -154,10 +154,11 @@ class DeltaArraySimEnvironment():
             self.pushing_agent = sac.SAC(simplified_ma_env_dict, self.hp_dict, logger_kwargs, ma=True, train_or_test="train")
         elif self.args.algo=="MADP":
             self.pushing_agent = madp.MADP()
+
         if (self.train_or_test=="test") and (not self.args.diff_policy):
             # self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/{args.name}_s69420/pyt_save/model.pt')
             self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/pyt_save/model.pt')
-        else:
+        elif self.args.diff_policy:
             self.pushing_agent.load_saved_policy(f'./utils/MADP/{args.name}.pth')
         
 
