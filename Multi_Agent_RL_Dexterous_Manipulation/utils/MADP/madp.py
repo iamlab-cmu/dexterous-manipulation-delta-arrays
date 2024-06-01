@@ -1,115 +1,112 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import pickle as pkl
 from copy import deepcopy
-import time
-import itertools
-import wandb
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import OneHotEncoder, LabelEncoder
+import tqdm
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.utils.data as data
+from torch.utils.data import Dataset, DataLoader, Subset
 import torch.nn.functional as F
-from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
+from utils.MADP.dit_core import DiffusionTransformer, EMA, _extract_into_tensor
 
-import utils.MATSAC.gpt_core as core
-# from utils.openai_utils.logx import EpochLogger
-from utils.MATSAC.multi_agent_replay_buffer import MultiAgentReplayBuffer
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-class MADG:
-    def __init__(self, env_dict, hp_dict, logger_kwargs=dict(), train_or_test="train"):
-        # if train_or_test == "train":
-            # self.logger = EpochLogger(**logger_kwargs)
-            # self.logger.save_config(locals())
-
-        self.train_or_test = train_or_test
-        self.hp_dict = hp_dict
-        self.env_dict = env_dict
-        self.obs_dim = self.env_dict['pi_obs_space']['dim']
-        self.act_dim = self.env_dict['action_space']['dim']
-        self.act_limit = self.env_dict['action_space']['high']
-        self.device = self.hp_dict['dev_rl']
-
-        # n_layers_dict={'encoder': 2, 'actor': 2, 'critic': 2}
-        self.tf = core.Transformer(self.obs_dim, self.act_dim, self.act_limit, self.hp_dict["model_dim"], self.hp_dict["num_heads"], self.hp_dict["dim_ff"], self.hp_dict["n_layers_dict"], self.hp_dict["dropout"], self.device, self.hp_dict["delta_array_size"])
-        self.tf_target = deepcopy(self.tf)
-
-        self.tf = self.tf.to(self.device)
-        self.tf_target = self.tf_target.to(self.device)
-
-        # Freeze target networks with respect to optimizers (only update via polyak averaging)
-        for p in self.tf_target.parameters():
-            p.requires_grad = False
-
-        self.ma_replay_buffer = MultiAgentReplayBuffer(obs_dim=self.obs_dim, act_dim=self.act_dim, size=hp_dict['replay_size'], max_agents=self.tf.max_agents)
-
-        # Count variables (protip: try to get a feel for how different size networks behave!)
-        var_counts = tuple(core.count_vars(module) for module in [self.tf.decoder_actor, self.tf.decoder_critic1, self.tf.decoder_critic2])
-        if self.train_or_test == "train":
-            print(f"\nNumber of parameters: {np.sum(var_counts)}\n")
-
-        self.critic_params = itertools.chain(self.tf.decoder_critic1.parameters(), self.tf.decoder_critic2.parameters())
-        
-        if self.hp_dict['optim']=="adam":
-            self.optimizer_actor = optim.Adam(filter(lambda p: p.requires_grad, self.tf.decoder_actor.parameters()), lr=hp_dict['pi_lr'])
-            self.optimizer_critic = optim.Adam(filter(lambda p: p.requires_grad, self.critic_params), lr=hp_dict['q_lr'])
-        elif self.hp_dict['optim']=="sgd":
-            self.optimizer_actor = optim.SGD(filter(lambda p: p.requires_grad, self.tf.decoder_actor.parameters()), lr=hp_dict['pi_lr'])
-            self.optimizer_critic = optim.SGD(filter(lambda p: p.requires_grad, self.critic_params), lr=hp_dict['q_lr'])
-
-        self.scheduler_actor = CosineAnnealingWarmRestarts(self.optimizer_actor, T_0=2, T_mult=2, eta_min=hp_dict['eta_min'])
-        self.scheduler_critic = CosineAnnealingWarmRestarts(self.optimizer_critic, T_0=2, T_mult=2, eta_min=hp_dict['eta_min'])
-        
-        self.q_loss = None
-        # Set up model saving
-        # if self.train_or_test == "train":
-        #     self.logger.setup_pytorch_saver(self.tf)
-
-    def compute_loss(self, model, noisy_actions, t, to_vb_or_not_to_vb):
-        noise = torch.randn(noisy_actions.shape, device=self.device)
-        predicted_noise = model(noisy_actions, t, conditioning_state)
-        if to_vb_or_not_to_vb:
-            # Implement this after initial training only using MSE
-            pass
+rb_pos_world = np.zeros((8,8,2))
+kdtree_positions_world = np.zeros((64, 2))
+for i in range(8):
+    for j in range(8):
+        if i%2!=0:
+            finger_pos = np.array((i*0.0375, j*0.043301 - 0.02165))
+            rb_pos_world[i,j] = np.array((i*0.0375, j*0.043301 - 0.02165))
         else:
-            return F.mse_loss(predicted_noise, noise)
-        
+            finger_pos = np.array((i*0.0375, j*0.043301))
+            rb_pos_world[i,j] = np.array((i*0.0375, j*0.043301))
+        kdtree_positions_world[i*8 + j, :] = rb_pos_world[i,j]
 
+class MADP:
+    def __init__(self):
+        self.hp_dict = {
+            "exp_name"          : "MADP_0",
+            "data_dir"          : "./data/rl_data",
+            'lr'                : 1e-5,
+            'epochs'            : 100,
+            'ckpt_dir'          : './utils/MADP/madp_expt_0.pth',
+            'idx_embed_loc'     : './utils/MADP/idx_embedding.pth',
 
+            # DiT Params:
+            'state_dim'         : 6,
+            'obj_name_enc_dim'  : 9, # Change wiht more objs added
+            'action_dim'        : 2,
+            "device"            : torch.device(f"cuda:0"),
+            "model_dim"         : 128,
+            "num_heads"         : 8,
+            "dim_ff"            : 64,
+            "n_layers_dict"     : {'denoising_decoder': 8},
+            "dropout"           : 0,
+            "max_grad_norm"     : 1.0,
 
-    def update(self, batch_size, current_episode):
-        data = self.ma_replay_buffer.sample_batch(batch_size)
-        n_agents = int(torch.max(data['num_agents']))
-        states, actions, rews, new_states, dones = data['obs'][:,:n_agents].to(self.device), data['act'][:,:n_agents].to(self.device), data['rew'].to(self.device), data['obs2'][:,:n_agents].to(self.device), data['done'].to(self.device)
-        pos = data['pos'][:,:n_agents].type(torch.int64).to(self.device)
+            "Denoising Params"  :{
+                'num_train_timesteps'   : 100,
+                'beta_start'        : 0.0001,
+                'beta_end'          : 0.02,
+                'beta_schedule'     : 'squaredcos_cap_v2',
+                'variance_type'     : 'fixed_small_log',
+                'clip_sample'       : True ,
+                'prediction_type'   : 'epsilon',
+            },
 
-        # Critic Update
-        self.optimizer_critic.zero_grad()
-        self.compute_q_loss(states, actions, new_states, rews, dones, pos)
+            "EMA Params":{
+                'update_after_step' : 0,
+                'inv_gamma'         : 1.0,
+                'power'             : 0.75,
+                'min_value'         : 0.5,
+                'max_value'         : 0.9999,
+            }
+        }
+        self.device = self.hp_dict['device']
+        self.model = DiffusionTransformer(self.hp_dict['state_dim'], self.hp_dict['action_dim'], self.hp_dict['obj_name_enc_dim'], self.hp_dict['Denoising Params'], self.hp_dict['model_dim'], self.hp_dict['num_heads'], self.hp_dict['dim_ff'], self.hp_dict['n_layers_dict'], self.hp_dict['dropout'], self.hp_dict['device'], self.hp_dict['idx_embed_loc'])
+        self.ema_model = deepcopy(self.model).to(self.hp_dict['device'])
+        self.model.to(self.hp_dict['device'])
+        self.optimizer = optim.AdamW(self.model.parameters(), lr=self.hp_dict['lr'], weight_decay=0)
 
-        # Actor Update
-        # with torch.autograd.set_detect_anomaly(True):
-        self.optimizer_actor.zero_grad()
-        self.compute_pi_loss(states, current_episode, pos)
+        self.ema = EMA(self.ema_model, **self.hp_dict['EMA Params'])
 
-        # Target Update
+    def actions_from_denoising_diffusion(self, x_T, states, obj_name_encs, pos, gamma=None):
+        # actions get denoised from x_T --> x_t --> x_0
+        actions = x_T.to(self.hp_dict['device'])
+        states = states.to(self.hp_dict['device'])
+        obj_name_encs = obj_name_encs.long().to(self.hp_dict['device'])
+        pos = pos.long().to(self.hp_dict['device'])
+
+        shape = actions.shape
         with torch.no_grad():
-            for p, p_target in zip(self.tf.parameters(), self.tf_target.parameters()):
-                p_target.data.mul_(self.hp_dict['tau'])
-                p_target.data.add_((1 - self.hp_dict['tau']) * p.data)
+            for i in reversed(range(self.model.denoising_params['num_train_timesteps'])):
+                t = torch.tensor([i]*shape[0], device=self.model.device)
+                ### p_mean_variance
+                pred_noise = self.model.denoising_decoder(actions, states, obj_name_encs, pos)
 
-        if (self.train_or_test == "train") and (current_episode % 5000) == 0:
-            torch.save(self.tf.state_dict(), f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
-    
-    @torch.no_grad()
-    def get_actions(self, obs, pos, deterministic=False):
-        obs = torch.as_tensor(obs, dtype=torch.float32).unsqueeze(0).to(self.device)
-        pos = torch.as_tensor(pos, dtype=torch.int64).unsqueeze(0).to(self.device)
-        with torch.no_grad():
-            # actions, _ = self.tf.get_actions_gauss(state_enc, deterministic=deterministic)
-            actions = self.tf.get_actions(obs, pos, deterministic=deterministic)
-            return actions.detach().cpu().numpy()
-        
-    def load_saved_policy(self, path='./data/rl_data/backup/matsac_expt_grasp/pyt_save/model.pt'):
-        self.tf.load_state_dict(torch.load(path, map_location=self.hp_dict['dev_rl']))
-        # self.tf_target = deepcopy(self.tf)
+                model_variance = _extract_into_tensor(self.model.posterior_variance, t, shape)
+                model_log_variance = _extract_into_tensor(self.model.posterior_log_variance_clipped, t, shape)
+
+                pred_x_start = _extract_into_tensor(self.model.sqrt_recip_alphas_cumprod, t, shape) * actions\
+                            - _extract_into_tensor(self.model.sqrt_recipm1_alphas_cumprod, t, shape) * pred_noise
+                
+                model_mean = _extract_into_tensor(self.model.posterior_mean_coef1, t, shape) * pred_x_start\
+                            + _extract_into_tensor(self.model.posterior_mean_coef2, t, shape) * actions
+                
+                ### p_sample
+                noise = torch.randn(shape, device=self.model.device)
+                nonzero_mask = ((t != 0).float().view(-1, *([1] * (len(shape) - 1))))
+                actions = model_mean + nonzero_mask * torch.exp(0.5*model_log_variance) * noise
+        return actions
+
+    def load_saved_policy(self, path):
+        expt_dict = torch.load(path, map_location=self.device)
+        self.model.load_state_dict(expt_dict['model'])
+        self.ema_model.load_state_dict(expt_dict['ema_model'])
+
+        # madp_expt_0

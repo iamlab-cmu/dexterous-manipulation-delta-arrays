@@ -61,7 +61,6 @@ class MultiHeadAttention(nn.Module):
         output = self.W_O(self.combine_heads(attn))
         return output
 
-
 class IntegerEmbeddingModel(nn.Module):
     def __init__(self, num_embeddings, embedding_dim):
         super(IntegerEmbeddingModel, self).__init__()
