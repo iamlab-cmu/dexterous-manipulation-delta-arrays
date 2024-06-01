@@ -416,12 +416,12 @@ class DeltaArraySim:
         quat = np.array((com.r.x, com.r.y, com.r.z, com.r.w))
         if (np.isnan(quat).any()):
             self.dont_skip_episode = False
-            return None, None
+            return None
             
         roll, pitch, yaw = R.from_quat([*quat]).as_euler('xyz')
         if (abs(roll) > 0.5)or(abs(pitch) > 0.5):
             self.dont_skip_episode = False
-            return None, None
+            return None
         else:
             final_pose = np.array((com.p.x, com.p.y, yaw))
             tfed_bd_pts, transformed_normals = geom_utils.compute_transformation(boundary_points, normals, initial_pose, final_pose)
