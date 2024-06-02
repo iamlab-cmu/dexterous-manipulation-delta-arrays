@@ -202,10 +202,10 @@ class FinalLayer(nn.Module):
     def __init__(self, model_dim, action_dim):
         super().__init__()
         self.norm_final = nn.LayerNorm(model_dim, elementwise_affine=False, eps=1e-6)
-        self.linear = nn.Linear(model_dim, action_dim, bias=True)
+        self.linear = wt_init_(nn.Linear(model_dim, action_dim, bias=True))
         self.adaLN_modulation = nn.Sequential(
             nn.SiLU(),
-            nn.Linear(model_dim, 2 * model_dim, bias=True)
+            wt_init_(nn.Linear(model_dim, 2 * model_dim, bias=True))
         )
 
     def forward(self, x, c):
@@ -227,7 +227,7 @@ class DiT(nn.Module):
         # self.decoder_layers = nn.ModuleList([DiTLayer(model_dim, num_heads, max_agents, dim_ff, dropout) for _ in range(n_layers)])
         self.decoder_layers = nn.ModuleList([DiTBlock(model_dim, num_heads, max_agents, dim_ff, dropout) for _ in range(n_layers)])
         # self.final_layer = wt_init_(nn.Linear(model_dim, action_dim))
-        self.final_layer = wt_init_(FinalLayer(model_dim, action_dim))
+        self.final_layer = FinalLayer(model_dim, action_dim)
         # self.actor_std_layer = wt_init_(nn.Linear(model_dim, action_dim))
         self.activation = nn.GELU()
 
