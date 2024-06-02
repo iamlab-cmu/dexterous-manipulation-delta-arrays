@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import math
-from tqdm import tqdm
 
 import torch
 import torch.nn as nn
@@ -63,7 +62,7 @@ def count_vars(module):
     return sum([np.prod(p.shape) for p in module.parameters()])
 
 def modulate(x, shift, scale):
-    return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
+    return x * (1 + scale) + shift
 
 
 # def CAWR_with_Warmup(optimizer, num_warmup_steps, num_training_steps, num_cycles = 0.5, last_epoch = -1
@@ -186,13 +185,12 @@ class DiTBlock(nn.Module):
         )
         self.layer_norm1 = nn.LayerNorm(model_dim, elementwise_affine=False, eps=1e-6)
         self.layer_norm2 = nn.LayerNorm(model_dim, elementwise_affine=False, eps=1e-6)
-        self.layer_norm3 = nn.LayerNorm(model_dim, elementwise_affine=False, eps=1e-6)
 
     def forward(self, x, cond):
-        x = self.layer_norm1(x)
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(cond).chunk(6, dim=1)
-        x = x + gate_msa.unsqueeze(1) * self.attn(modulate(self.layer_norm2(x), shift_msa, scale_msa))
-        x = x + gate_mlp.unsqueeze(1) * self.mlp(modulate(self.layer_norm3(x), shift_mlp, scale_mlp))
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(cond).chunk(6, dim=2)
+        moduln = modulate(self.layer_norm1(x), shift_msa, scale_msa)
+        x = x + gate_msa * self.attn(moduln, moduln, moduln)
+        x = x + gate_mlp * self.mlp(modulate(self.layer_norm2(x), shift_mlp, scale_mlp))
         return x
 
 class FinalLayer(nn.Module):
@@ -209,7 +207,7 @@ class FinalLayer(nn.Module):
         )
 
     def forward(self, x, c):
-        shift, scale = self.adaLN_modulation(c).chunk(2, dim=1)
+        shift, scale = self.adaLN_modulation(c).chunk(2, dim=2)
         x = modulate(self.norm_final(x), shift, scale)
         x = self.linear(x)
         return x
