@@ -247,7 +247,7 @@ class DiT(nn.Module):
         return pred_noise
 
 class DiffusionTransformer(nn.Module):
-    def __init__(self, state_dim, action_dim, obj_name_enc_dim, denoising_params, model_dim, num_heads, dim_ff, num_layers, dropout, device, idx_embed_path="./utils/MADP/idx_embedding.pth", delta_array_size = (8,8)):
+    def __init__(self, hp_dict, delta_array_size = (8,8)):
         super(DiffusionTransformer, self).__init__()
         """
         For 2D planar manipulation:
@@ -258,19 +258,19 @@ class DiffusionTransformer(nn.Module):
         dim_ff: size of MLPs
         num_layers: number of layers in encoder and decoder
         """
-        self.device = device
+        self.device = hp_dict['device']
         self.max_agents = delta_array_size[0] * delta_array_size[1]
-        self.action_dim = action_dim
-        self.pos_embedding = IntegerEmbeddingModel(self.max_agents, model_dim)
-        self.pos_embedding.load_state_dict(torch.load(idx_embed_path, map_location=device))
+        self.action_dim = hp_dict['action_dim']
+        self.pos_embedding = IntegerEmbeddingModel(self.max_agents, hp_dict['model_dim'])
+        self.pos_embedding.load_state_dict(torch.load(hp_dict['idx_embed_loc'], map_location=self.device))
         for param in self.pos_embedding.parameters():
             param.requires_grad = False
 
-        self.denoising_params = denoising_params
+        self.denoising_params = hp_dict['denoising_params']
 
         # Below diffusion coefficients and posterior variables copied from DiT git repo
-        # self.betas = get_named_beta_schedule('squaredcos_cap_v2', denoising_params['num_train_timesteps'])
-        self.betas = get_named_beta_schedule('linear', 1000)
+        self.betas = get_named_beta_schedule(self.denoising_params['beta_schedule'], self.denoising_params['num_train_timesteps'])
+        # self.betas = get_named_beta_schedule('linear', 1000)
         alphas = 1.0 - self.betas
         self.alphas_cumprod = np.cumprod(alphas, axis=0)
         self.alphas_cumprod_prev = np.append(1.0, self.alphas_cumprod[:-1])
@@ -288,7 +288,7 @@ class DiffusionTransformer(nn.Module):
         self.posterior_mean_coef1 = (self.betas * np.sqrt(self.alphas_cumprod_prev) /(1.0 - self.alphas_cumprod))
         self.posterior_mean_coef2 = ((1.0 - self.alphas_cumprod_prev) *np.sqrt(alphas) / (1.0 - self.alphas_cumprod))
 
-        self.denoising_decoder = DiT(state_dim, obj_name_enc_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['denoising_decoder'])
+        self.denoising_decoder = DiT(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['denoising_decoder'])
 
     def sample_q(self, x_0, t, noise):
         return (_extract_into_tensor(self.sqrt_alphas_cumprod, t, x_0.shape) * x_0
@@ -324,7 +324,7 @@ class DiffusionTransformer(nn.Module):
                 pred_x_start = _extract_into_tensor(self.sqrt_recip_alphas_cumprod, t, shape) * actions\
                             - _extract_into_tensor(self.sqrt_recipm1_alphas_cumprod, t, shape) * pred_noise
                 
-                model_mean = _extract_into_tensor(self.posterior_mean_coef1, t, shape) * x_start\
+                model_mean = _extract_into_tensor(self.posterior_mean_coef1, t, shape) * pred_x_start\
                             + _extract_into_tensor(self.posterior_mean_coef2, t, shape) * actions
                 
                 ### p_sample
