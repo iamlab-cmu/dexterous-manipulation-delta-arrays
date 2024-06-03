@@ -205,7 +205,7 @@ def train(data_pkg, hp_dict):
                 denoised_actions = model.actions_from_denoising_diffusion(noise, states, obj_name_encs, pos)
                 
 
-                losses.append(F.mse_loss(actions, denoised_actions).item())
+                val_losses.append(F.mse_loss(actions, denoised_actions).item())
 
                 if i==5:
                     break
