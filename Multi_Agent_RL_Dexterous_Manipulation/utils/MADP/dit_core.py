@@ -262,14 +262,14 @@ class DiffusionTransformer(nn.Module):
         self.max_agents = delta_array_size[0] * delta_array_size[1]
         self.action_dim = hp_dict['action_dim']
         self.pos_embedding = IntegerEmbeddingModel(self.max_agents, hp_dict['model_dim'])
-        self.pos_embedding.load_state_dict(torch.load(hp_dict['idx_embed_path'], map_location=self.device))
+        self.pos_embedding.load_state_dict(torch.load(hp_dict['idx_embed_loc'], map_location=self.device))
         for param in self.pos_embedding.parameters():
             param.requires_grad = False
 
         self.denoising_params = hp_dict['denoising_params']
 
         # Below diffusion coefficients and posterior variables copied from DiT git repo
-        self.betas = get_named_beta_schedule('squaredcos_cap_v2', self.denoising_params['num_train_timesteps'])
+        self.betas = get_named_beta_schedule(self.denoising_params['beta_schedule'], self.denoising_params['num_train_timesteps'])
         # self.betas = get_named_beta_schedule('linear', 1000)
         alphas = 1.0 - self.betas
         self.alphas_cumprod = np.cumprod(alphas, axis=0)
@@ -288,7 +288,7 @@ class DiffusionTransformer(nn.Module):
         self.posterior_mean_coef1 = (self.betas * np.sqrt(self.alphas_cumprod_prev) /(1.0 - self.alphas_cumprod))
         self.posterior_mean_coef2 = ((1.0 - self.alphas_cumprod_prev) *np.sqrt(alphas) / (1.0 - self.alphas_cumprod))
 
-        self.denoising_decoder = DiT(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['num_layers']['denoising_decoder'])
+        self.denoising_decoder = DiT(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['denoising_decoder'])
 
     def sample_q(self, x_0, t, noise):
         return (_extract_into_tensor(self.sqrt_alphas_cumprod, t, x_0.shape) * x_0

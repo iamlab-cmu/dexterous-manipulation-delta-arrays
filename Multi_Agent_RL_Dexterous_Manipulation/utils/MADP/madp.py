@@ -129,10 +129,10 @@ def get_dataset_and_dataloaders(data_pkg, train_bs:int=128, test_bs:int=1, num_s
     train_loader = DataLoader(train_dataset, batch_size=train_bs, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=test_bs, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=test_bs, shuffle=False)
-    return train_loader, val_loader, test_loader
+    return train_loader, val_loader, test_loader, state_scaler, action_scaler
 
 def train(data_pkg, hp_dict):
-    train_loader, val_loader, test_loader, state_scaler, action_scaler = get_dataset_and_dataloaders(train_bs=128, test_bs=128, num_samples=hp_dict['num_samples'], obj_of_interest=None)
+    train_loader, val_loader, test_loader, state_scaler, action_scaler = get_dataset_and_dataloaders(data_pkg, train_bs=128, test_bs=128, num_samples=hp_dict['num_samples'], obj_of_interest=None)
     model = DiffusionTransformer(hp_dict)
     ema_model = deepcopy(model).to(hp_dict['device'])
     model.to(hp_dict['device'])
@@ -202,14 +202,12 @@ def train(data_pkg, hp_dict):
                 noise = torch.randn((1, n_agents, 2), device=hp_dict['device'])
 
                 optimizer.zero_grad()
-                denoised_actions = ema_model.actions_from_denoising_diffusion(model, noise, states, obj_name_encs, pos)
+                denoised_actions = model.actions_from_denoising_diffusion(noise, states, obj_name_encs, pos)
                 
-                if global_Step >= (steps-1):
-                    lr_scheduler.step()
-                else:
-                    for param_group in optimizer.param_groups:
-                        param_group['lr'] = hp_dict['eta_min'] * values[global_Step]
 
-                losses.append(loss.item())
-                t.set_postfix(loss=np.mean(losses[-300:]), refresh=False)
-                global_Step += 1
+                losses.append(F.mse_loss(actions, denoised_actions).item())
+
+                if i==5:
+                    break
+
+    return np.mean(val_losses)
