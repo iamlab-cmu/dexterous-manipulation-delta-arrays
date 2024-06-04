@@ -871,14 +871,14 @@ class DeltaArraySim:
             states = self.state_scaler.transform(self.init_state[env_idx, :self.n_idxs[env_idx]][None,...])
             states = torch.tensor(states, dtype=torch.float32)
             obj_name_enc = torch.tensor(self.obj_name_encoder.transform(np.array(self.obj_name[env_idx]).ravel())).to(torch.long)
-            print(obj_name_enc)
             pos = torch.tensor(self.pos[env_idx, :self.n_idxs[env_idx]]).unsqueeze(0)
             # print(states.shape, obj_name_enc.shape, pos.shape)
             noise = torch.randn((1, self.n_idxs[env_idx], 2))
+            print(noise.shape, states.shape, obj_name_enc.shape, pos.shape)
             denoised_actions = agent.actions_from_denoising_diffusion(noise, states, obj_name_enc, pos)
             actions = self.action_scaler.inverse_transform(denoised_actions.detach().cpu().numpy()).squeeze()
             print(actions)
-            self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(actions, -0.03, 0.03)
+            self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(denoised_actions, -0.03, 0.03)
 
     def test_diffusion_policy(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon

@@ -220,7 +220,7 @@ class DeltaArraySimEnvironment():
                 self.fingers.tracked_trajs[self.fingers.obj_name[env_idx]]['traj'].append(pos)
                 self.fingers.tracked_trajs[self.fingers.obj_name[env_idx]]['error'].append((np.linalg.norm(self.fingers.goal_pose[env_idx][:2] - pos[:2]), self.fingers.angle_difference(pos[2], self.fingers.goal_pose[env_idx, 2])))
             else:
-                self.set_block_pose(env_idx, goal=True)
+                self.fingers.set_block_pose(env_idx, goal=True)
             self.fingers.set_all_fingers_pose(env_idx)
             # self.fingers.set_block_pose(env_idx)
             # self.fiducial_lt.set_rb_transforms(env_idx, "fiducial_lt", [fiducial_lt[env_idx]])
