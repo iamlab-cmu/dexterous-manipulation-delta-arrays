@@ -27,7 +27,7 @@ import utils.SAC.sac as sac
 # import utils.MASAC.masac as masac
 import utils.MATSAC.matsac as matsac
 import utils.MATDQN.matdqn as matdqn
-import utils.MADP.madp_test as madp0
+import utils.MADP.madptest as madp0
 from utils.MADP.madp import DataNormalizer
 import config.assets.obj_dict as obj_dict
 
