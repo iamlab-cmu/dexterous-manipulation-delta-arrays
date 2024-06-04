@@ -17,7 +17,7 @@ from einops import rearrange, reduce
 
 import pytorch_warmup as warmup
 
-from dit_core import DiffusionTransformer, EMA, _extract_into_tensor
+from utils.MADP.dit_core import DiffusionTransformer, EMA, _extract_into_tensor
 
 rb_pos_world = np.zeros((8,8,2))
 kdtree_positions_world = np.zeros((64, 2))
@@ -133,7 +133,7 @@ def get_dataset_and_dataloaders(data_pkg, train_bs:int=128, test_bs:int=1, num_s
 
 def train(data_pkg, hp_dict):
     train_loader, val_loader, test_loader, state_scaler, action_scaler = get_dataset_and_dataloaders(data_pkg, train_bs=128, test_bs=128, num_samples=hp_dict['num_samples'], obj_of_interest=None)
-    model = DiffusionTransformer(hp_dict)
+    model = dit_core.DiffusionTransformer(hp_dict)
     ema_model = deepcopy(model).to(hp_dict['device'])
     model.to(hp_dict['device'])
     optimizer = optim.AdamW(model.parameters(), lr=hp_dict['lr'], weight_decay=1e-6)
@@ -141,7 +141,7 @@ def train(data_pkg, hp_dict):
     # optimizer = optim.SGD(model.parameters(), lr=1e-2)
     lr_scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=20, T_mult=2, eta_min=hp_dict['eta_min'])
 
-    ema = EMA(ema_model, **hp_dict['EMA Params'])
+    ema = dit_core.EMA(ema_model, **hp_dict['EMA Params'])
 
     losses = []
     global_Step = 0

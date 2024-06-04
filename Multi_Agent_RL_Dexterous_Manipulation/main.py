@@ -27,7 +27,8 @@ import utils.SAC.sac as sac
 # import utils.MASAC.masac as masac
 import utils.MATSAC.matsac as matsac
 import utils.MATDQN.matdqn as matdqn
-import utils.MADP.madp as madp
+import utils.MADP.madp_test as madp0
+from utils.MADP.madp import DataNormalizer
 import config.assets.obj_dict as obj_dict
 
 from utils.openai_utils.run_utils import setup_logger_kwargs
@@ -129,6 +130,7 @@ class DeltaArraySimEnvironment():
                 "dont_log"          : self.args.dont_log,
                 'print_summary'     : self.args.print_summary,
                 'vis_servo'         : self.args.vis_servo,
+                'test_traj'         : self.args.test_traj,
             }
         
         logger_kwargs = {}
@@ -153,7 +155,7 @@ class DeltaArraySimEnvironment():
         elif self.args.algo=="SAC":
             self.pushing_agent = sac.SAC(simplified_ma_env_dict, self.hp_dict, logger_kwargs, ma=True, train_or_test="train")
         elif self.args.algo=="MADP":
-            self.pushing_agent = madp.MADP()
+            self.pushing_agent = madp0.MADP()
 
         if (self.train_or_test=="test") and (not self.args.diff_policy):
             # self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/{args.name}_s69420/pyt_save/model.pt')
@@ -161,7 +163,6 @@ class DeltaArraySimEnvironment():
         elif self.args.diff_policy:
             self.pushing_agent.load_saved_policy(f'./utils/MADP/{args.name}.pth')
         
-
         if self.args.fingers4:
             self.fingers = delta_array_simplified.DeltaArraySim(self.scene, self.cfg, self.objects, self.table, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
         else:
@@ -213,7 +214,13 @@ class DeltaArraySimEnvironment():
 
             self.fingers.obj_name[env_idx] = "disc"
             self.fingers.object[env_idx] = self.objects["disc"][0]
-            self.fingers.set_block_pose(env_idx, goal=True)
+            
+            if self.hp_dict['test_traj']:
+                exit_bool, pos = self.fingers.set_traj_pose(env_idx, goal=True)
+                self.fingers.tracked_trajs[self.fingers.obj_name[env_idx]]['traj'].append(pos)
+                self.fingers.tracked_trajs[self.fingers.obj_name[env_idx]]['error'].append((np.linalg.norm(self.fingers.goal_pose[env_idx][:2] - pos[:2]), self.fingers.angle_difference(pos[2], self.fingers.goal_pose[env_idx, 2])))
+            else:
+                self.set_block_pose(env_idx, goal=True)
             self.fingers.set_all_fingers_pose(env_idx)
             # self.fingers.set_block_pose(env_idx)
             # self.fiducial_lt.set_rb_transforms(env_idx, "fiducial_lt", [fiducial_lt[env_idx]])
@@ -292,6 +299,7 @@ if __name__ == "__main__":
     parser.add_argument("-fingers4", "--fingers4", action="store_true", help="Use simplified setup with only 4 fingers")
     parser.add_argument("-XX", "--donothing", action="store_true", help="Do nothing to test sim")
     parser.add_argument("-gradnorm", "--gradnorm", type=float, default=1.0, help="Grad norm for training")
+    parser.add_argument("-test_traj", "--test_traj", action="store_true", help="Test on trajectories")
     args = parser.parse_args()
 
     if args.vis_servo and not args.test:

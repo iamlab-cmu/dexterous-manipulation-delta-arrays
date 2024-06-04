@@ -230,6 +230,6 @@ def compute_transformation(points, normals, initial_pose, final_pose):
         [np.sin(delta_theta), np.cos(delta_theta)]
     ])
 
-    rotated_points = np.dot(points - np.array([x0, y0]), rotation_matrix.T) + np.array([x1, y1])
+    rotated_points = np.dot(points - np.array([x0, y0]), rotation_matrix.T) + np.array([x0, y0]) + translation
     rotated_normals = np.dot(normals, rotation_matrix.T)
     return rotated_points, rotated_normals
