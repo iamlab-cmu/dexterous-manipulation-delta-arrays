@@ -188,7 +188,7 @@ class FinalLayer(nn.Module):
 
 class GPT_AdaLN(nn.Module):
     def __init__(self, state_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False):
-        super(GPT, self).__init__()
+        super(GPT_AdaLN, self).__init__()
         self.state_enc = nn.Linear(state_dim, model_dim)
         self.action_embedding = wt_init_(nn.Linear(action_dim, model_dim))
         self.pos_embedding = pos_embedding
