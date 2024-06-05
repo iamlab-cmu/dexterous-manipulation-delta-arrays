@@ -124,6 +124,7 @@ class DeltaArraySimEnvironment():
                 "n_layers_dict"     : {'encoder': 10, 'actor': 10, 'critic': 10},
                 "dropout"           : 0,
                 "max_grad_norm"     : 1.0,
+                "adaln"             : self.args.adaln,
                 "delta_array_size"  : [8,8],
                 "add_vs_data"       : self.args.add_vs_data,
                 "ratio"             : self.args.vs_data,
@@ -294,6 +295,7 @@ if __name__ == "__main__":
     parser.add_argument("-print", "--print_summary", action="store_true", help="Print Summary and Store in Pickle File")
     parser.add_argument("-pilr", "--pilr", type=float, default=1e-2, help="% of data to use for visual servoing")
     parser.add_argument("-qlr", "--qlr", type=float, default=1e-2, help="% of data to use for visual servoing")
+    parser.add_argument("-adaln", "--adaln", action="store_true", help="Use AdaLN Zero Transformer")
     parser.add_argument("-etamin", "--etamin", type=float, default=1e-5, help="% of data to use for visual servoing")
     parser.add_argument("-savevid", "--save_vid", action="store_true", help="Save Videos at inference")
     parser.add_argument("-fingers4", "--fingers4", action="store_true", help="Use simplified setup with only 4 fingers")

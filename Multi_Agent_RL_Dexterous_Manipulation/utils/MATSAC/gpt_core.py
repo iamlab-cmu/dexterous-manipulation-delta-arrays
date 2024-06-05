@@ -144,8 +144,84 @@ class GPT(nn.Module):
         # std = torch.exp(act_std)
         # return act_mean, std
 
+class AdaLNLayer(nn.Module):
+    """
+    A DiT block with adaptive layer norm zero (adaLN-Zero) conditioning.
+    """
+    def __init__(self, model_dim, num_heads, max_agents, dim_ff, dropout):
+        super().__init__()
+        self.attn = MultiHeadAttention(model_dim, num_heads, max_agents, masked=False)
+        self.mlp = FF_MLP(model_dim, dim_ff)
+        self.adaLN_modulation = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(model_dim, 6 * model_dim, bias=True)
+        )
+        self.layer_norm1 = nn.LayerNorm(model_dim, elementwise_affine=False, eps=1e-6)
+        self.layer_norm2 = nn.LayerNorm(model_dim, elementwise_affine=False, eps=1e-6)
+
+    def forward(self, x, cond):
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(cond).chunk(6, dim=2)
+        moduln = modulate(self.layer_norm1(x), shift_msa, scale_msa)
+        x = x + gate_msa * self.attn(moduln, moduln, moduln)
+        x = x + gate_mlp * self.mlp(modulate(self.layer_norm2(x), shift_mlp, scale_mlp))
+        return x
+
+class FinalLayer(nn.Module):
+    """
+    The final layer of DiT.
+    """
+    def __init__(self, model_dim, action_dim):
+        super().__init__()
+        self.norm_final = nn.LayerNorm(model_dim, elementwise_affine=False, eps=1e-6)
+        self.linear = wt_init_(nn.Linear(model_dim, action_dim, bias=True))
+        self.adaLN_modulation = nn.Sequential(
+            nn.SiLU(),
+            wt_init_(nn.Linear(model_dim, 2 * model_dim, bias=True))
+        )
+
+    def forward(self, x, c):
+        shift, scale = self.adaLN_modulation(c).chunk(2, dim=2)
+        x = modulate(self.norm_final(x), shift, scale)
+        x = self.linear(x)
+        return x
+
+
+class GPT_AdaLN(nn.Module):
+    def __init__(self, state_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False):
+        super(GPT, self).__init__()
+        self.state_enc = nn.Linear(state_dim, model_dim)
+        self.action_embedding = wt_init_(nn.Linear(action_dim, model_dim))
+        self.pos_embedding = pos_embedding
+        self.dropout = nn.Dropout(dropout)
+
+        self.decoder_layers = nn.ModuleList([AdaLNLayer(model_dim, num_heads, max_agents, dim_ff, dropout) for _ in range(n_layers)])
+        self.critic = critic
+        if self.critic:
+            self.final_layer = FinalLayer(model_dim, 1)
+        else:
+            self.final_layer = FinalLayer(model_dim, action_dim)
+            # self.actor_std_layer = wt_init_(nn.Linear(model_dim, action_dim))
+        self.activation = nn.GELU()
+
+    def forward(self, state, actions, pos, idx=None):
+        """
+        Input: state (bs, n_agents, state_dim)
+               actions (bs, n_agents, action_dim)
+        Output: decoder_output (bs, n_agents, model_dim)
+        """
+        # act_enc = self.dropout(self.positional_encoding(F.ReLU(self.action_embedding(actions))))
+        state_enc = self.state_enc(state)
+        pos_embed = self.pos_embedding(pos)
+        conditional_enc = pos_embed.squeeze(2) + state_enc
+        act_enc = self.activation(self.action_embedding(actions))
+        for layer in self.decoder_layers:
+            act_enc = layer(act_enc, conditional_enc)
+        act_mean = self.final_layer(act_enc, conditional_enc)
+        return act_mean
+
+
 class Transformer(nn.Module):
-    def __init__(self, state_dim, action_dim, action_limit, model_dim, num_heads, dim_ff, num_layers, dropout, device, delta_array_size = (8,8)):
+    def __init__(self, state_dim, action_dim, action_limit, model_dim, num_heads, dim_ff, num_layers, dropout, device, delta_array_size = (8,8), adaln=False):
         super(Transformer, self).__init__()
         """
         For 2D planar manipulation:
@@ -164,12 +240,15 @@ class Transformer(nn.Module):
         self.pos_embedding.load_state_dict(torch.load("./utils/MATSAC/idx_embedding_new.pth", map_location=device))
         for param in self.pos_embedding.parameters():
             param.requires_grad = False
-        log_std = -0.5 * torch.ones(action_dim)
-        self.log_std = torch.nn.Parameter(log_std)
 
-        self.decoder_actor = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['actor'])
-        self.decoder_critic1 = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['critic'], critic=True)
-        self.decoder_critic2 = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['critic'], critic=True)
+        if adaln:
+            self.decoder_actor = GPT_AdaLN(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['actor'])
+            self.decoder_critic1 = GPT_AdaLN(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['critic'], critic=True)
+            self.decoder_critic2 = GPT_AdaLN(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['critic'], critic=True)
+        else:
+            self.decoder_actor = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['actor'])
+            self.decoder_critic1 = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['critic'], critic=True)
+            self.decoder_critic2 = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['critic'], critic=True)
 
     def get_actions(self, states, pos, deterministic=False):
         """ Returns actor actions """
