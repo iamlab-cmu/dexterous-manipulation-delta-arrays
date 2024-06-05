@@ -18,6 +18,10 @@ def wt_init_(l, activation = "relu"):
 
 def count_vars(module):
     return sum([np.prod(p.shape) for p in module.parameters()])
+    
+def modulate(x, shift, scale):
+    return x * (1 + scale) + shift
+
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, model_dim, num_heads, max_agents, masked):

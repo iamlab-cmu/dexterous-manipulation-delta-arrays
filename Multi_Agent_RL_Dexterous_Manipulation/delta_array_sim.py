@@ -158,6 +158,7 @@ class DeltaArraySim:
         encoder = LabelEncoder()
         # self.obj_name_encoder = encoder.fit_transform(np.array(self.obj_names).ravel())
 
+        
         with open('./utils/MADP/normalizer.pkl', 'rb') as f:
             normalizer = pkl.load(f)
         self.state_scaler = normalizer['state_scaler']
