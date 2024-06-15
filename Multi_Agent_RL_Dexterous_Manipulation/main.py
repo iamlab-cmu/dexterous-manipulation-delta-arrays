@@ -132,6 +132,7 @@ class DeltaArraySimEnvironment():
                 'print_summary'     : self.args.print_summary,
                 'vis_servo'         : self.args.vis_servo,
                 'test_traj'         : self.args.test_traj,
+                'masked'            : not self.args.unmasked,
             }
         
         logger_kwargs = {}
@@ -302,6 +303,7 @@ if __name__ == "__main__":
     parser.add_argument("-XX", "--donothing", action="store_true", help="Do nothing to test sim")
     parser.add_argument("-gradnorm", "--gradnorm", type=float, default=1.0, help="Grad norm for training")
     parser.add_argument("-test_traj", "--test_traj", action="store_true", help="Test on trajectories")
+    parser.add_argument("-unmasked", "--unmasked", action="store_true", help="Unmasked Attention Layers")
     args = parser.parse_args()
 
     if args.vis_servo and not args.test:

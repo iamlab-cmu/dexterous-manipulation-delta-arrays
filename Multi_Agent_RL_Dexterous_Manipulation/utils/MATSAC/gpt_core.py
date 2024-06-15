@@ -18,7 +18,7 @@ def wt_init_(l, activation = "relu"):
 
 def count_vars(module):
     return sum([np.prod(p.shape) for p in module.parameters()])
-    
+
 def modulate(x, shift, scale):
     return x * (1 + scale) + shift
 
@@ -90,10 +90,10 @@ class FF_MLP(nn.Module):
         return self.fc2(self.activation(self.fc1(x)))
 
 class GPTLayer(nn.Module):
-    def __init__(self, model_dim, num_heads, max_agents, dim_ff, dropout):
+    def __init__(self, model_dim, num_heads, max_agents, dim_ff, dropout, masked):
         super(GPTLayer, self).__init__()
-        self.self_attention = MultiHeadAttention(model_dim, num_heads, max_agents, masked=True)
-        self.cross_attention = MultiHeadAttention(model_dim, num_heads, max_agents, masked=True)
+        self.self_attention = MultiHeadAttention(model_dim, num_heads, max_agents, masked=masked)
+        self.cross_attention = MultiHeadAttention(model_dim, num_heads, max_agents, masked=masked)
         self.feed_forward = FF_MLP(model_dim, dim_ff)
         self.dropout = nn.Dropout(dropout)
         self.layer_norm1 = nn.LayerNorm(model_dim)
@@ -111,14 +111,14 @@ class GPTLayer(nn.Module):
         return x
 
 class GPT(nn.Module):
-    def __init__(self, state_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False):
+    def __init__(self, state_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False, masked=True):
         super(GPT, self).__init__()
         self.state_enc = nn.Linear(state_dim, model_dim)
         self.action_embedding = wt_init_(nn.Linear(action_dim, model_dim))
         self.pos_embedding = pos_embedding
         self.dropout = nn.Dropout(dropout)
 
-        self.decoder_layers = nn.ModuleList([GPTLayer(model_dim, num_heads, max_agents, dim_ff, dropout) for _ in range(n_layers)])
+        self.decoder_layers = nn.ModuleList([GPTLayer(model_dim, num_heads, max_agents, dim_ff, dropout, masked) for _ in range(n_layers)])
         self.critic = critic
         if self.critic:
             self.actor_mu_layer = wt_init_(nn.Linear(model_dim, 1))
@@ -152,9 +152,9 @@ class AdaLNLayer(nn.Module):
     """
     A DiT block with adaptive layer norm zero (adaLN-Zero) conditioning.
     """
-    def __init__(self, model_dim, num_heads, max_agents, dim_ff, dropout):
+    def __init__(self, model_dim, num_heads, max_agents, dim_ff, dropout, masked):
         super().__init__()
-        self.attn = MultiHeadAttention(model_dim, num_heads, max_agents, masked=False)
+        self.attn = MultiHeadAttention(model_dim, num_heads, max_agents, masked=masked)
         self.mlp = FF_MLP(model_dim, dim_ff)
         self.adaLN_modulation = nn.Sequential(
             nn.SiLU(),
@@ -191,7 +191,7 @@ class FinalLayer(nn.Module):
 
 
 class GPT_AdaLN(nn.Module):
-    def __init__(self, state_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False):
+    def __init__(self, state_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False, masked=True):
         super(GPT_AdaLN, self).__init__()
         self.state_enc = nn.Linear(state_dim, model_dim)
         self.action_embedding = wt_init_(nn.Linear(action_dim, model_dim))
@@ -225,7 +225,7 @@ class GPT_AdaLN(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, state_dim, action_dim, action_limit, model_dim, num_heads, dim_ff, num_layers, dropout, device, delta_array_size = (8,8), adaln=False):
+    def __init__(self, state_dim, action_dim, action_limit, model_dim, num_heads, dim_ff, num_layers, dropout, device, delta_array_size = (8,8), adaln=False, masked=True):
         super(Transformer, self).__init__()
         """
         For 2D planar manipulation:
@@ -246,13 +246,13 @@ class Transformer(nn.Module):
             param.requires_grad = False
 
         if adaln:
-            self.decoder_actor = GPT_AdaLN(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['actor'])
-            self.decoder_critic1 = GPT_AdaLN(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['critic'], critic=True)
-            self.decoder_critic2 = GPT_AdaLN(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['critic'], critic=True)
+            self.decoder_actor = GPT_AdaLN(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['actor'], masked=masked)
+            self.decoder_critic1 = GPT_AdaLN(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['critic'], critic=True, masked=masked)
+            self.decoder_critic2 = GPT_AdaLN(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['critic'], critic=True, masked=masked)
         else:
-            self.decoder_actor = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['actor'])
-            self.decoder_critic1 = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['critic'], critic=True)
-            self.decoder_critic2 = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['critic'], critic=True)
+            self.decoder_actor = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['actor'], masked=masked)
+            self.decoder_critic1 = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['critic'], critic=True, masked=masked)
+            self.decoder_critic2 = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['critic'], critic=True, masked=masked)
 
     def get_actions(self, states, pos, deterministic=False):
         """ Returns actor actions """
