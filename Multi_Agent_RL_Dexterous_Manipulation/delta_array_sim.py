@@ -285,7 +285,8 @@ class DeltaArraySim:
         if goal:
             self.object[env_idx].set_rb_transforms(env_idx, self.obj_name[env_idx], [gymapi.Transform(p=self.obj_dict[self.obj_name[env_idx]][1], r=self.obj_dict[self.obj_name[env_idx]][3])])
             # self.scene.gym.set_attractor_target(self.scene.env_ptrs[env_idx], self.obj_attr_handles[self.scene.env_ptrs[env_idx]][self.obj_name[env_idx]], gymapi.Transform(p=self.obj_dict[self.obj_name[env_idx]][2], r=self.obj_dict[self.obj_name[env_idx]][3]))
-            self.obj_name[env_idx] = random.choice(self.obj_names)
+            # self.obj_name[env_idx] = random.choice(self.obj_names)
+            self.obj_name[env_idx] = "star"
             self.object[env_idx], object_p, _, object_r = self.obj_dict[self.obj_name[env_idx]]
 
             yaw = np.random.uniform(-np.pi, np.pi)
@@ -609,7 +610,6 @@ class DeltaArraySim:
             2. ICP output transformation matrix to get delta_xy, and abs(theta)
         Combine both to compute the final reward
         """
-        # This function is utterly incomplete. Fix it before running final init expt
         init_bd_pts = self.bd_pts[env_idx].copy()
         final_pose = self.get_nearest_robots_and_state_v2(env_idx, final=True, init_bd_pts=init_bd_pts)
         
@@ -1168,48 +1168,48 @@ class DeltaArraySim:
         
         for i in range(self.num_tips[0]):
             for j in range(self.num_tips[1]):
-                if (i==0) and (j==0):
-                    self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.47), r=self.finga_q))     
-                else:
-                    self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
-        if t_step==0:
-            if len(self.obj_names) == 0:
-                return_exit = True
+                # if (i==0) and (j==0):
+                #     self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.47), r=self.finga_q))     
+                # else:
+                self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
+        # if t_step==0:
+        #     if len(self.obj_names) == 0:
+        #         return_exit = True
 
-            if len(self.test_trajs) == 0:
-                return_exit = True
-                self.obj_name[env_idx] = self.obj_names.pop(0)
-                self.object[env_idx], object_p, _, object_r = self.obj_dict[self.obj_name[env_idx]]
-                self.test_trajs = self.MegaTestingLoop.pop(0)
+        #     if len(self.test_trajs) == 0:
+        #         return_exit = True
+        #         self.obj_name[env_idx] = self.obj_names.pop(0)
+        #         self.object[env_idx], object_p, _, object_r = self.obj_dict[self.obj_name[env_idx]]
+        #         self.test_trajs = self.MegaTestingLoop.pop(0)
 
-            if len(self.current_traj) == 0:
-                self.new_traj_bool = True
-                traj_key = random.choice(list(self.test_trajs.keys()))
-                self.current_traj = self.test_trajs.pop(traj_key)
+        #     if len(self.current_traj) == 0:
+        #         self.new_traj_bool = True
+        #         traj_key = random.choice(list(self.test_trajs.keys()))
+        #         self.current_traj = self.test_trajs.pop(traj_key)
                 
-                plt.plot(self.current_traj[:, 0], self.current_traj[:, 1], 'o', label=f'Curve Spline')
-                plt.quiver(self.current_traj[:, 0], self.current_traj[:, 1], np.cos(self.current_traj[:, 2]), np.sin(self.current_traj[:, 2]))
-                plt.show()
-                self.current_traj = self.current_traj.tolist()
+        #         plt.plot(self.current_traj[:, 0], self.current_traj[:, 1], 'o', label=f'Curve Spline')
+        #         plt.quiver(self.current_traj[:, 0], self.current_traj[:, 1], np.cos(self.current_traj[:, 2]), np.sin(self.current_traj[:, 2]))
+        #         plt.show()
+        #         self.current_traj = self.current_traj.tolist()
 
-            com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
-            quat = np.array((com.r.x, com.r.y, com.r.z, com.r.w))
-            if (np.isnan(quat).any()):
-                self.dont_skip_episode = False
-                return None    
-            _, _, yaw0 = R.from_quat([*quat]).as_euler('xyz')
-            self.init_traj_pose = self.current_traj.pop(0)
-            yaw = self.init_traj_pose[2] + np.pi/2
+        #     com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
+        #     quat = np.array((com.r.x, com.r.y, com.r.z, com.r.w))
+        #     if (np.isnan(quat).any()):
+        #         self.dont_skip_episode = False
+        #         return None    
+        #     _, _, yaw0 = R.from_quat([*quat]).as_euler('xyz')
+        #     self.init_traj_pose = self.current_traj.pop(0)
+        #     yaw = self.init_traj_pose[2] + np.pi/2
 
-            print(yaw0, yaw, self.angle_difference(yaw0, yaw))
+        #     print(yaw0, yaw, self.angle_difference(yaw0, yaw))
 
-            r = R.from_euler('xyz', [0, 0, yaw])
-            object_r = gymapi.Quat(*r.as_quat())
-            T = self.init_traj_pose[:2]
-            self.init_pose[env_idx] = np.array([T[0], T[1], yaw, com.p.z])
+        #     r = R.from_euler('xyz', [0, 0, yaw])
+        #     object_r = gymapi.Quat(*r.as_quat())
+        #     T = self.init_traj_pose[:2]
+        #     self.init_pose[env_idx] = np.array([T[0], T[1], yaw, com.p.z])
 
-            block_p = gymapi.Vec3(*T, 1.002)
-            self.object[env_idx].set_rb_transforms(env_idx, self.obj_name[env_idx], [gymapi.Transform(p=block_p, r=object_r)])
+        #     block_p = gymapi.Vec3(*T, 1.002)
+        #     self.object[env_idx].set_rb_transforms(env_idx, self.obj_name[env_idx], [gymapi.Transform(p=block_p, r=object_r)])
 
         # elif t_step == (self.time_horizon - 2):
         #     self.set_block_pose(env_idx, goal=True)

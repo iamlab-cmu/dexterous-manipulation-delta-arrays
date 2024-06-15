@@ -27,7 +27,7 @@ def transform_pts_wrt_com(points, transform, com):
     """
     rot_m = np.array([[np.cos(transform[2]), -np.sin(transform[2])], [np.sin(transform[2]), np.cos(transform[2])]])
     points = points - com
-    points = com + np.dot(points, rot_m.T)
+    points = com + np.dot(points, rot_m)
     points = points + transform[:2]
     return points
 
