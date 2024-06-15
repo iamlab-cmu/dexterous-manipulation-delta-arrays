@@ -55,23 +55,24 @@ actions = action_scaler.transform(actions)
 data_pkg = (states, actions, pos, num_agents, obj_names, state_scaler, action_scaler)
 
 def objective(trial):
-    # num_samples = trial.suggest_int('num_samples', 5, 5000)
-    # n_epochs = trial.suggest_int('n_epochs', 5, 5000)
-    # max_grad_norm = trial.suggest_float('max_grad_norm', 0.1, 5)
-    # num_train_timesteps = trial.suggest_categorical('num_train_timesteps', [100, 200, 500, 1000])
-    # noise_schedule = trial.suggest_categorical('noise_schedule', ['linear', 'squaredcos_cap_v2'])
-    # lr = trial.suggest_categorical('lr', [1e-3, 1e-4, 1e-5, 1e-6, 1e-7])
-    # eta_min = trial.suggest_categorical('eta_min', [1e-5, 1e-6, 1e-7, 1e-8])
-    # warmup_iters = trial.suggest_categorical('warmup_iters', [0.01, 0.02, 0.05, 0.1])
-    
-    num_samples = trial.suggest_int('num_samples', 5, 1000)
+    num_samples = trial.suggest_int('num_samples', 5, 5000)
     n_epochs = 100
-    max_grad_norm = 2
+    # n_epochs = trial.suggest_int('n_epochs', 5, 5000)
+    max_grad_norm = trial.suggest_float('max_grad_norm', 0.1, 5)
     num_train_timesteps = trial.suggest_categorical('num_train_timesteps', [100, 200, 500, 1000])
-    noise_schedule =trial.suggest_categorical('noise_schedule', ['linear', 'squaredcos_cap_v2'])
-    lr = 1e-4
-    eta_min = 1e-6
-    warmup_iters = 0.02
+    noise_schedule = trial.suggest_categorical('noise_schedule', ['linear', 'squaredcos_cap_v2'])
+    lr = trial.suggest_categorical('lr', [1e-3, 1e-4, 1e-5, 1e-6, 1e-7])
+    eta_min = trial.suggest_categorical('eta_min', [1e-5, 1e-6, 1e-7, 1e-8])
+    warmup_iters = trial.suggest_categorical('warmup_iters', [0.01, 0.02, 0.05, 0.1])
+    
+    # num_samples = trial.suggest_int('num_samples', 5, 1000)
+    # n_epochs = 100
+    # max_grad_norm = 2
+    # num_train_timesteps = trial.suggest_categorical('num_train_timesteps', [100, 200, 500, 1000])
+    # noise_schedule =trial.suggest_categorical('noise_schedule', ['linear', 'squaredcos_cap_v2'])
+    # lr = 1e-4
+    # eta_min = 1e-6
+    # warmup_iters = 0.02
 
     total_iters = num_samples * n_epochs
     hp_dict = {
@@ -89,7 +90,7 @@ def objective(trial):
         'state_dim'         : 6,
         'obj_name_enc_dim'  : 9,
         'action_dim'        : 2,
-        "device"            : torch.device(f"cuda:2"),
+        "device"            : torch.device(f"cuda:0"),
         "model_dim"         : 128,
         "num_heads"         : 8,
         "dim_ff"            : 512,
@@ -121,6 +122,9 @@ def objective(trial):
 
 if __name__ == '__main__':
     storage = optuna.storages.InMemoryStorage()
-    study = optuna.create_study(storage=storage, study_name="MADP Experiments")
-    study.optimize(objective, n_trials=500)
+    study = optuna.create_study(storage=storage, study_name="MADP Experiments 3090")
+    try:
+        study.optimize(objective, n_trials=500)
+    except:
+        run_server(storage, host="localhost", port=8080)
     run_server(storage, host="localhost", port=8080)

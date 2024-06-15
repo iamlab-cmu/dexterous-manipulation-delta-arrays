@@ -50,6 +50,25 @@ class DataNormalizer:
         inverse_transformed_data = self.scaler.inverse_transform(reshaped_data)
         return inverse_transformed_data.reshape(data.shape)
 
+class Normalizer:
+    def __init__(self, state_ranges, action_ranges):
+        self.state_min = np.array([state_ranges['x'][0], state_ranges['x'][1], state_ranges['y'][0], state_ranges['y'][1], state_ranges['y'][0], state_ranges['y'][1]])
+        self.state_max = np.array([state_ranges['x'][2], state_ranges['x'][3], state_ranges['y'][2], state_ranges['y'][3], state_ranges['y'][2], state_ranges['y'][3]])
+        self.action_min = np.array(action_ranges['x'])
+        self.action_max = np.array(action_ranges['y'])
+
+    def normalize_states(self, states):
+        return (states - self.state_min) / (self.state_max - self.state_min)
+
+    def denormalize_states(self, normalized_states):
+        return normalized_states * (self.state_max - self.state_min) + self.state_min
+
+    def normalize_actions(self, actions):
+        return (actions - self.action_min) / (self.action_max - self.action_min)
+
+    def denormalize_actions(self, normalized_actions):
+        return normalized_actions * (self.action_max - self.action_min) + self.action_min
+
 class ImitationDataset(Dataset):
     def __init__(self, states, actions, state_scaler, action_scaler, pos, num_agents, obj_names, obj_of_interest=None):
         self.states = states

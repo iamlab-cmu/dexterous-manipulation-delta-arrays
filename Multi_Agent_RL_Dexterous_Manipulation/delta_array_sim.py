@@ -158,6 +158,7 @@ class DeltaArraySim:
         encoder = LabelEncoder()
         # self.obj_name_encoder = encoder.fit_transform(np.array(self.obj_names).ravel())
 
+        
         with open('./utils/MADP/normalizer.pkl', 'rb') as f:
             normalizer = pkl.load(f)
         self.state_scaler = normalizer['state_scaler']
@@ -297,7 +298,7 @@ class DeltaArraySim:
             tfed_bd_pts, _ = geom_utils.compute_transformation(boundary_points, normals, initial_pose, final_pose=(T[0], T[1], yaw))
             self.goal_bd_pts[env_idx] = tfed_bd_pts
         else:
-            yaw = self.goal_pose[env_idx][2] + np.random.uniform(-0.78539, 0.78539)
+            yaw = self.goal_pose[env_idx][2] + np.random.uniform(-1.5707, 1.5707)
             r = R.from_euler('xyz', [0, 0, yaw])
             object_r = gymapi.Quat(*r.as_quat())
             com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
@@ -323,7 +324,6 @@ class DeltaArraySim:
                 return_exit = True
 
             if len(self.test_trajs) == 0:
-                return_exit = True
                 self.obj_name[env_idx] = self.obj_names.pop(0)
                 self.object[env_idx], object_p, _, object_r = self.obj_dict[self.obj_name[env_idx]]
                 self.test_trajs = self.MegaTestingLoop.pop(0)
@@ -680,11 +680,13 @@ class DeltaArraySim:
         # com = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
 
         agent.ma_replay_buffer.store(self.init_state[env_idx], self.actions[env_idx], self.pos[env_idx], self.ep_reward[env_idx], self.final_state[env_idx], True, self.n_idxs[env_idx], self.obj_name[env_idx])
-        if (self.current_episode%10000)==0:
+        
+        # print(self.current_episode)
+        if (self.current_episode%5000)==0:
             print(f"Reward: {self.ep_reward[env_idx]} @ {self.current_episode}")
-            # agent.ma_replay_buffer.save_RB()
+        #     agent.ma_replay_buffer.save_RB()
 
-        # if self.current_episode == 500000:
+        # if self.current_episode >= 50000:
         #     sys.exit(1)
         self.reset(env_idx)
 
@@ -713,6 +715,8 @@ class DeltaArraySim:
             """ extract i, j, u, v for each robot """
             for i in range(len(self.active_idxs[env_idx])):
                 self.actions_grasp[env_idx][i] = agent.get_actions(self.init_grasp_state[env_idx, i], deterministic=True) # For pretrained grasping policy, single state -> 2D action var
+            
+            self.init_state[env_idx, :self.n_idxs[env_idx], 4:6] += self.actions_grasp[env_idx, :self.n_idxs[env_idx]]
 
         elif (np.random.rand() <= self.hp_dict['epsilon']) or test:
             self.pos[env_idx, :self.n_idxs[env_idx], 0] = np.array([i[0]*8+i[1] for i in self.active_idxs[env_idx]]) #.reshape((-1,))
@@ -868,17 +872,41 @@ class DeltaArraySim:
             #     self.video_frames[self.infer_iter, int((self.time_horizon-4)*self.ep_len[env_idx] + t_step-2)] = self.get_scene_image(env_idx)
 
     def diffusion_step(self, env_idx, agent):
-            states = self.state_scaler.transform(self.init_state[env_idx, :self.n_idxs[env_idx]][None,...])
+            act_gt = self.actions[env_idx, :self.n_idxs[env_idx]].copy()
+            bs = 1
+            states = self.state_scaler.transform(np.tile(self.init_state[env_idx, :self.n_idxs[env_idx]][None,...], (bs, 1, 1)))
             states = torch.tensor(states, dtype=torch.float32)
-            obj_name_enc = torch.tensor(self.obj_name_encoder.transform(np.array(self.obj_name[env_idx]).ravel())).to(torch.long)
-            pos = torch.tensor(self.pos[env_idx, :self.n_idxs[env_idx]]).unsqueeze(0)
+            obj_names = np.repeat(np.array(self.obj_name[env_idx]), bs)
+            obj_name_enc = torch.tensor(self.obj_name_encoder.transform(obj_names)).to(torch.int64)
+            pos = torch.tensor(np.tile(self.pos[env_idx, :self.n_idxs[env_idx]][None,...], (bs, 1, 1)), dtype=torch.int64)
             # print(states.shape, obj_name_enc.shape, pos.shape)
-            noise = torch.randn((1, self.n_idxs[env_idx], 2))
-            print(noise.shape, states.shape, obj_name_enc.shape, pos.shape)
-            denoised_actions = agent.actions_from_denoising_diffusion(noise, states, obj_name_enc, pos)
-            actions = self.action_scaler.inverse_transform(denoised_actions.detach().cpu().numpy()).squeeze()
-            print(actions)
-            self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(denoised_actions, -0.03, 0.03)
+            noise = torch.randn((bs, self.n_idxs[env_idx], 2))
+            denoised_actions = self.action_scaler.inverse_transform(agent.actions_from_denoising_diffusion(noise, states, obj_name_enc, pos).detach().cpu().numpy())
+            actions = np.mean(denoised_actions, axis=0)
+            self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(actions, -0.03, 0.03)
+            # self.actions[env_idx, :self.n_idxs[env_idx]] = actions.copy()
+
+
+            # po = pos[idx]
+            act_grasp = self.actions_grasp[env_idx, :self.n_idxs[env_idx]]
+            r_poses = self.nn_helper.rb_pos_world[tuple(zip(*self.active_idxs[env_idx]))]
+            r_poses2 = r_poses + act_grasp
+            init_pts = self.init_state[env_idx,:self.n_idxs[env_idx],:2] + r_poses
+            goal_bd_pts = self.init_state[env_idx,:self.n_idxs[env_idx],2:4] + r_poses
+            act = self.actions[env_idx, :self.n_idxs[env_idx]]
+
+
+            plt.figure(figsize=(10,17.78))
+            plt.scatter(self.nn_helper.kdtree_positions_world[:, 0], self.nn_helper.kdtree_positions_world[:, 1], c='#ddddddff')
+            plt.scatter(init_pts[:, 0], init_pts[:, 1], c = '#00ff00ff')
+            plt.scatter(goal_bd_pts[:, 0], goal_bd_pts[:, 1], c='red')
+
+            plt.quiver(r_poses[:, 0], r_poses[:, 1], act_grasp[:, 0], act_grasp[:, 1], color='#0000ff88')
+            plt.quiver(r_poses2[:, 0], r_poses2[:, 1], act[:, 0], act[:, 1], color='#ff0000aa')
+            plt.quiver(r_poses2[:, 0], r_poses2[:, 1], act_gt[:, 0], act_gt[:, 1], color='#aaff55aa')
+
+            plt.gca().set_aspect('equal')
+            plt.show()
 
     def test_diffusion_policy(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
@@ -906,8 +934,8 @@ class DeltaArraySim:
                 self.reset(env_idx)
         else:         
             if t_step == 0:
+                self.vs_step(env_idx, t_step) # Only Store Actions from MARL Policy
                 self.diffusion_step(env_idx, self.agent) # Only Store Actions from MARL Policy
-                # self.vs_step(env_idx, t_step) # Only Store Actions from MARL Policy
             elif t_step == 1:
                 self.set_attractor_target(env_idx, t_step, self.actions)
             elif t_step == (self.time_horizon-2):
@@ -932,13 +960,13 @@ class DeltaArraySim:
                     exit_bool, pos = self.set_traj_pose(env_idx, goal=True)
                     self.tracked_trajs[self.obj_name[env_idx]]['traj'].append(pos)
                     self.tracked_trajs[self.obj_name[env_idx]]['error'].append((np.linalg.norm(self.goal_pose[env_idx][:2] - pos[:2]), self.angle_difference(pos[2], self.goal_pose[env_idx, 2])))
+                    if exit_bool:
+                        pkl.dump(self.tracked_trajs, open('./data/tracked_traj_data.pkl', 'wb'))
+                        sys.exit(1)
                 else:
                     self.set_block_pose(env_idx, goal=True)
                 
                 self.ep_len[env_idx] = 0
-                if exit_bool:
-                    pkl.dump(self.tracked_trajs, open('./data/tracked_traj_data.pkl', 'wb'))
-                    sys.exit(1)
 
     def vs_step(self, env_idx, t_step):
         
@@ -1082,8 +1110,8 @@ class DeltaArraySim:
             elif t_step == 1:
                 self.set_attractor_target(env_idx, t_step, self.actions)
             elif t_step == (self.time_horizon-3):
-                self.compute_reward(env_idx, t_step)
-                print(f"Reward: {self.ep_reward[env_idx]}")
+                # self.compute_reward(env_idx, t_step)
+                # print(f"Reward: {self.ep_reward[env_idx]}")
 
                 # if 0 < self.current_episode < self.temp_cutoff_1:
                 #     self.vs_rews.append(self.ep_reward[env_idx])

@@ -81,9 +81,10 @@ class MADP:
         # actions get denoised from x_T --> x_t --> x_0
         actions = x_T.to(self.hp_dict['device'])
         states = states.to(self.hp_dict['device'])
-        obj_name_encs = obj_name_encs.long().to(self.hp_dict['device'])
-        pos = pos.long().to(self.hp_dict['device'])
+        obj_name_encs = obj_name_encs.to(self.hp_dict['device'])
+        pos = pos.to(self.hp_dict['device'])
 
+        self.model.eval()
         shape = actions.shape
         with torch.no_grad():
             for i in reversed(range(self.model.denoising_params['num_train_timesteps'])):
