@@ -152,6 +152,7 @@ class DeltaArrayReal:
         return
     
 if __name__=="__main__":
+    start_capture_thread()
     ids = [(4, 4), (2, 4), (5, 4), (2, 3), (2, 2), (5, 3), (3, 2), (4, 1), (3, 5)]
     # ids = [(0, 0), (0, 1)]
 

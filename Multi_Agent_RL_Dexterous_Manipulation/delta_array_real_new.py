@@ -317,7 +317,7 @@ class DeltaArrayReal:
         mask = cv2.inRange(hsv, self.lower_green_filter, self.upper_green_filter)
         seg_map = cv2.bitwise_and(img, img, mask = mask)
         seg_map = cv2.cvtColor(seg_map, cv2.COLOR_BGR2GRAY)
-        ret, seg_map = cv2.threshold(seg_map, 10, 255, cv2.THRESH_BINARY)
+        ret, seg_map = cv2.threshold(seg_map, 10, 250, cv2.THRESH_BINARY)
 
         kernel = np.ones((11,11),np.uint8)
         seg_map = cv2.morphologyEx(seg_map, cv2.MORPH_ERODE, kernel)
@@ -347,7 +347,6 @@ class DeltaArrayReal:
             self.bd_pts = boundary_pts
             if not final:            
                 idxs, neg_idxs = self.nn_helper.get_nn_robots(bd_cluster_centers)
-                print(idxs)
                 self.active_idxs = list(idxs)
                 self.n_idxs = len(self.active_idxs)
                 self.pos[:self.n_idxs, 0] = np.array([i[0]*8+i[1] for i in self.active_idxs]) 
@@ -385,20 +384,18 @@ class DeltaArrayReal:
     #         self.final_state[:self.n_idxs, 4:6] = raw_rb_pos
 
     #     return goal_nn_bd_pts_world_sim
-    
-    def test_grasping_policy(self, reset_after=False):
-        self.get_nearest_robots_and_state(final=False)
-        for i, idx in enumerate(self.active_idxs):
-            self.actions_grasp[i] = self.pretrained_agent.get_actions(self.init_grasp_state[i], deterministic=True)
 
-        self.init_state[:self.n_idxs, 4:6] += self.actions_grasp[:self.n_idxs]
-
+    def move_robots(self, actions, practicalize=False):
         for i, idx in enumerate(self.active_idxs):
-            # print(f'Robot {idx} is moving to {self.actions_grasp[i]}')
+            print(f'Robot {idx} is moving to {actions[i]}')
             traj = [[100*self.actions_grasp[i][0], -100*self.actions_grasp[i][1], low_z] for _ in range(20)]
-            traj = self.practicalize_traj(traj)
+            if practicalize:
+                traj = self.practicalize_traj(traj)
+            else:
+                traj = self.practicalize_traj2(traj)
             self.delta_agents[self.RC.robo_dict_inv[idx] - 1].save_joint_positions(idx, traj)
             self.active_IDs.add(self.RC.robo_dict_inv[idx])
+
         for i in self.active_IDs:
             self.delta_agents[i-1].move_useful()
             self.to_be_moved.append(self.delta_agents[i-1])
@@ -406,6 +403,16 @@ class DeltaArrayReal:
         print("Moving Delta Robots on Trajectory...")
         self.wait_until_done()
         print("Done!")
+    
+    def test_grasping_policy(self, reset_after=False):
+        self.get_nearest_robots_and_state(final=False)
+        for i, idx in enumerate(self.active_idxs):
+            self.actions_grasp[i] = self.pretrained_agent.get_actions(self.init_grasp_state[i], deterministic=True)
+        
+        self.init_state[:self.n_idxs, 4:6] += self.actions_grasp[:self.n_idxs]
+
+        self.move_robots(self.actions_grasp, practicalize=True)
+
         if reset_after:
             self.reset()
 
@@ -476,20 +483,8 @@ class DeltaArrayReal:
 
         self.actions[:self.n_idxs] = np.clip(actions, -0.03, 0.03)
 
-        for i, idx in enumerate(self.active_idxs):
-            print(f'Robot {idx} is moving to {self.actions[i]}')
-            traj = [[100*self.actions[i][0], -100*self.actions[i][1], low_z] for _ in range(20)]
-            # traj = self.practicalize_traj2(traj)
-            self.delta_agents[self.RC.robo_dict_inv[idx] - 1].save_joint_positions(idx, traj)
-            self.active_IDs.add(self.RC.robo_dict_inv[idx])
+        self.move_robots(self.actions)
 
-        for i in self.active_IDs:
-            self.delta_agents[i-1].move_useful()
-            self.to_be_moved.append(self.delta_agents[i-1])
-
-        print("Moving Delta Robots on Trajectory...")
-        self.wait_until_done()
-        print("Done!")
         # self.reset()
 
     
@@ -546,19 +541,8 @@ class DeltaArrayReal:
         
         self.diffusion_step(self.agent, actions)
 
-        for i, idx in enumerate(self.active_idxs):
-            print(f'Robot {idx} is moving to {self.actions[i]}')
-            traj = [[100*self.actions[i][0], -100*self.actions[i][1], low_z] for _ in range(20)]
-            self.delta_agents[self.RC.robo_dict_inv[idx] - 1].save_joint_positions(idx, traj)
-            self.active_IDs.add(self.RC.robo_dict_inv[idx])
+        self.move_robots(self.actions)
 
-        for i in self.active_IDs:
-            self.delta_agents[i-1].move_useful()
-            self.to_be_moved.append(self.delta_agents[i-1])
-
-        print("Moving Delta Robots on Trajectory...")
-        self.wait_until_done()
-        print("Done!")
         # self.reset()
 
     def inverse_dynamics(self):
