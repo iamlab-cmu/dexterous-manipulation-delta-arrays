@@ -312,11 +312,13 @@ class DiffusionTransformer(nn.Module):
         # actions get denoised from x_T --> x_t --> x_0
         actions = x_T
         shape = actions.shape
+        score_data = []
         with torch.no_grad():
             for i in reversed(range(self.denoising_params['num_train_timesteps'])):
                 t = torch.tensor([i]*shape[0], device=self.device)
                 ### p_mean_variance
                 pred_noise = self.denoising_decoder(actions, states, obj_name_encs, pos)
+                score_data.append(pred_noise.detach().cpu().numpy())
 
                 model_variance = _extract_into_tensor(self.posterior_variance, t, shape)
                 model_log_variance = _extract_into_tensor(self.posterior_log_variance_clipped, t, shape)
@@ -332,7 +334,7 @@ class DiffusionTransformer(nn.Module):
                 nonzero_mask = ((t != 0).float().view(-1, *([1] * (len(shape) - 1))))
                 # actions = model_mean + nonzero_mask * torch.exp(0.5*model_log_variance) * noise
                 actions = model_mean + nonzero_mask * model_variance * noise
-        return actions
+        return actions, np.array(score_data)
 
     def get_actions(self, states, pos, deterministic=False):
         """ Returns actor actions """

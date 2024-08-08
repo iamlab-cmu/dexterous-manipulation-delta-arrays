@@ -1,10 +1,13 @@
 import numpy as np
+%matplotlib inline
+import numpy as np
 import matplotlib.pyplot as plt
 import pickle as pkl
 from copy import deepcopy
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OneHotEncoder, LabelEncoder, StandardScaler
+from sklearn.preprocessing import OneHotEncoder, LabelEncoder, StandardScaler, MinMaxScaler
 import tqdm
+np.set_printoptions(precision=4)
 
 import torch
 import torch.nn as nn
@@ -18,6 +21,8 @@ from einops import rearrange, reduce
 import pytorch_warmup as warmup
 
 from dit_core import DiffusionTransformer, EMA, _extract_into_tensor
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 rb_pos_world = np.zeros((8,8,2))
 kdtree_positions_world = np.zeros((64, 2))
@@ -49,6 +54,26 @@ class DataNormalizer:
         reshaped_data = data.reshape(-1, data.shape[-1])
         inverse_transformed_data = self.scaler.inverse_transform(reshaped_data)
         return inverse_transformed_data.reshape(data.shape)
+
+
+class Normalizer:
+    def __init__(self, state_ranges, action_ranges):
+        self.state_min = np.array([state_ranges['x'][0], state_ranges['x'][1], state_ranges['y'][0], state_ranges['y'][1], state_ranges['y'][0], state_ranges['y'][1]])
+        self.state_max = np.array([state_ranges['x'][2], state_ranges['x'][3], state_ranges['y'][2], state_ranges['y'][3], state_ranges['y'][2], state_ranges['y'][3]])
+        self.action_min = np.array(action_ranges['x'])
+        self.action_max = np.array(action_ranges['y'])
+
+    def normalize_states(self, states):
+        return (states - self.state_min) / (self.state_max - self.state_min)
+
+    def denormalize_states(self, normalized_states):
+        return normalized_states * (self.state_max - self.state_min) + self.state_min
+
+    def normalize_actions(self, actions):
+        return (actions - self.action_min) / (self.action_max - self.action_min)
+
+    def denormalize_actions(self, normalized_actions):
+        return normalized_actions * (self.action_max - self.action_min) + self.action_min
 
 class ImitationDataset(Dataset):
     def __init__(self, states, actions, state_scaler, action_scaler, pos, num_agents, obj_names, obj_of_interest=None):
@@ -111,7 +136,7 @@ def get_smol_dataset(states, actions, state_scaler, action_scaler, pos, num_agen
     smol_num_agents = num_agents[final_indices]
     return ImitationDataset(smol_states, smol_actions, state_scaler, action_scaler, smol_pos, smol_num_agents, smol_obj_names, obj_of_interest=obj_of_interest)
 
-def get_dataset_and_dataloaders(data_pkg, train_bs:int=128, test_bs:int=1, num_samples:int=1000, obj_of_interest=None, rb_path='../../data/replay_buffer.pkl'):
+def get_dataset_and_dataloaders(data_pkg, train_bs:int=256, test_bs:int=1, num_samples:int=1000, obj_of_interest=None, rb_path='../../data/replay_buffer.pkl'):
     states, actions, pos, num_agents, obj_names, state_scaler, action_scaler = data_pkg
 
     dataset = get_smol_dataset(states, actions, state_scaler, action_scaler, pos, num_agents, obj_names, num_samples, obj_of_interest)
