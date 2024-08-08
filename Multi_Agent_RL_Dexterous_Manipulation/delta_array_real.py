@@ -56,10 +56,10 @@ class DeltaArrayReal:
         for i in range(self.num_tips[0]):
             for j in range(self.num_tips[1]):
                 if i%2!=0:
-                    self.finger_positions_cm[i][j] = (i*3.75, -j*4.3301 + 2.165)
+                    self.finger_positions_cm[i][j] = (i*3.75, j*4.3301 - 2.165)
                 else:
-                    self.finger_positions_cm[i][j] = (i*3.75, -j*4.3301)
-        self.KMeans = KMeans(n_clusters=64, random_state=69, n_init='auto')
+                    self.finger_positions_cm[i][j] = (i*3.75, j*4.3301)
+        self.KMeans = KMeans(n_clusters=256, random_state=69, n_init='auto')
 
         """ Real World Util Vars """
         self.NUM_MOTORS = 12
@@ -243,3 +243,6 @@ class DeltaArrayReal:
         self.wait_until_done()
         print("Done!")
         self.reset()
+
+    def test_diffusion_policy(self):
+        _, xys = self.get_nearest_robot_and_state()

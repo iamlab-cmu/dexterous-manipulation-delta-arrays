@@ -20,7 +20,7 @@ from einops import rearrange, reduce
 
 import pytorch_warmup as warmup
 
-from dit_core import DiffusionTransformer, EMA, _extract_into_tensor
+from utils.MADP.dit_core import DiffusionTransformer, EMA, _extract_into_tensor
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -54,6 +54,25 @@ class DataNormalizer:
         reshaped_data = data.reshape(-1, data.shape[-1])
         inverse_transformed_data = self.scaler.inverse_transform(reshaped_data)
         return inverse_transformed_data.reshape(data.shape)
+
+class Normalizer:
+    def __init__(self, state_ranges, action_ranges):
+        self.state_min = np.array([state_ranges['x'][0], state_ranges['x'][1], state_ranges['y'][0], state_ranges['y'][1], state_ranges['y'][0], state_ranges['y'][1]])
+        self.state_max = np.array([state_ranges['x'][2], state_ranges['x'][3], state_ranges['y'][2], state_ranges['y'][3], state_ranges['y'][2], state_ranges['y'][3]])
+        self.action_min = np.array(action_ranges['x'])
+        self.action_max = np.array(action_ranges['y'])
+
+    def normalize_states(self, states):
+        return (states - self.state_min) / (self.state_max - self.state_min)
+
+    def denormalize_states(self, normalized_states):
+        return normalized_states * (self.state_max - self.state_min) + self.state_min
+
+    def normalize_actions(self, actions):
+        return (actions - self.action_min) / (self.action_max - self.action_min)
+
+    def denormalize_actions(self, normalized_actions):
+        return normalized_actions * (self.action_max - self.action_min) + self.action_min
 
 
 class Normalizer:
@@ -158,7 +177,7 @@ def get_dataset_and_dataloaders(data_pkg, train_bs:int=256, test_bs:int=1, num_s
 
 def train(data_pkg, hp_dict):
     train_loader, val_loader, test_loader, state_scaler, action_scaler = get_dataset_and_dataloaders(data_pkg, train_bs=128, test_bs=128, num_samples=hp_dict['num_samples'], obj_of_interest=None)
-    model = DiffusionTransformer(hp_dict)
+    model = dit_core.DiffusionTransformer(hp_dict)
     ema_model = deepcopy(model).to(hp_dict['device'])
     model.to(hp_dict['device'])
     optimizer = optim.AdamW(model.parameters(), lr=hp_dict['lr'], weight_decay=1e-6)
@@ -166,7 +185,7 @@ def train(data_pkg, hp_dict):
     # optimizer = optim.SGD(model.parameters(), lr=1e-2)
     lr_scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=20, T_mult=2, eta_min=hp_dict['eta_min'])
 
-    ema = EMA(ema_model, **hp_dict['EMA Params'])
+    ema = dit_core.EMA(ema_model, **hp_dict['EMA Params'])
 
     losses = []
     global_Step = 0

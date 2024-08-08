@@ -155,8 +155,29 @@ class DeltaArraySim:
             self.vis_servo_data[env_idx] = {'state': [], 'action': [], 'next_state':[], 'reward': [], 'obj_name': []}
         
         names = ['block', 'disc', 'hexagon', 'parallelogram', 'semicircle', 'shuriken', 'star', 'trapezium', 'triangle']
-        self.obj_name_encoder = LabelEncoder()
+        encoder = LabelEncoder()
+        # self.obj_name_encoder = encoder.fit_transform(np.array(self.obj_names).ravel())
 
+        
+        with open('./utils/MADP/normalizer.pkl', 'rb') as f:
+            normalizer = pkl.load(f)
+        self.state_scaler = normalizer['state_scaler']
+        self.action_scaler = normalizer['action_scaler']
+        self.obj_name_encoder = normalizer['obj_name_encoder']
+
+        """ Test Traj Utils """
+        self.test_trajs = {}
+        self.current_traj = []
+        self.current_traj_id = 0
+        self.new_traj_bool = False
+        self.init_traj_pose = None
+        self.goal_traj_pose = None
+        self.MegaTestingLoop = [pkl.load(open('./data/test_trajs.pkl', 'rb'))]*len(self.obj_names)
+
+        self.tracked_trajs = {}
+        for name in self.obj_names:
+            self.tracked_trajs[name] = {'traj': [], 'error': []}
+        
         """ Debugging and Visualization Vars """
         self.video_frames = np.zeros((self.hp_dict['inference_length'], (self.time_horizon - 4)*2, 480, 640, 3))
 
@@ -174,6 +195,7 @@ class DeltaArraySim:
         # self.traj = np.array(self.traj[:num_steps])
 
         self.temp_var = {'initial_l2_dist': [],
+                       'angle_diff': [],    
                         'reward': [],
                         'z_dist': []}
         # self.bd_pts_dict = {}
@@ -263,7 +285,8 @@ class DeltaArraySim:
         if goal:
             self.object[env_idx].set_rb_transforms(env_idx, self.obj_name[env_idx], [gymapi.Transform(p=self.obj_dict[self.obj_name[env_idx]][1], r=self.obj_dict[self.obj_name[env_idx]][3])])
             # self.scene.gym.set_attractor_target(self.scene.env_ptrs[env_idx], self.obj_attr_handles[self.scene.env_ptrs[env_idx]][self.obj_name[env_idx]], gymapi.Transform(p=self.obj_dict[self.obj_name[env_idx]][2], r=self.obj_dict[self.obj_name[env_idx]][3]))
-            self.obj_name[env_idx] = random.choice(self.obj_names)
+            # self.obj_name[env_idx] = random.choice(self.obj_names)
+            self.obj_name[env_idx] = "star"
             self.object[env_idx], object_p, _, object_r = self.obj_dict[self.obj_name[env_idx]]
 
             yaw = np.random.uniform(-np.pi, np.pi)
@@ -276,7 +299,7 @@ class DeltaArraySim:
             tfed_bd_pts, _ = geom_utils.compute_transformation(boundary_points, normals, initial_pose, final_pose=(T[0], T[1], yaw))
             self.goal_bd_pts[env_idx] = tfed_bd_pts
         else:
-            yaw = self.goal_pose[env_idx][2] + np.random.uniform(-0.78539, 0.78539)
+            yaw = self.goal_pose[env_idx][2] + np.random.uniform(-1.5707, 1.5707)
             r = R.from_euler('xyz', [0, 0, yaw])
             object_r = gymapi.Quat(*r.as_quat())
             com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
@@ -285,6 +308,71 @@ class DeltaArraySim:
 
         block_p = gymapi.Vec3(*T, 1.002)
         self.object[env_idx].set_rb_transforms(env_idx, self.obj_name[env_idx], [gymapi.Transform(p=block_p, r=object_r)])
+    
+    def ret_2d_pos(self, env_idx):
+        com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
+        quat = np.array((com.r.x, com.r.y, com.r.z, com.r.w))
+        if (np.isnan(quat).any()):
+            self.dont_skip_episode = False
+            return None    
+        _, _, yaw = R.from_quat([*quat]).as_euler('xyz')
+        return com.p.x, com.p.y, yaw
+
+    def set_traj_pose(self, env_idx, goal=False):
+        return_exit = False
+        if goal:
+            if len(self.obj_names) == 0:
+                return_exit = True
+
+            if len(self.test_trajs) == 0:
+                self.obj_name[env_idx] = self.obj_names.pop(0)
+                self.object[env_idx], object_p, _, object_r = self.obj_dict[self.obj_name[env_idx]]
+                self.test_trajs = self.MegaTestingLoop.pop(0)
+
+            if len(self.current_traj) == 0:
+                self.new_traj_bool = True
+                traj_key = random.choice(list(self.test_trajs.keys()))
+                self.current_traj = self.test_trajs.pop(traj_key)
+                
+                plt.plot(self.current_traj[:, 0], self.current_traj[:, 1], 'o', label=f'Curve Spline')
+                plt.quiver(self.current_traj[:, 0], self.current_traj[:, 1], np.cos(self.current_traj[:, 2]), np.sin(self.current_traj[:, 2]))
+                plt.show()
+                self.current_traj = self.current_traj.tolist()
+                self.init_traj_pose = self.current_traj.pop(0)
+
+            self.goal_traj_pose = self.current_traj.pop(0)
+            
+            yaw = self.goal_traj_pose[2] + np.pi/2
+            r = R.from_euler('xyz', [0, 0, yaw])
+            object_r = gymapi.Quat(*r.as_quat())
+            T = self.goal_traj_pose[:2]
+            self.goal_pose[env_idx] = np.array([T[0], T[1], yaw])
+
+            _, boundary_points, normals, initial_pose = self.bd_pts_dict[self.obj_name[env_idx]]
+            tfed_bd_pts, _ = geom_utils.compute_transformation(boundary_points, normals, initial_pose, final_pose=(T[0], T[1], yaw))
+            self.goal_bd_pts[env_idx] = tfed_bd_pts
+
+            return return_exit, self.goal_pose[env_idx]
+        else:
+            com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
+            quat = np.array((com.r.x, com.r.y, com.r.z, com.r.w))
+            if (np.isnan(quat).any()):
+                self.dont_skip_episode = False
+                return None    
+            _, _, yaw0 = R.from_quat([*quat]).as_euler('xyz')
+            if self.new_traj_bool:
+                self.new_traj_bool = False
+                yaw = self.init_traj_pose[2] + np.pi/2
+                r = R.from_euler('xyz', [0, 0, yaw])
+                object_r = gymapi.Quat(*r.as_quat())
+                T = self.init_traj_pose[:2]
+                self.init_pose[env_idx] = np.array([T[0], T[1], yaw, com.p.z])
+
+                block_p = gymapi.Vec3(*T, 1.002)
+                self.object[env_idx].set_rb_transforms(env_idx, self.obj_name[env_idx], [gymapi.Transform(p=block_p, r=object_r)])
+            else:
+                self.init_pose[env_idx] = np.array([com.p.x, com.p.y, yaw0, com.p.z])
+            return return_exit, (com.p.x, com.p.y, yaw0)
 
     def get_scene_image(self, env_idx):
         """ Render a camera image """
@@ -522,7 +610,6 @@ class DeltaArraySim:
             2. ICP output transformation matrix to get delta_xy, and abs(theta)
         Combine both to compute the final reward
         """
-        # This function is utterly incomplete. Fix it before running final init expt
         init_bd_pts = self.bd_pts[env_idx].copy()
         final_pose = self.get_nearest_robots_and_state_v2(env_idx, final=True, init_bd_pts=init_bd_pts)
         
@@ -540,6 +627,7 @@ class DeltaArraySim:
         else:
             self.ep_reward[env_idx] -= loss - 0.5
         
+        return final_pose
         # com_world = np.mean(self.bd_pts[env_idx], axis=0)
 
         # rot = geom_utils.get_transform(self.goal_bd_pts[env_idx], self.bd_pts[env_idx])[2]
@@ -592,11 +680,13 @@ class DeltaArraySim:
         # com = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
 
         agent.ma_replay_buffer.store(self.init_state[env_idx], self.actions[env_idx], self.pos[env_idx], self.ep_reward[env_idx], self.final_state[env_idx], True, self.n_idxs[env_idx], self.obj_name[env_idx])
-        if (self.current_episode%10000)==0:
+        
+        # print(self.current_episode)
+        if (self.current_episode%5000)==0:
             print(f"Reward: {self.ep_reward[env_idx]} @ {self.current_episode}")
-            # agent.ma_replay_buffer.save_RB()
+        #     agent.ma_replay_buffer.save_RB()
 
-        # if self.current_episode == 500000:
+        # if self.current_episode >= 50000:
         #     sys.exit(1)
         self.reset(env_idx)
 
@@ -625,6 +715,8 @@ class DeltaArraySim:
             """ extract i, j, u, v for each robot """
             for i in range(len(self.active_idxs[env_idx])):
                 self.actions_grasp[env_idx][i] = agent.get_actions(self.init_grasp_state[env_idx, i], deterministic=True) # For pretrained grasping policy, single state -> 2D action var
+            
+            self.init_state[env_idx, :self.n_idxs[env_idx], 4:6] += self.actions_grasp[env_idx, :self.n_idxs[env_idx]]
 
         elif (np.random.rand() <= self.hp_dict['epsilon']) or test:
             self.pos[env_idx, :self.n_idxs[env_idx], 0] = np.array([i[0]*8+i[1] for i in self.active_idxs[env_idx]]) #.reshape((-1,))
@@ -717,7 +809,10 @@ class DeltaArraySim:
                 # time.sleep(0.5)
                 # img = self.get_camera_image(env_idx)
                 # _, self.goal_bd_pts[env_idx] = self.get_boundary_pts(img)
-                self.set_block_pose(env_idx) # Reset block to current initial pose
+                if self.hp_dict['test_traj']:
+                    self.set_traj_pose(env_idx)
+                else:
+                    self.set_block_pose(env_idx) # Reset block to current initial pose
                 self.set_all_fingers_pose(env_idx, pos_high=True) # Set all fingers to high pose
                 self.set_attractor_target(env_idx, t_step, None, all_zeros=True) # Set all fingers to high pose
             elif t_step == 1:
@@ -736,9 +831,11 @@ class DeltaArraySim:
                 self.set_attractor_target(env_idx, t_step, self.actions)
             elif t_step == (self.time_horizon-2):
                 init_bd_pts = self.bd_pts[env_idx].copy()
-                self.compute_reward(env_idx, t_step)
-                print(f"Reward: {self.ep_reward[env_idx]}")
-
+                final_pose = self.compute_reward(env_idx, t_step)
+                # print(f"Reward: {self.ep_reward[env_idx]}")
+                
+                if final_pose is None:
+                    return
                 if not self.hp_dict["dont_log"]:
                     wandb.log({"Inference Reward":self.ep_reward[env_idx]})
 
@@ -753,28 +850,63 @@ class DeltaArraySim:
                     
                     com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
                     self.temp_var['z_dist'].append(np.linalg.norm(self.init_pose[env_idx][3] - com.p.z))
-                    # self.temp_var['initial_l2_dist'].append(np.linalg.norm(self.goal_pose[env_idx][:2] - self.init_pose[env_idx][:2]))
-                    self.temp_var['initial_l2_dist'].append(np.linalg.norm(self.goal_bd_pts[env_idx] - init_bd_pts))
+                    # self.temp_var['initial_l2_dist'].append(np.linalg.norm(self.goal_bd_pts[env_idx] - init_bd_pts))
+                    self.temp_var['initial_l2_dist'].append(np.linalg.norm(self.goal_pose[env_idx][:2] - self.init_pose[env_idx][:2]))
+                    self.temp_var['angle_diff'].append(self.angle_difference(final_pose[2], self.goal_pose[env_idx, 2]))
                     self.temp_var['reward'].append(self.ep_reward[env_idx])
                     if self.current_episode%100 == 0:
-                        with open(f"./init_vs_reward_withcawr.pkl", "wb") as f:
+                        with open(f"./init_vs_reward_diff_policy.pkl", "wb") as f:
                             pkl.dump(self.temp_var, f)
                 self.reset(env_idx)
                 self.current_episode += 1
             elif t_step == self.time_horizon - 1:
-                self.set_block_pose(env_idx, goal=True) # Set block to next goal pose & Store Goal Pose for both states
+                if self.hp_dict['test_traj']:
+                    self.set_traj_pose(env_idx, goal=True)
+                else:
+                    self.set_block_pose(env_idx, goal=True) 
                 self.ep_len[env_idx] = 0
+
+                # if self.current_episode > 50000:
+                #     sys.exit(1)
             # else:
             #     self.video_frames[self.infer_iter, int((self.time_horizon-4)*self.ep_len[env_idx] + t_step-2)] = self.get_scene_image(env_idx)
 
     def diffusion_step(self, env_idx, agent):
-            states = torch.tensor(self.init_state[env_idx, :self.n_idxs[env_idx]], dtype=torch.float32).unsqueeze(0)
-            obj_name_enc = torch.tensor(self.obj_name_encoder.fit_transform(np.array(self.obj_name[env_idx]).ravel())).to(torch.int64)
-            pos = torch.tensor(self.pos[env_idx, :self.n_idxs[env_idx]], dtype=torch.float32).unsqueeze(0)
+            act_gt = self.actions[env_idx, :self.n_idxs[env_idx]].copy()
+            bs = 1
+            states = self.state_scaler.transform(np.tile(self.init_state[env_idx, :self.n_idxs[env_idx]][None,...], (bs, 1, 1)))
+            states = torch.tensor(states, dtype=torch.float32)
+            obj_names = np.repeat(np.array(self.obj_name[env_idx]), bs)
+            obj_name_enc = torch.tensor(self.obj_name_encoder.transform(obj_names)).to(torch.int64)
+            pos = torch.tensor(np.tile(self.pos[env_idx, :self.n_idxs[env_idx]][None,...], (bs, 1, 1)), dtype=torch.int64)
             # print(states.shape, obj_name_enc.shape, pos.shape)
-            noise = torch.randn((1, self.n_idxs[env_idx], 2))
-            denoised_actions = agent.actions_from_denoising_diffusion(noise, states, obj_name_enc, pos)
-            self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(denoised_actions.squeeze().detach().cpu().numpy(), -0.03, 0.03)
+            noise = torch.randn((bs, self.n_idxs[env_idx], 2))
+            denoised_actions = self.action_scaler.inverse_transform(agent.actions_from_denoising_diffusion(noise, states, obj_name_enc, pos).detach().cpu().numpy())
+            actions = np.mean(denoised_actions, axis=0)
+            self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(actions, -0.03, 0.03)
+            # self.actions[env_idx, :self.n_idxs[env_idx]] = actions.copy()
+
+
+            # po = pos[idx]
+            act_grasp = self.actions_grasp[env_idx, :self.n_idxs[env_idx]]
+            r_poses = self.nn_helper.rb_pos_world[tuple(zip(*self.active_idxs[env_idx]))]
+            r_poses2 = r_poses + act_grasp
+            init_pts = self.init_state[env_idx,:self.n_idxs[env_idx],:2] + r_poses
+            goal_bd_pts = self.init_state[env_idx,:self.n_idxs[env_idx],2:4] + r_poses
+            act = self.actions[env_idx, :self.n_idxs[env_idx]]
+
+
+            plt.figure(figsize=(10,17.78))
+            plt.scatter(self.nn_helper.kdtree_positions_world[:, 0], self.nn_helper.kdtree_positions_world[:, 1], c='#ddddddff')
+            plt.scatter(init_pts[:, 0], init_pts[:, 1], c = '#00ff00ff')
+            plt.scatter(goal_bd_pts[:, 0], goal_bd_pts[:, 1], c='red')
+
+            plt.quiver(r_poses[:, 0], r_poses[:, 1], act_grasp[:, 0], act_grasp[:, 1], color='#0000ff88')
+            plt.quiver(r_poses2[:, 0], r_poses2[:, 1], act[:, 0], act[:, 1], color='#ff0000aa')
+            plt.quiver(r_poses2[:, 0], r_poses2[:, 1], act_gt[:, 0], act_gt[:, 1], color='#aaff55aa')
+
+            plt.gca().set_aspect('equal')
+            plt.show()
 
     def test_diffusion_policy(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
@@ -785,7 +917,10 @@ class DeltaArraySim:
                 # time.sleep(0.5)
                 # img = self.get_camera_image(env_idx)
                 # _, self.goal_bd_pts[env_idx] = self.get_boundary_pts(img)
-                self.set_block_pose(env_idx) # Reset block to current initial pose
+                if self.hp_dict['test_traj']:
+                    self.set_traj_pose(env_idx)
+                else:
+                    self.set_block_pose(env_idx) # Reset block to current initial pose
                 self.set_all_fingers_pose(env_idx, pos_high=True) # Set all fingers to high pose
                 self.set_attractor_target(env_idx, t_step, None, all_zeros=True) # Set all fingers to high pose
             elif t_step == 1:
@@ -799,20 +934,21 @@ class DeltaArraySim:
                 self.reset(env_idx)
         else:         
             if t_step == 0:
+                self.vs_step(env_idx, t_step) # Only Store Actions from MARL Policy
                 self.diffusion_step(env_idx, self.agent) # Only Store Actions from MARL Policy
             elif t_step == 1:
                 self.set_attractor_target(env_idx, t_step, self.actions)
             elif t_step == (self.time_horizon-2):
-                init_bd_pts = self.bd_pts[env_idx].copy()
-                self.compute_reward(env_idx, t_step)
+                final_pose = self.compute_reward(env_idx, t_step)
                 print(f"Reward: {self.ep_reward[env_idx]}")
 
                 if self.hp_dict["print_summary"]:
                     
                     com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
                     self.temp_var['z_dist'].append(np.linalg.norm(self.init_pose[env_idx][3] - com.p.z))
-                    # self.temp_var['initial_l2_dist'].append(np.linalg.norm(self.goal_pose[env_idx][:2] - self.init_pose[env_idx][:2]))
-                    self.temp_var['initial_l2_dist'].append(np.linalg.norm(self.goal_bd_pts[env_idx] - init_bd_pts))
+                    # self.temp_var['initial_l2_dist'].append(np.linalg.norm(self.goal_bd_pts[env_idx] - init_bd_pts))
+                    self.temp_var['initial_l2_dist'].append(np.linalg.norm(self.goal_pose[env_idx][:2] - self.init_pose[env_idx][:2]))
+                    self.temp_var['angle_diff'].append(self.angle_difference(final_pose[2], self.goal_pose[env_idx, 2]))
                     self.temp_var['reward'].append(self.ep_reward[env_idx])
                     if self.current_episode%100 == 0:
                         with open(f"./init_vs_reward_diff_policy.pkl", "wb") as f:
@@ -820,7 +956,16 @@ class DeltaArraySim:
                 self.reset(env_idx)
                 self.current_episode += 1
             elif t_step == self.time_horizon - 1:
-                self.set_block_pose(env_idx, goal=True) # Set block to next goal pose & Store Goal Pose for both states
+                if self.hp_dict['test_traj']:
+                    exit_bool, pos = self.set_traj_pose(env_idx, goal=True)
+                    self.tracked_trajs[self.obj_name[env_idx]]['traj'].append(pos)
+                    self.tracked_trajs[self.obj_name[env_idx]]['error'].append((np.linalg.norm(self.goal_pose[env_idx][:2] - pos[:2]), self.angle_difference(pos[2], self.goal_pose[env_idx, 2])))
+                    if exit_bool:
+                        pkl.dump(self.tracked_trajs, open('./data/tracked_traj_data.pkl', 'wb'))
+                        sys.exit(1)
+                else:
+                    self.set_block_pose(env_idx, goal=True)
+                
                 self.ep_len[env_idx] = 0
 
     def vs_step(self, env_idx, t_step):
@@ -856,8 +1001,8 @@ class DeltaArraySim:
                 displacement_vectors = tf_pts - self.nn_bd_pts[env_idx]
                 actions = self.actions_grasp[env_idx, :self.n_idxs[env_idx]] + displacement_vectors
 
-                # self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(actions, -0.03, 0.03)
-                self.actions[env_idx, :self.n_idxs[env_idx]] = np.random.uniform(-0.03, 0.03, size=(self.n_idxs[env_idx], 2))
+                self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(actions, -0.03, 0.03)
+                # self.actions[env_idx, :self.n_idxs[env_idx]] = np.random.uniform(-0.03, 0.03, size=(self.n_idxs[env_idx], 2))
                 
                 # print(self.obj_name[env_idx])
                 # r_poses = self.nn_helper.rb_pos_world[tuple(zip(*self.active_idxs[env_idx]))]
@@ -965,8 +1110,9 @@ class DeltaArraySim:
             elif t_step == 1:
                 self.set_attractor_target(env_idx, t_step, self.actions)
             elif t_step == (self.time_horizon-3):
-                # self.compute_reward_v2(env_idx, t_step)
-                
+                # self.compute_reward(env_idx, t_step)
+                # print(f"Reward: {self.ep_reward[env_idx]}")
+
                 # if 0 < self.current_episode < self.temp_cutoff_1:
                 #     self.vs_rews.append(self.ep_reward[env_idx])
                 # elif self.temp_cutoff_1 <= self.current_episode < self.temp_cutoff_2:
@@ -1022,18 +1168,55 @@ class DeltaArraySim:
         
         for i in range(self.num_tips[0]):
             for j in range(self.num_tips[1]):
-                if (i==0) and (j==0):
-                    self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.47), r=self.finga_q))     
-                else:
-                    self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
-        if t_step==0:
-            self.set_block_pose(env_idx)
-        elif t_step == (self.time_horizon - 2):
-            self.set_block_pose(env_idx, goal=True)
+                # if (i==0) and (j==0):
+                #     self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.47), r=self.finga_q))     
+                # else:
+                self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
+        # if t_step==0:
+        #     if len(self.obj_names) == 0:
+        #         return_exit = True
 
-            com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
-            roll, pitch, yaw = R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')
-            print(roll, pitch, yaw)
+        #     if len(self.test_trajs) == 0:
+        #         return_exit = True
+        #         self.obj_name[env_idx] = self.obj_names.pop(0)
+        #         self.object[env_idx], object_p, _, object_r = self.obj_dict[self.obj_name[env_idx]]
+        #         self.test_trajs = self.MegaTestingLoop.pop(0)
+
+        #     if len(self.current_traj) == 0:
+        #         self.new_traj_bool = True
+        #         traj_key = random.choice(list(self.test_trajs.keys()))
+        #         self.current_traj = self.test_trajs.pop(traj_key)
+                
+        #         plt.plot(self.current_traj[:, 0], self.current_traj[:, 1], 'o', label=f'Curve Spline')
+        #         plt.quiver(self.current_traj[:, 0], self.current_traj[:, 1], np.cos(self.current_traj[:, 2]), np.sin(self.current_traj[:, 2]))
+        #         plt.show()
+        #         self.current_traj = self.current_traj.tolist()
+
+        #     com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
+        #     quat = np.array((com.r.x, com.r.y, com.r.z, com.r.w))
+        #     if (np.isnan(quat).any()):
+        #         self.dont_skip_episode = False
+        #         return None    
+        #     _, _, yaw0 = R.from_quat([*quat]).as_euler('xyz')
+        #     self.init_traj_pose = self.current_traj.pop(0)
+        #     yaw = self.init_traj_pose[2] + np.pi/2
+
+        #     print(yaw0, yaw, self.angle_difference(yaw0, yaw))
+
+        #     r = R.from_euler('xyz', [0, 0, yaw])
+        #     object_r = gymapi.Quat(*r.as_quat())
+        #     T = self.init_traj_pose[:2]
+        #     self.init_pose[env_idx] = np.array([T[0], T[1], yaw, com.p.z])
+
+        #     block_p = gymapi.Vec3(*T, 1.002)
+        #     self.object[env_idx].set_rb_transforms(env_idx, self.obj_name[env_idx], [gymapi.Transform(p=block_p, r=object_r)])
+
+        # elif t_step == (self.time_horizon - 2):
+        #     self.set_block_pose(env_idx, goal=True)
+
+        #     com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
+        #     roll, pitch, yaw = R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')
+        #     print(roll, pitch, yaw)
         # if t_step == 0:
         #     self.obj_name = self.obj_names.pop()
         #     self.object[env_idx], _, object_r = self.obj_dict[self.obj_name]

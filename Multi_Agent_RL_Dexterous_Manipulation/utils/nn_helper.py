@@ -11,15 +11,24 @@ class NNHelper:
     def __init__(self, plane_size, real_or_sim="real"):
         self.rb_pos_pix = np.zeros((8,8,2))
         self.rb_pos_world = np.zeros((8,8,2))
+        self.rb_pos_world_sim = np.zeros((8,8,2))
         self.kdtree_positions_pix = np.zeros((64, 2))
         self.kdtree_positions_world = np.zeros((64, 2))
+        self.kdtree_positions_world_sim = np.zeros((64, 2))
         for i in range(8):
             for j in range(8):
                 if real_or_sim=="real":
+                    """ Let's just use sim coords for real also as the learning methods are trained on sim data """
                     if i%2!=0:
                         finger_pos = np.array((i*3.75, -j*4.3301 + 2.165))
+                        # finger_pos = np.array((i*0.0375, j*0.043301 - 0.02165))
+                        self.rb_pos_world[i,j] = np.array((i*3.75, -j*4.3301 + 2.165))
+                        self.rb_pos_world_sim[i,j] = np.array((i*0.0375, j*0.043301 - 0.02165))
                     else:
                         finger_pos = np.array((i*3.75, -j*4.3301))
+                        # finger_pos = np.array((i*0.0375, j*0.043301))
+                        self.rb_pos_world[i,j] = np.array((i*3.75, -j*4.3301))
+                        self.rb_pos_world_sim[i,j] = np.array((i*0.0375, j*0.043301))
                 else:
                     if i%2!=0:
                         finger_pos = np.array((i*0.0375, j*0.043301 - 0.02165))
@@ -28,6 +37,7 @@ class NNHelper:
                         finger_pos = np.array((i*0.0375, j*0.043301))
                         self.rb_pos_world[i,j] = np.array((i*0.0375, j*0.043301))
                 self.kdtree_positions_world[i*8 + j, :] = self.rb_pos_world[i,j]
+                self.kdtree_positions_world_sim[i*8 + j, :] = self.rb_pos_world_sim[i,j]
         
                 finger_pos[0] = (finger_pos[0] - plane_size[0][0])/(plane_size[1][0]-plane_size[0][0])*1080 - 0
                 finger_pos[1] = 1920 - (finger_pos[1] - plane_size[0][1])/(plane_size[1][1]-plane_size[0][1])*1920
@@ -58,6 +68,19 @@ class NNHelper:
         xys = []
         for n, idx in enumerate(active_idxs):
             tgt_pt = self.rb_pos_world[idx] + actions[n]
+            distances = np.linalg.norm(tgt_pt - boundary_pts, axis=1)
+            min_dists.append(np.min(distances))
+            xys.append(boundary_pts[np.argmin(distances)])
+        return min_dists, np.array(xys)
+    
+    def get_min_dist_world_sim(self, boundary_pts, active_idxs, actions):
+        """
+        Returns the minimum distance between the boundary points and the robot positions, and the closest boundary point
+        """
+        min_dists = []
+        xys = []
+        for n, idx in enumerate(active_idxs):
+            tgt_pt = self.rb_pos_world_sim[idx] + actions[n]
             distances = np.linalg.norm(tgt_pt - boundary_pts, axis=1)
             min_dists.append(np.min(distances))
             xys.append(boundary_pts[np.argmin(distances)])
