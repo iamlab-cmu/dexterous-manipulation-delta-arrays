@@ -1,6 +1,7 @@
 import numpy as np
 import signal
 import sys
+from glob import glob
 import time
 import pickle as pkl
 import time
@@ -177,9 +178,10 @@ class DeltaArraySim:
         self.tracked_trajs = {}
         for name in self.obj_names:
             self.tracked_trajs[name] = {'traj': [], 'error': []}
-        
+
         """ Debugging and Visualization Vars """
-        self.video_frames = np.zeros((self.hp_dict['inference_length'], (self.time_horizon - 4)*2, 480, 640, 3))
+        # self.video_frames = np.zeros((self.hp_dict['inference_length'], (self.time_horizon - 4)*2, 480, 640, 3))
+        self.images_to_video = []
 
         # Traj testing code for GFT debugging
         # self.og_gft = None
@@ -351,8 +353,8 @@ class DeltaArraySim:
             _, boundary_points, normals, initial_pose = self.bd_pts_dict[self.obj_name[env_idx]]
             tfed_bd_pts, _ = geom_utils.compute_transformation(boundary_points, normals, initial_pose, final_pose=(T[0], T[1], yaw))
             self.goal_bd_pts[env_idx] = tfed_bd_pts
-
             return return_exit, self.goal_pose[env_idx]
+
         else:
             com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
             quat = np.array((com.r.x, com.r.y, com.r.z, com.r.w))
@@ -380,7 +382,7 @@ class DeltaArraySim:
         frames = self.cam.frames(env_idx, self.cam_name)
         # self.current_scene_frame[env_idx] = frames['color'].data.astype(np.uint8)
         bgr_image = cv2.cvtColor(frames['color'].data.astype(np.uint8), cv2.COLOR_RGB2BGR)
-        return cv2.resize(bgr_image, (640, 480), interpolation=cv2.INTER_AREA)
+        return cv2.resize(bgr_image, (640, 480))
 
     def get_camera_image(self, env_idx):
         self.scene.render_cameras()
@@ -749,6 +751,35 @@ class DeltaArraySim:
             wandb.log({"Reward":self.ep_reward[env_idx]})
             # wandb.log({"Q loss":np.clip(self.agent.q_loss, 0, 100)})
 
+
+    def convert_images_to_video(images, output_filename, fps=60):
+        """
+        Compress a list of NumPy arrays to an H.265 encoded video.
+        
+        :param images: List of NumPy arrays representing Full HD images
+        :param output_filename: Name of the output video file
+        :param fps: Frames per second for the output video (default: 60)
+        """
+        if not images:
+            raise ValueError("The list of NumPy arrays is empty.")
+        height, width = images[0].shape[:2]
+        
+        # Calculate new dimensions for 720p
+        new_height = 720
+        new_width = int((new_height / height) * width)
+        new_width = new_width - (new_width % 2)  # Ensure even width for video encoding
+        
+        fourcc = cv2.VideoWriter_fourcc(*'hevc')  # H.265 codec
+        out = cv2.VideoWriter(output_filename, fourcc, fps, (new_width, new_height))
+        for frame in images:
+            if frame.shape[2] == 3:
+                frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            frame_resized = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
+            out.write(frame_resized)
+            
+        out.release()
+        print(f"Video saved as {output_filename}")
+
     def scale_epoch(self, x, A=100/np.log(100000), B=1/1000, C=1000):
         if x <= C:
             return 1
@@ -871,46 +902,51 @@ class DeltaArraySim:
             # else:
             #     self.video_frames[self.infer_iter, int((self.time_horizon-4)*self.ep_len[env_idx] + t_step-2)] = self.get_scene_image(env_idx)
 
-    def diffusion_step(self, env_idx, agent):
-            act_gt = self.actions[env_idx, :self.n_idxs[env_idx]].copy()
-            bs = 1
-            states = self.state_scaler.transform(np.tile(self.init_state[env_idx, :self.n_idxs[env_idx]][None,...], (bs, 1, 1)))
-            states = torch.tensor(states, dtype=torch.float32)
-            obj_names = np.repeat(np.array(self.obj_name[env_idx]), bs)
-            obj_name_enc = torch.tensor(self.obj_name_encoder.transform(obj_names)).to(torch.int64)
-            pos = torch.tensor(np.tile(self.pos[env_idx, :self.n_idxs[env_idx]][None,...], (bs, 1, 1)), dtype=torch.int64)
-            # print(states.shape, obj_name_enc.shape, pos.shape)
-            noise = torch.randn((bs, self.n_idxs[env_idx], 2))
+    def bc_step(self, env_idx, agent):
+        act_gt = self.actions[env_idx, :self.n_idxs[env_idx]].copy()
+        bs = 1
+        states = self.state_scaler.transform(np.tile(self.init_state[env_idx, :self.n_idxs[env_idx]][None,...], (bs, 1, 1)))
+        states = torch.tensor(states, dtype=torch.float32)
+        obj_names = np.repeat(np.array(self.obj_name[env_idx]), bs)
+        obj_name_enc = torch.tensor(self.obj_name_encoder.transform(obj_names)).to(torch.int64)
+        pos = torch.tensor(np.tile(self.pos[env_idx, :self.n_idxs[env_idx]][None,...], (bs, 1, 1)), dtype=torch.int64)
+        # print(states.shape, obj_name_enc.shape, pos.shape)
+        noise = torch.randn((bs, self.n_idxs[env_idx], 2))
+        
+        if self.hp_dict['algo']=="MADP":
             denoised_actions = self.action_scaler.inverse_transform(agent.actions_from_denoising_diffusion(noise, states, obj_name_enc, pos).detach().cpu().numpy())
             actions = np.mean(denoised_actions, axis=0)
-            self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(actions, -0.03, 0.03)
-            # self.actions[env_idx, :self.n_idxs[env_idx]] = actions.copy()
+        elif self.hp_dict['algo']=="MABC":
+            actions = self.agent.get_actions(states, obj_name_enc, pos, deterministic=True)
 
+        self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(actions, -0.03, 0.03)
 
-            # po = pos[idx]
-            act_grasp = self.actions_grasp[env_idx, :self.n_idxs[env_idx]]
-            r_poses = self.nn_helper.rb_pos_world[tuple(zip(*self.active_idxs[env_idx]))]
-            r_poses2 = r_poses + act_grasp
-            init_pts = self.init_state[env_idx,:self.n_idxs[env_idx],:2] + r_poses
-            goal_bd_pts = self.init_state[env_idx,:self.n_idxs[env_idx],2:4] + r_poses
-            act = self.actions[env_idx, :self.n_idxs[env_idx]]
+        # po = pos[idx]
+        act_grasp = self.actions_grasp[env_idx, :self.n_idxs[env_idx]]
+        r_poses = self.nn_helper.rb_pos_world[tuple(zip(*self.active_idxs[env_idx]))]
+        r_poses2 = r_poses + act_grasp
+        init_pts = self.init_state[env_idx,:self.n_idxs[env_idx],:2] + r_poses
+        goal_bd_pts = self.init_state[env_idx,:self.n_idxs[env_idx],2:4] + r_poses
+        act = self.actions[env_idx, :self.n_idxs[env_idx]]
 
+        plt.figure(figsize=(10,17.78))
+        plt.scatter(self.nn_helper.kdtree_positions_world[:, 0], self.nn_helper.kdtree_positions_world[:, 1], c='#ddddddff')
+        plt.scatter(init_pts[:, 0], init_pts[:, 1], c = '#00ff00ff')
+        plt.scatter(goal_bd_pts[:, 0], goal_bd_pts[:, 1], c='red')
 
-            plt.figure(figsize=(10,17.78))
-            plt.scatter(self.nn_helper.kdtree_positions_world[:, 0], self.nn_helper.kdtree_positions_world[:, 1], c='#ddddddff')
-            plt.scatter(init_pts[:, 0], init_pts[:, 1], c = '#00ff00ff')
-            plt.scatter(goal_bd_pts[:, 0], goal_bd_pts[:, 1], c='red')
+        plt.quiver(r_poses[:, 0], r_poses[:, 1], act_grasp[:, 0], act_grasp[:, 1], color='#0000ff88')
+        plt.quiver(r_poses2[:, 0], r_poses2[:, 1], act[:, 0], act[:, 1], color='#ff0000aa')
+        plt.quiver(r_poses2[:, 0], r_poses2[:, 1], act_gt[:, 0], act_gt[:, 1], color='#aaff55aa')
 
-            plt.quiver(r_poses[:, 0], r_poses[:, 1], act_grasp[:, 0], act_grasp[:, 1], color='#0000ff88')
-            plt.quiver(r_poses2[:, 0], r_poses2[:, 1], act[:, 0], act[:, 1], color='#ff0000aa')
-            plt.quiver(r_poses2[:, 0], r_poses2[:, 1], act_gt[:, 0], act_gt[:, 1], color='#aaff55aa')
-
-            plt.gca().set_aspect('equal')
-            plt.show()
+        plt.gca().set_aspect('equal')
+        plt.show()
 
     def test_diffusion_policy(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
         env_ptr = self.scene.env_ptrs[env_idx]
+
+        if self.hp_dict['save_videos']:
+            self.images_to_video.append(self.get_scene_image(env_idx))
         
         if self.ep_len[env_idx]==0:
             if t_step == 0:
@@ -932,10 +968,11 @@ class DeltaArraySim:
             elif not self.dont_skip_episode:
                 self.ep_len[env_idx] = 0
                 self.reset(env_idx)
+                del self.images_to_video[:]
         else:         
             if t_step == 0:
                 self.vs_step(env_idx, t_step) # Only Store Actions from MARL Policy
-                self.diffusion_step(env_idx, self.agent) # Only Store Actions from MARL Policy
+                self.bc_step(env_idx, self.agent) # Only Store Actions from MARL Policy
             elif t_step == 1:
                 self.set_attractor_target(env_idx, t_step, self.actions)
             elif t_step == (self.time_horizon-2):
@@ -953,9 +990,12 @@ class DeltaArraySim:
                     if self.current_episode%100 == 0:
                         with open(f"./init_vs_reward_diff_policy.pkl", "wb") as f:
                             pkl.dump(self.temp_var, f)
+
+                if self.hp_dict['save_videos']:
+                    self.convert_images_to_video(self.images_to_video, f"./data/videos/{self.hp_dict['exp_name']}/{len(self.current_traj)}_{len(self.test_trajs)}_{len(self.obj_names)}.mp4")
                 self.reset(env_idx)
                 self.current_episode += 1
-            elif t_step == self.time_horizon - 1:
+            elif t_step == (self.time_horizon - 1):
                 if self.hp_dict['test_traj']:
                     exit_bool, pos = self.set_traj_pose(env_idx, goal=True)
                     self.tracked_trajs[self.obj_name[env_idx]]['traj'].append(pos)
@@ -967,6 +1007,7 @@ class DeltaArraySim:
                     self.set_block_pose(env_idx, goal=True)
                 
                 self.ep_len[env_idx] = 0
+                del self.images_to_video[:]
 
     def vs_step(self, env_idx, t_step):
         

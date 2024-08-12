@@ -385,10 +385,13 @@ class DeltaArrayReal:
 
     #     return goal_nn_bd_pts_world_sim
 
-    def move_robots(self, actions, practicalize=False):
+    def move_robots(self, actions, practicalize=False, mult=True):
         for i, idx in enumerate(self.active_idxs):
             print(f'Robot {idx} is moving to {actions[i]}')
-            traj = [[100*self.actions_grasp[i][0], -100*self.actions_grasp[i][1], low_z] for _ in range(20)]
+            if mult:
+                traj = [[100*actions[i][0], -100*actions[i][1], low_z] for _ in range(20)]
+            else:
+                traj = [[-1*actions[i][0], 1*actions[i][1], low_z] for _ in range(20)]
             if practicalize:
                 traj = self.practicalize_traj(traj)
             else:
@@ -498,7 +501,8 @@ class DeltaArrayReal:
         noise = torch.randn((bs, self.n_idxs, 2))
         denoised_actions = self.action_scaler.inverse_transform(agent.actions_from_denoising_diffusion(noise, states, obj_name_enc, pos).detach().cpu().numpy())
         actions = np.mean(denoised_actions, axis=0)
-        self.actions[:self.n_idxs] = np.clip(actions, -0.03, 0.03)
+        print(actions)
+        self.actions[:self.n_idxs] = np.clip(actions, -3, 3)
 
         # po = pos[idx]
         act_grasp = self.actions_grasp[:self.n_idxs]
@@ -541,7 +545,7 @@ class DeltaArrayReal:
         
         self.diffusion_step(self.agent, actions)
 
-        self.move_robots(self.actions)
+        self.move_robots(self.actions, mult=False)
 
         # self.reset()
 

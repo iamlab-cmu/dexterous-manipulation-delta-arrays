@@ -28,6 +28,7 @@ import utils.SAC.sac as sac
 import utils.MATSAC.matsac as matsac
 import utils.MATDQN.matdqn as matdqn
 import utils.MADP.madptest as madp0
+import utils.MADP.mabc_test as mabc
 from utils.MADP.madp import DataNormalizer
 import config.assets.obj_dict as obj_dict
 
@@ -83,6 +84,9 @@ class DeltaArraySimEnvironment():
             os.makedirs(f'./data/rl_data/{args.name}/pyt_save')
             os.makedirs(f'./data/rl_data/{args.name}/videos')
 
+        if not os.path.exists(f'./data/videos/{args.name}'):
+            os.makedirs(f'./data/videos/{args.name}')
+
         single_agent_env_dict = {'action_space': {'low': -0.03, 'high': 0.03, 'dim': 2},
                     'observation_space': {'dim': 4},}
         ma_env_dict = {'action_space': {'low': -0.03, 'high': 0.03, 'dim': 2},
@@ -133,6 +137,7 @@ class DeltaArraySimEnvironment():
                 'vis_servo'         : self.args.vis_servo,
                 'test_traj'         : self.args.test_traj,
                 'masked'            : not self.args.unmasked,
+                'algo'              : self.args.algo,
             }
         
         logger_kwargs = {}
@@ -158,11 +163,13 @@ class DeltaArraySimEnvironment():
             self.pushing_agent = sac.SAC(simplified_ma_env_dict, self.hp_dict, logger_kwargs, ma=True, train_or_test="train")
         elif self.args.algo=="MADP":
             self.pushing_agent = madp0.MADP()
+        elif self.args.algo=="MABC":
+            self.pushing_agent = mabc.MABC()
 
-        if (self.train_or_test=="test") and (not self.args.diff_policy):
+        if (self.train_or_test=="test") and (not self.args.behavior_cloning):
             # self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/{args.name}_s69420/pyt_save/model.pt')
             self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/pyt_save/model.pt')
-        elif self.args.diff_policy:
+        elif self.args.behavior_cloning:
             self.pushing_agent.load_saved_policy(f'./utils/MADP/{args.name}.pth')
         
         if self.args.fingers4:
@@ -238,7 +245,7 @@ class DeltaArraySimEnvironment():
             elif self.args.vis_servo:
                 self.scene.run(policy=self.fingers.visual_servoing)
                 # self.scene.run(policy=self.fingers.do_nothing)
-            elif self.args.diff_policy:
+            elif self.args.behavior_cloning:
                 self.scene.run(policy=self.fingers.test_diffusion_policy)
             else:
                 self.scene.run(policy=self.fingers.test_learned_policy)
@@ -279,7 +286,7 @@ if __name__ == "__main__":
     parser.add_argument("-r", "--real", action="store_true", help="True for Real Robot Expt")
     parser.add_argument("-t", "--test", action="store_true", help="True for Test")
     parser.add_argument("-v", "--vis_servo", action="store_true", help="True for Visual Servoing")
-    parser.add_argument("-dp", "--diff_policy", action="store_true", help="True for Testing Diff Policy")
+    parser.add_argument("-bc", "--behavior_cloning", action="store_true", help="True for Testing Diff Policy")
     parser.add_argument("-nexp", "--num_expts", type=int, default=1, help="Number of Experiments to run")
     parser.add_argument("-gui", "--gui", action="store_true", help="True for GUI")
     parser.add_argument("-avsd", "--add_vs_data", action="store_true", help="True for adding visual servoing data")
