@@ -14,7 +14,7 @@ from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
 import utils.MATSAC.gpt_core as core
 # from utils.openai_utils.logx import EpochLogger
-from utils.MATSAC.multi_agent_replay_buffer import MultiAgentReplayBuffer
+from utils.MATSAC.multi_agent_image_replay_buffer import MultiAgentImageReplayBuffer
 
 class MATSAC:
     def __init__(self, env_dict, hp_dict, logger_kwargs=dict(), train_or_test="train"):
@@ -41,7 +41,7 @@ class MATSAC:
         for p in self.tf_target.parameters():
             p.requires_grad = False
 
-        self.ma_replay_buffer = MultiAgentReplayBuffer(obs_dim=self.obs_dim, act_dim=self.act_dim, size=hp_dict['replay_size'], max_agents=self.tf.max_agents)
+        self.ma_replay_buffer = MultiAgentImageReplayBuffer(act_dim=self.act_dim, size=hp_dict['replay_size'], max_agents=self.tf.max_agents)
 
         # Count variables (protip: try to get a feel for how different size networks behave!)
         var_counts = tuple(core.count_vars(module) for module in [self.tf.decoder_actor, self.tf.decoder_critic1, self.tf.decoder_critic2])

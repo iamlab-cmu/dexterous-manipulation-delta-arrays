@@ -173,7 +173,9 @@ class DeltaArraySim:
         self.new_traj_bool = False
         self.init_traj_pose = None
         self.goal_traj_pose = None
-        self.MegaTestingLoop = [pkl.load(open('./data/test_trajs.pkl', 'rb'))]*len(self.obj_names)
+        self.test_traj_reward = 0
+        self.n_tries = 0
+        self.MegaTestingLoop = [pkl.load(open('./data/test_trajs.pkl', 'rb')) for _ in range(len(self.obj_names))]
 
         self.tracked_trajs = {}
         for name in self.obj_names:
@@ -322,13 +324,17 @@ class DeltaArraySim:
 
     def set_traj_pose(self, env_idx, goal=False):
         return_exit = False
+        print(self.obj_names)
         if goal:
             if len(self.obj_names) == 0:
                 return_exit = True
 
             if len(self.test_trajs) == 0:
+                self.object[env_idx].set_rb_transforms(env_idx, self.obj_name[env_idx], [gymapi.Transform(p=self.obj_dict[self.obj_name[env_idx]][1], r=self.obj_dict[self.obj_name[env_idx]][3])])
                 self.obj_name[env_idx] = self.obj_names.pop(0)
                 self.object[env_idx], object_p, _, object_r = self.obj_dict[self.obj_name[env_idx]]
+
+                len(self.obj_names)
                 self.test_trajs = self.MegaTestingLoop.pop(0)
 
             if len(self.current_traj) == 0:
@@ -338,10 +344,16 @@ class DeltaArraySim:
                 
                 plt.plot(self.current_traj[:, 0], self.current_traj[:, 1], 'o', label=f'Curve Spline')
                 plt.quiver(self.current_traj[:, 0], self.current_traj[:, 1], np.cos(self.current_traj[:, 2]), np.sin(self.current_traj[:, 2]))
-                plt.show()
+                plt.show(block=False)
                 self.current_traj = self.current_traj.tolist()
                 self.init_traj_pose = self.current_traj.pop(0)
+                self.n_tries = 0
 
+            # if (self.test_traj_reward < -3) and (self.n_tries < 4):
+            #     self.current_traj.insert(0, self.goal_traj_pose)
+            #     self.n_tries += 1
+            # else:
+            #     self.n_tries = 0
             self.goal_traj_pose = self.current_traj.pop(0)
             
             yaw = self.goal_traj_pose[2] + np.pi/2
@@ -374,6 +386,8 @@ class DeltaArraySim:
                 self.object[env_idx].set_rb_transforms(env_idx, self.obj_name[env_idx], [gymapi.Transform(p=block_p, r=object_r)])
             else:
                 self.init_pose[env_idx] = np.array([com.p.x, com.p.y, yaw0, com.p.z])
+            
+            self.init_traj_pose = self.goal_traj_pose
             return return_exit, (com.p.x, com.p.y, yaw0)
 
     def get_scene_image(self, env_idx):
@@ -382,7 +396,7 @@ class DeltaArraySim:
         frames = self.cam.frames(env_idx, self.cam_name)
         # self.current_scene_frame[env_idx] = frames['color'].data.astype(np.uint8)
         bgr_image = cv2.cvtColor(frames['color'].data.astype(np.uint8), cv2.COLOR_RGB2BGR)
-        return cv2.resize(bgr_image, (640, 480))
+        return bgr_image
 
     def get_camera_image(self, env_idx):
         self.scene.render_cameras()
@@ -752,7 +766,7 @@ class DeltaArraySim:
             # wandb.log({"Q loss":np.clip(self.agent.q_loss, 0, 100)})
 
 
-    def convert_images_to_video(images, output_filename, fps=60):
+    def convert_images_to_video(self, images, output_filename, fps=60):
         """
         Compress a list of NumPy arrays to an H.265 encoded video.
         
@@ -760,22 +774,21 @@ class DeltaArraySim:
         :param output_filename: Name of the output video file
         :param fps: Frames per second for the output video (default: 60)
         """
-        if not images:
-            raise ValueError("The list of NumPy arrays is empty.")
+        # print(len(images), type(images[0]))
         height, width = images[0].shape[:2]
         
         # Calculate new dimensions for 720p
-        new_height = 720
-        new_width = int((new_height / height) * width)
-        new_width = new_width - (new_width % 2)  # Ensure even width for video encoding
+        # new_height = 480
+        # new_width = int((new_height / height) * width)
+        # new_width = new_width - (new_width % 2)  # Ensure even width for video encoding
         
-        fourcc = cv2.VideoWriter_fourcc(*'hevc')  # H.265 codec
-        out = cv2.VideoWriter(output_filename, fourcc, fps, (new_width, new_height))
+        fourcc = cv2.VideoWriter_fourcc(*'avc1')  # H.264 codec
+        out = cv2.VideoWriter(output_filename, fourcc, fps, (width, height))
         for frame in images:
-            if frame.shape[2] == 3:
-                frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-            frame_resized = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
-            out.write(frame_resized)
+            # if frame.shape[2] == 3:
+            #     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            # frame_resized = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
+            out.write(frame)
             
         out.release()
         print(f"Video saved as {output_filename}")
@@ -922,30 +935,30 @@ class DeltaArraySim:
         self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(actions, -0.03, 0.03)
 
         # po = pos[idx]
-        act_grasp = self.actions_grasp[env_idx, :self.n_idxs[env_idx]]
-        r_poses = self.nn_helper.rb_pos_world[tuple(zip(*self.active_idxs[env_idx]))]
-        r_poses2 = r_poses + act_grasp
-        init_pts = self.init_state[env_idx,:self.n_idxs[env_idx],:2] + r_poses
-        goal_bd_pts = self.init_state[env_idx,:self.n_idxs[env_idx],2:4] + r_poses
-        act = self.actions[env_idx, :self.n_idxs[env_idx]]
+        # act_grasp = self.actions_grasp[env_idx, :self.n_idxs[env_idx]]
+        # r_poses = self.nn_helper.rb_pos_world[tuple(zip(*self.active_idxs[env_idx]))]
+        # r_poses2 = r_poses + act_grasp
+        # init_pts = self.init_state[env_idx,:self.n_idxs[env_idx],:2] + r_poses
+        # goal_bd_pts = self.init_state[env_idx,:self.n_idxs[env_idx],2:4] + r_poses
+        # act = self.actions[env_idx, :self.n_idxs[env_idx]]
 
-        plt.figure(figsize=(10,17.78))
-        plt.scatter(self.nn_helper.kdtree_positions_world[:, 0], self.nn_helper.kdtree_positions_world[:, 1], c='#ddddddff')
-        plt.scatter(init_pts[:, 0], init_pts[:, 1], c = '#00ff00ff')
-        plt.scatter(goal_bd_pts[:, 0], goal_bd_pts[:, 1], c='red')
+        # plt.figure(figsize=(10,17.78))
+        # plt.scatter(self.nn_helper.kdtree_positions_world[:, 0], self.nn_helper.kdtree_positions_world[:, 1], c='#ddddddff')
+        # plt.scatter(init_pts[:, 0], init_pts[:, 1], c = '#00ff00ff')
+        # plt.scatter(goal_bd_pts[:, 0], goal_bd_pts[:, 1], c='red')
 
-        plt.quiver(r_poses[:, 0], r_poses[:, 1], act_grasp[:, 0], act_grasp[:, 1], color='#0000ff88')
-        plt.quiver(r_poses2[:, 0], r_poses2[:, 1], act[:, 0], act[:, 1], color='#ff0000aa')
-        plt.quiver(r_poses2[:, 0], r_poses2[:, 1], act_gt[:, 0], act_gt[:, 1], color='#aaff55aa')
+        # plt.quiver(r_poses[:, 0], r_poses[:, 1], act_grasp[:, 0], act_grasp[:, 1], color='#0000ff88')
+        # plt.quiver(r_poses2[:, 0], r_poses2[:, 1], act[:, 0], act[:, 1], color='#ff0000aa')
+        # plt.quiver(r_poses2[:, 0], r_poses2[:, 1], act_gt[:, 0], act_gt[:, 1], color='#aaff55aa')
 
-        plt.gca().set_aspect('equal')
-        plt.show()
+        # plt.gca().set_aspect('equal')
+        # plt.show()
 
     def test_diffusion_policy(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
         env_ptr = self.scene.env_ptrs[env_idx]
 
-        if self.hp_dict['save_videos']:
+        if self.hp_dict['save_videos'] and (t_step%30 == 0):
             self.images_to_video.append(self.get_scene_image(env_idx))
         
         if self.ep_len[env_idx]==0:
@@ -977,10 +990,9 @@ class DeltaArraySim:
                 self.set_attractor_target(env_idx, t_step, self.actions)
             elif t_step == (self.time_horizon-2):
                 final_pose = self.compute_reward(env_idx, t_step)
-                print(f"Reward: {self.ep_reward[env_idx]}")
+                print(f"{len(self.current_traj)} Reward: {self.ep_reward[env_idx]}")
 
                 if self.hp_dict["print_summary"]:
-                    
                     com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
                     self.temp_var['z_dist'].append(np.linalg.norm(self.init_pose[env_idx][3] - com.p.z))
                     # self.temp_var['initial_l2_dist'].append(np.linalg.norm(self.goal_bd_pts[env_idx] - init_bd_pts))
@@ -991,8 +1003,11 @@ class DeltaArraySim:
                         with open(f"./init_vs_reward_diff_policy.pkl", "wb") as f:
                             pkl.dump(self.temp_var, f)
 
-                if self.hp_dict['save_videos']:
-                    self.convert_images_to_video(self.images_to_video, f"./data/videos/{self.hp_dict['exp_name']}/{len(self.current_traj)}_{len(self.test_trajs)}_{len(self.obj_names)}.mp4")
+                if self.hp_dict['save_videos'] and (len(self.current_traj) == 0):
+                    self.convert_images_to_video(self.images_to_video, f"./data/videos/{self.hp_dict['exp_name']}/{self.hp_dict['algo']}_{len(self.obj_names)}_{len(self.test_trajs)}.avi", fps=30)
+                    del self.images_to_video[:]
+
+                self.test_traj_reward = self.ep_reward[env_idx]
                 self.reset(env_idx)
                 self.current_episode += 1
             elif t_step == (self.time_horizon - 1):
@@ -1007,7 +1022,6 @@ class DeltaArraySim:
                     self.set_block_pose(env_idx, goal=True)
                 
                 self.ep_len[env_idx] = 0
-                del self.images_to_video[:]
 
     def vs_step(self, env_idx, t_step):
         
@@ -1207,12 +1221,14 @@ class DeltaArraySim:
         env_ptr = self.scene.env_ptrs[env_idx]
         t_step = t_step % self.time_horizon
         
-        for i in range(self.num_tips[0]):
-            for j in range(self.num_tips[1]):
-                # if (i==0) and (j==0):
-                #     self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.47), r=self.finga_q))     
-                # else:
-                self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
+        # for i in range(self.num_tips[0]):
+        #     for j in range(self.num_tips[1]):
+        #         # if (i==0) and (j==0):
+        #         #     self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, -0.47), r=self.finga_q))     
+        #         # else:
+        #         self.scene.gym.set_attractor_target(env_ptr, self.attractor_handles[env_ptr][i][j], gymapi.Transform(p=self.finger_positions[i][j] + gymapi.Vec3(0, 0, 0), r=self.finga_q)) 
+    
+    # def verify_test_traj_motion(self, scene, env_idx, t_step, _):
         # if t_step==0:
         #     if len(self.obj_names) == 0:
         #         return_exit = True
@@ -1258,29 +1274,31 @@ class DeltaArraySim:
         #     com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
         #     roll, pitch, yaw = R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')
         #     print(roll, pitch, yaw)
-        # if t_step == 0:
-        #     self.obj_name = self.obj_names.pop()
-        #     self.object[env_idx], _, object_r = self.obj_dict[self.obj_name]
-        #     block_p = gymapi.Vec3(0.13125, 0.1407285, 1.002)
-        #     r = R.from_euler('xyz', [0, 0, 0], degrees=True)
-        #     object_r = gymapi.Quat(*r.as_quat())
-        #     self.object[env_idx].set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p, r=object_r)])
-        # elif t_step == 1:
-        #     img = self.get_camera_image(env_idx)
-        #     _, bd_pts_pix = self.get_boundary_pts(img)
-        #     bd_pts = np.array([self.convert_pix_2_world(bd_pt) for bd_pt in bd_pts_pix])
-        #     idxs = np.arange(len(bd_pts))
-        #     idxs = np.random.choice(idxs, 256, replace=False)
-        #     vertex_normals = geom_utils.compute_vertex_normals(bd_pts)
-        #     normals = geom_utils.ensure_consistent_normals(bd_pts, vertex_normals)
 
-        #     com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name)[0]
-        #     yaw = R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')[2]
-        #     pose = np.array([com.p.x, com.p.y, yaw])
+    # def 
+    #     if t_step == 0:
+    #         self.obj_name = self.obj_names.pop()
+    #         self.object[env_idx], _, object_r = self.obj_dict[self.obj_name]
+    #         block_p = gymapi.Vec3(0.13125, 0.1407285, 1.002)
+    #         r = R.from_euler('xyz', [0, 0, 0], degrees=True)
+    #         object_r = gymapi.Quat(*r.as_quat())
+    #         self.object[env_idx].set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=block_p, r=object_r)])
+    #     elif t_step == 1:
+    #         img = self.get_camera_image(env_idx)
+    #         _, bd_pts_pix = self.get_boundary_pts(img)
+    #         bd_pts = np.array([self.convert_pix_2_world(bd_pt) for bd_pt in bd_pts_pix])
+    #         idxs = np.arange(len(bd_pts))
+    #         idxs = np.random.choice(idxs, 256, replace=False)
+    #         vertex_normals = geom_utils.compute_vertex_normals(bd_pts)
+    #         normals = geom_utils.ensure_consistent_normals(bd_pts, vertex_normals)
 
-        #     print(self.obj_name, pose)
-        #     self.bd_pts_dict[self.obj_name] = (bd_pts_pix[idxs], bd_pts[idxs], normals[idxs], pose)
-        #     with open('./config/assets/obj_props.pkl', 'wb') as f:
-        #         pkl.dump(self.bd_pts_dict, f)
-        # elif t_step == 2:
-        #     self.object[env_idx].set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=gymapi.Vec3(0.13125, 5.1407285, 1.002), r=gymapi.Quat(0,0,0,1))])
+    #         com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name)[0]
+    #         yaw = R.from_quat([com.r.x, com.r.y, com.r.z, com.r.w]).as_euler('xyz')[2]
+    #         pose = np.array([com.p.x, com.p.y, yaw])
+
+    #         print(self.obj_name, pose)
+    #         self.bd_pts_dict[self.obj_name] = (bd_pts_pix[idxs], bd_pts[idxs], normals[idxs], pose)
+    #         with open('./config/assets/obj_props.pkl', 'wb') as f:
+    #             pkl.dump(self.bd_pts_dict, f)
+    #     elif t_step == 2:
+    #         self.object[env_idx].set_rb_transforms(env_idx, self.obj_name, [gymapi.Transform(p=gymapi.Vec3(0.13125, 5.1407285, 1.002), r=gymapi.Quat(0,0,0,1))])

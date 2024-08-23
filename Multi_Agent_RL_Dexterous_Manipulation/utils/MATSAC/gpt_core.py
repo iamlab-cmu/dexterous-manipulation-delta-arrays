@@ -244,6 +244,8 @@ class Transformer(nn.Module):
         self.pos_embedding.load_state_dict(torch.load("./utils/MATSAC/idx_embedding_new.pth", map_location=device))
         for param in self.pos_embedding.parameters():
             param.requires_grad = False
+        log_std = -0.5 * torch.ones(self.action_dim)
+        self.log_std = torch.nn.Parameter(log_std)
 
         if adaln:
             self.decoder_actor = GPT_AdaLN(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['actor'], masked=masked)

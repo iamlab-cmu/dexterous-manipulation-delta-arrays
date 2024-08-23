@@ -21,6 +21,7 @@ from scipy.spatial.distance import cosine
 
 import delta_array_sim
 import delta_array_simplified
+import delta_array_sim_image
 import delta_array_real
 import utils.SAC.sac as sac
 # import utils.DDPG.ddpg as ddpg
@@ -107,7 +108,7 @@ class DeltaArraySimEnvironment():
                 "pi_lr"             : 1e-2,
                 "eta_min"           : 1e-5,
                 "alpha"             : 0.2,
-                "replay_size"       : 500000,
+                "replay_size"       : 200000,
                 'seed'              : 69420,
                 'optim'             : 'sgd',
                 'epsilon'           : 0.9,
@@ -117,6 +118,7 @@ class DeltaArraySimEnvironment():
                 "infer_every"       : 4000,
                 "inference_length"  : 10,
                 'save_videos'       : args.save_vid,
+                'act_limit'         : 0.03,
 
                 # Multi Agent Part Below:
                 'state_dim'         : 6,
@@ -172,8 +174,10 @@ class DeltaArraySimEnvironment():
         elif self.args.behavior_cloning:
             self.pushing_agent.load_saved_policy(f'./utils/MADP/{args.name}.pth')
         
-        if self.args.fingers4:
+        if self.args.data_type=="finger4":
             self.fingers = delta_array_simplified.DeltaArraySim(self.scene, self.cfg, self.objects, self.table, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
+        elif self.args.data_type=="images":
+            self.fingers = delta_array_sim_image.DeltaArraySim(self.scene, self.cfg, self.objects, self.table, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
         else:
             self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.objects, self.table, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
         
@@ -261,7 +265,7 @@ class DeltaArrayRealEnvironment():
                 "q_lr"        :1e-4,
                 "pi_lr"       :1e-4,
                 "alpha"       :0.2,
-                "replay_size" :100000,
+                "replay_size" :200000,
                 'seed'        :3
             }
 
@@ -306,7 +310,7 @@ if __name__ == "__main__":
     parser.add_argument("-adaln", "--adaln", action="store_true", help="Use AdaLN Zero Transformer")
     parser.add_argument("-etamin", "--etamin", type=float, default=1e-5, help="% of data to use for visual servoing")
     parser.add_argument("-savevid", "--save_vid", action="store_true", help="Save Videos at inference")
-    parser.add_argument("-fingers4", "--fingers4", action="store_true", help="Use simplified setup with only 4 fingers")
+    parser.add_argument("-data", "--data_type", type=str, default=None, help="Use simplified setup with only 4 fingers")
     parser.add_argument("-XX", "--donothing", action="store_true", help="Do nothing to test sim")
     parser.add_argument("-gradnorm", "--gradnorm", type=float, default=1.0, help="Grad norm for training")
     parser.add_argument("-test_traj", "--test_traj", action="store_true", help="Test on trajectories")

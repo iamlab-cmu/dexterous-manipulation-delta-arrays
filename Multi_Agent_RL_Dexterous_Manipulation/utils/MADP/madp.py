@@ -1,5 +1,5 @@
 import numpy as np
-%matplotlib inline
+# %matplotlib inline
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle as pkl
@@ -56,31 +56,11 @@ class DataNormalizer:
         return inverse_transformed_data.reshape(data.shape)
 
 class Normalizer:
-    def __init__(self, state_ranges, action_ranges):
-        self.state_min = np.array([state_ranges['x'][0], state_ranges['x'][1], state_ranges['y'][0], state_ranges['y'][1], state_ranges['y'][0], state_ranges['y'][1]])
-        self.state_max = np.array([state_ranges['x'][2], state_ranges['x'][3], state_ranges['y'][2], state_ranges['y'][3], state_ranges['y'][2], state_ranges['y'][3]])
-        self.action_min = np.array(action_ranges['x'])
-        self.action_max = np.array(action_ranges['y'])
-
-    def normalize_states(self, states):
-        return (states - self.state_min) / (self.state_max - self.state_min)
-
-    def denormalize_states(self, normalized_states):
-        return normalized_states * (self.state_max - self.state_min) + self.state_min
-
-    def normalize_actions(self, actions):
-        return (actions - self.action_min) / (self.action_max - self.action_min)
-
-    def denormalize_actions(self, normalized_actions):
-        return normalized_actions * (self.action_max - self.action_min) + self.action_min
-
-
-class Normalizer:
-    def __init__(self, state_ranges, action_ranges):
-        self.state_min = np.array([state_ranges['x'][0], state_ranges['x'][1], state_ranges['y'][0], state_ranges['y'][1], state_ranges['y'][0], state_ranges['y'][1]])
-        self.state_max = np.array([state_ranges['x'][2], state_ranges['x'][3], state_ranges['y'][2], state_ranges['y'][3], state_ranges['y'][2], state_ranges['y'][3]])
-        self.action_min = np.array(action_ranges['x'])
-        self.action_max = np.array(action_ranges['y'])
+    def __init__(self):
+        self.state_min = np.array([0, -0.0216, 0, -0.0216, 0, -0.0216])
+        self.state_max = np.array([0.265, 0.3031, 0.265, 0.3031, 0.265, 0.3031])
+        self.action_min = np.array([-0.03, -0.03])
+        self.action_max = np.array([0.03, 0.03])
 
     def normalize_states(self, states):
         return (states - self.state_min) / (self.state_max - self.state_min)
@@ -155,8 +135,27 @@ def get_smol_dataset(states, actions, state_scaler, action_scaler, pos, num_agen
     smol_num_agents = num_agents[final_indices]
     return ImitationDataset(smol_states, smol_actions, state_scaler, action_scaler, smol_pos, smol_num_agents, smol_obj_names, obj_of_interest=obj_of_interest)
 
-def get_dataset_and_dataloaders(data_pkg, train_bs:int=256, test_bs:int=1, num_samples:int=1000, obj_of_interest=None, rb_path='../../data/replay_buffer.pkl'):
-    states, actions, pos, num_agents, obj_names, state_scaler, action_scaler = data_pkg
+def get_dataset_and_dataloaders(train_bs:int=128, test_bs:int=1, num_samples:int=1000, obj_of_interest=None, rb_path='../../data/replay_buffer.pkl'):
+    replay_buffer = pkl.load(open('../../data/replay_buffer.pkl', 'rb'))
+
+    rewards = replay_buffer['rew']
+    idxs = np.where(rewards[:50000]>-5)[0]
+    obj_names = np.array(replay_buffer['obj_names'])
+
+    states = replay_buffer['obs'][idxs]
+    actions = replay_buffer['act'][idxs]
+    pos = replay_buffer['pos'][idxs]
+    obj_names = obj_names[idxs]
+    num_agents = replay_buffer['num_agents'][idxs]
+
+    # normalizer = Normalizer()
+    # states = normalizer.normalize_states(states).astype(np.float32)
+    # actions = normalizer.normalize_actions(actions).astype(np.float32)
+    state_scaler = DataNormalizer().fit(states)
+    states = state_scaler.transform(states)
+
+    action_scaler = DataNormalizer().fit(actions)
+    actions = action_scaler.transform(actions)
 
     dataset = get_smol_dataset(states, actions, state_scaler, action_scaler, pos, num_agents, obj_names, num_samples, obj_of_interest)
 
@@ -173,7 +172,7 @@ def get_dataset_and_dataloaders(data_pkg, train_bs:int=256, test_bs:int=1, num_s
     train_loader = DataLoader(train_dataset, batch_size=train_bs, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=test_bs, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=test_bs, shuffle=False)
-    return train_loader, val_loader, test_loader, state_scaler, action_scaler
+    return train_loader, val_loader, test_loader, state_scaler, action_scaler, dataset.encoder
 
 def train(data_pkg, hp_dict):
     train_loader, val_loader, test_loader, state_scaler, action_scaler = get_dataset_and_dataloaders(data_pkg, train_bs=128, test_bs=128, num_samples=hp_dict['num_samples'], obj_of_interest=None)
