@@ -80,7 +80,7 @@ class MATSAC:
             # q_next = r + self.hp_dict['gamma'] * (1 - d) * (torch.min(next_q1, next_q2) - self.hp_dict['alpha'] * next_log_pi)
             q_next = r.unsqueeze(1)
         q_loss1 = F.mse_loss(q1, q_next)
-        q_loss1.backward()        
+        q_loss1.backward()
         q_loss2 = F.mse_loss(q2, q_next)
         q_loss2.backward()
         torch.nn.utils.clip_grad_norm_(self.tf.decoder_critic1.parameters(), self.hp_dict['max_grad_norm'])

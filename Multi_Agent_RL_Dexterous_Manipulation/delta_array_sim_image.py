@@ -519,6 +519,9 @@ class DeltaArraySim:
         Get nearest robot to the boundary -> Crop the image around the robot -> Resize to 224x224 ->
         Randomize the colors to get rgb image.
         """
+        img = self.get_camera_image(env_idx)
+        seg_map, boundary_pts = self.get_boundary_pts(img)
+
         # WE ARE NOT USING NORMALS in Expt#0. Might use later. 
         _, boundary_points, normals, initial_pose = self.bd_pts_dict[self.obj_name[env_idx]]
 
@@ -537,6 +540,7 @@ class DeltaArraySim:
             tfed_bd_pts, transformed_normals = geom_utils.compute_transformation(boundary_points, normals, initial_pose, final_pose)
             self.bd_pts[env_idx] = tfed_bd_pts            
             if not final:
+                self.init_images[env_idx] = img
                 # Get indices of nearest robots to the boundary. We are not using neg_idxs for now. 
                 idxs, neg_idxs = self.nn_helper.get_nn_robots_world(tfed_bd_pts)
                 self.active_idxs[env_idx] = list(idxs)
@@ -570,6 +574,7 @@ class DeltaArraySim:
                     self.final_state[env_idx, :self.n_idxs[env_idx], 4:6] = raw_rb_pos
                 
             else:
+                self.final_images[env_idx] = img
                 # print(f'{self.obj_name[env_idx]} final yaw: {yaw}')
                 _, final_nn_bd_pts = self.nn_helper.get_min_dist_world(tfed_bd_pts, self.active_idxs[env_idx], self.actions[env_idx])
                 self.final_state[env_idx, :self.n_idxs[env_idx], :2] = final_nn_bd_pts
@@ -701,12 +706,13 @@ class DeltaArraySim:
             self.log_data(env_idx, agent)
         # com = self.object.get_rb_transforms(env_idx, self.obj_name)[0]
         
+        # print(self.init_images)
         self.init_images[env_idx] = cv2.resize(self.init_images[env_idx], (960, 540))
         self.goal_images[env_idx] = cv2.resize(self.goal_images[env_idx], (960, 540))
-        init_obs = np.vstack(self.init_images[env_idx], self.goal_images[env_idx])
+        init_obs = np.vstack([self.init_images[env_idx], self.goal_images[env_idx]])
         agent.ma_replay_buffer.store(init_obs, self.actions[env_idx], self.pos[env_idx], self.ep_reward[env_idx], self.final_images[env_idx], True, self.n_idxs[env_idx], self.obj_name[env_idx])
         
-        # print(self.current_episode)
+        print(self.current_episode)
         if (self.current_episode%10000)==0:
             print(f"Reward: {self.ep_reward[env_idx]} @ {self.current_episode}")
             agent.ma_replay_buffer.save_RB()
