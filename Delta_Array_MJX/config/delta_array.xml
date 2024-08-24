@@ -1,490 +1,473 @@
-
-    <mujoco model="delta_array">
-    <compiler angle="degree" coordinate="local" inertiafromgeom="true" />
-    <option timestep="0.01" gravity="0 0 -9.83" />
-    <default>
-        <geom type="capsule" size="0.0075 0.01" />
-    </default>
-    <worldbody>
-    
-<body name="fingertip_0" pos="0.0 0.0 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_0_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_0_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_1" pos="0.0 0.043301 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_1_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_1_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_2" pos="0.0 0.086602 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_2_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_2_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_3" pos="0.0 0.129903 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_3_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_3_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_4" pos="0.0 0.173204 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_4_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_4_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_5" pos="0.0 0.216505 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_5_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_5_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_6" pos="0.0 0.259806 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_6_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_6_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_7" pos="0.0 0.303107 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_7_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_7_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_8" pos="0.0375 -0.02165 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_8_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_8_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_9" pos="0.0375 0.021651 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_9_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_9_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_10" pos="0.0375 0.064952 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_10_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_10_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_11" pos="0.0375 0.10825299999999999 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_11_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_11_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_12" pos="0.0375 0.151554 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_12_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_12_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_13" pos="0.0375 0.194855 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_13_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_13_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_14" pos="0.0375 0.23815599999999998 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_14_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_14_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_15" pos="0.0375 0.281457 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_15_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_15_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_16" pos="0.075 0.0 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_16_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_16_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_17" pos="0.075 0.043301 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_17_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_17_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_18" pos="0.075 0.086602 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_18_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_18_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_19" pos="0.075 0.129903 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_19_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_19_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_20" pos="0.075 0.173204 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_20_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_20_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_21" pos="0.075 0.216505 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_21_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_21_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_22" pos="0.075 0.259806 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_22_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_22_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_23" pos="0.075 0.303107 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_23_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_23_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_24" pos="0.11249999999999999 -0.02165 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_24_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_24_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_25" pos="0.11249999999999999 0.021651 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_25_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_25_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_26" pos="0.11249999999999999 0.064952 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_26_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_26_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_27" pos="0.11249999999999999 0.10825299999999999 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_27_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_27_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_28" pos="0.11249999999999999 0.151554 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_28_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_28_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_29" pos="0.11249999999999999 0.194855 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_29_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_29_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_30" pos="0.11249999999999999 0.23815599999999998 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_30_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_30_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_31" pos="0.11249999999999999 0.281457 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_31_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_31_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_32" pos="0.15 0.0 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_32_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_32_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_33" pos="0.15 0.043301 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_33_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_33_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_34" pos="0.15 0.086602 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_34_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_34_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_35" pos="0.15 0.129903 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_35_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_35_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_36" pos="0.15 0.173204 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_36_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_36_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_37" pos="0.15 0.216505 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_37_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_37_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_38" pos="0.15 0.259806 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_38_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_38_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_39" pos="0.15 0.303107 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_39_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_39_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_40" pos="0.1875 -0.02165 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_40_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_40_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_41" pos="0.1875 0.021651 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_41_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_41_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_42" pos="0.1875 0.064952 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_42_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_42_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_43" pos="0.1875 0.10825299999999999 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_43_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_43_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_44" pos="0.1875 0.151554 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_44_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_44_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_45" pos="0.1875 0.194855 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_45_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_45_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_46" pos="0.1875 0.23815599999999998 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_46_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_46_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_47" pos="0.1875 0.281457 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_47_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_47_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_48" pos="0.22499999999999998 0.0 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_48_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_48_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_49" pos="0.22499999999999998 0.043301 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_49_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_49_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_50" pos="0.22499999999999998 0.086602 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_50_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_50_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_51" pos="0.22499999999999998 0.129903 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_51_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_51_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_52" pos="0.22499999999999998 0.173204 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_52_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_52_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_53" pos="0.22499999999999998 0.216505 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_53_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_53_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_54" pos="0.22499999999999998 0.259806 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_54_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_54_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_55" pos="0.22499999999999998 0.303107 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_55_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_55_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_56" pos="0.2625 -0.02165 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_56_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_56_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_57" pos="0.2625 0.021651 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_57_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_57_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_58" pos="0.2625 0.064952 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_58_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_58_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_59" pos="0.2625 0.10825299999999999 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_59_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_59_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_60" pos="0.2625 0.151554 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_60_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_60_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_61" pos="0.2625 0.194855 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_61_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_61_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_62" pos="0.2625 0.23815599999999998 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_62_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_62_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-<body name="fingertip_63" pos="0.2625 0.281457 1.5">
-            <geom rgba="1 0 0 1" />
-            <joint name="fingertip_63_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03"/>
-            <joint name="fingertip_63_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03"/>
-        </body>
-
-        
-        <body name="transparent_table" pos="0 0 0">
-            <geom name="collision_geom" type="box" size="1 1 1" contype="1" conaffinity="1"
-                material="collision_material" />
-            <geom name="visual_geom" type="box" size="0.15 0.15 0.015" contype="0" conaffinity="0"
-                material="visual_material" />
-        </body>
-        <body name="block" pos="0.13125 0.1407285 1.021"> <!-- 1.021 = table height(1) + block
-            height/2(0.01) + tolerance(0.001) -->
-            <freejoint />
-            <body name="block_face" pos="0 0 -0.01">
-                <geom name="disc_face" size="0.025 0.05 0.0005" type="box" rgba="0 1 0 1" />
-            </body>
-            <body name="block_body" pos="0 0 0">
-                <geom name="disc_body" size="0.025 0.05 0.0095" type="box" rgba="0 0 1 1" />
-            </body>
-        </body>
-        
-        <!-- <body name="fiducial_lt" pos="-0.06 -0.2035 1.021">
-            <freejoint/>
-            <geom mass="10000000" name="fiducial_lt" size="0.005 0.005 0.001" type="box" rgba="1 0 0 1"/>
-        </body>
-        <body name="fiducial_rb" pos="0.3225 0.485107 1.021">
-            <freejoint/>
-            <geom mass="10000000" name="fiducial_rb"  size="0.005 0.005 0.001" type="box" rgba="1 0 0 1"/>
-        </body> -->
-    </worldbody>
-    <actuator>
-
-<position joint="fingertip_0_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_0_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_1_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_1_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_2_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_2_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_3_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_3_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_4_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_4_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_5_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_5_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_6_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_6_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_7_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_7_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_8_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_8_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_9_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_9_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_10_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_10_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_11_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_11_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_12_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_12_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_13_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_13_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_14_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_14_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_15_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_15_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_16_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_16_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_17_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_17_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_18_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_18_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_19_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_19_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_20_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_20_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_21_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_21_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_22_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_22_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_23_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_23_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_24_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_24_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_25_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_25_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_26_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_26_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_27_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_27_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_28_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_28_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_29_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_29_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_30_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_30_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_31_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_31_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_32_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_32_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_33_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_33_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_34_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_34_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_35_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_35_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_36_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_36_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_37_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_37_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_38_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_38_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_39_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_39_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_40_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_40_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_41_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_41_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_42_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_42_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_43_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_43_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_44_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_44_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_45_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_45_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_46_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_46_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_47_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_47_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_48_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_48_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_49_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_49_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_50_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_50_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_51_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_51_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_52_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_52_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_53_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_53_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_54_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_54_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_55_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_55_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_56_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_56_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_57_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_57_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_58_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_58_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_59_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_59_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_60_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_60_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_61_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_61_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_62_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_62_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-<position joint="fingertip_63_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-            <position joint="fingertip_63_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15"/>
-
-    </actuator>
+<?xml version='1.0' encoding='utf-8'?>
+<mujoco model="delta_array">
+  <compiler angle="degree" coordinate="local" inertiafromgeom="true" />
+  <option timestep="0.01" gravity="0 0 -9.83" />
+  <default>
+    <geom type="capsule" size="0.0075 0.01" />
+  </default>
+  <worldbody>
+    <body name="fingertip_0" pos="0.000000 0.000000 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_0_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_0_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_1" pos="0.000000 0.043301 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_1_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_1_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_2" pos="0.000000 0.086602 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_2_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_2_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_3" pos="0.000000 0.129903 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_3_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_3_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_4" pos="0.000000 0.173204 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_4_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_4_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_5" pos="0.000000 0.216505 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_5_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_5_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_6" pos="0.000000 0.259806 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_6_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_6_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_7" pos="0.000000 0.303107 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_7_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_7_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_8" pos="0.037500 -0.021650 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_8_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_8_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_9" pos="0.037500 0.021651 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_9_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_9_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_10" pos="0.037500 0.064952 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_10_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_10_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_11" pos="0.037500 0.108253 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_11_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_11_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_12" pos="0.037500 0.151554 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_12_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_12_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_13" pos="0.037500 0.194855 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_13_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_13_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_14" pos="0.037500 0.238156 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_14_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_14_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_15" pos="0.037500 0.281457 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_15_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_15_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_16" pos="0.075000 0.000000 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_16_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_16_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_17" pos="0.075000 0.043301 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_17_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_17_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_18" pos="0.075000 0.086602 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_18_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_18_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_19" pos="0.075000 0.129903 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_19_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_19_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_20" pos="0.075000 0.173204 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_20_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_20_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_21" pos="0.075000 0.216505 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_21_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_21_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_22" pos="0.075000 0.259806 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_22_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_22_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_23" pos="0.075000 0.303107 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_23_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_23_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_24" pos="0.112500 -0.021650 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_24_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_24_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_25" pos="0.112500 0.021651 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_25_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_25_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_26" pos="0.112500 0.064952 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_26_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_26_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_27" pos="0.112500 0.108253 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_27_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_27_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_28" pos="0.112500 0.151554 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_28_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_28_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_29" pos="0.112500 0.194855 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_29_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_29_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_30" pos="0.112500 0.238156 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_30_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_30_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_31" pos="0.112500 0.281457 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_31_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_31_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_32" pos="0.150000 0.000000 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_32_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_32_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_33" pos="0.150000 0.043301 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_33_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_33_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_34" pos="0.150000 0.086602 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_34_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_34_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_35" pos="0.150000 0.129903 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_35_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_35_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_36" pos="0.150000 0.173204 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_36_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_36_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_37" pos="0.150000 0.216505 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_37_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_37_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_38" pos="0.150000 0.259806 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_38_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_38_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_39" pos="0.150000 0.303107 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_39_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_39_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_40" pos="0.187500 -0.021650 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_40_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_40_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_41" pos="0.187500 0.021651 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_41_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_41_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_42" pos="0.187500 0.064952 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_42_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_42_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_43" pos="0.187500 0.108253 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_43_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_43_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_44" pos="0.187500 0.151554 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_44_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_44_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_45" pos="0.187500 0.194855 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_45_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_45_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_46" pos="0.187500 0.238156 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_46_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_46_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_47" pos="0.187500 0.281457 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_47_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_47_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_48" pos="0.225000 0.000000 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_48_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_48_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_49" pos="0.225000 0.043301 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_49_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_49_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_50" pos="0.225000 0.086602 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_50_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_50_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_51" pos="0.225000 0.129903 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_51_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_51_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_52" pos="0.225000 0.173204 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_52_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_52_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_53" pos="0.225000 0.216505 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_53_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_53_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_54" pos="0.225000 0.259806 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_54_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_54_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_55" pos="0.225000 0.303107 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_55_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_55_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_56" pos="0.262500 -0.021650 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_56_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_56_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_57" pos="0.262500 0.021651 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_57_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_57_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_58" pos="0.262500 0.064952 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_58_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_58_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_59" pos="0.262500 0.108253 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_59_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_59_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_60" pos="0.262500 0.151554 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_60_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_60_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_61" pos="0.262500 0.194855 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_61_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_61_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_62" pos="0.262500 0.238156 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_62_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_62_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="fingertip_63" pos="0.262500 0.281457 1.500000">
+      <geom rgba="1 0 0 1" />
+      <joint name="fingertip_63_x" type="slide" axis="1 0 0" limited="true" range="-0.03 0.03" />
+      <joint name="fingertip_63_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
+    </body>
+    <body name="transparent_table" pos="0 0 0">
+      <geom name="collision_geom" type="box" size="1 1 1" contype="1" conaffinity="1" material="collision_material" />
+      <geom name="visual_geom" type="box" size="0.15 0.15 0.015" contype="0" conaffinity="0" material="visual_material" />
+    </body>
+    <body name="block" pos="0.13125 0.1407285 1.021">
+      <freejoint />
+      <body name="block_face" pos="0 0 -0.01">
+        <geom name="disc_face" size="0.025 0.05 0.0005" type="box" rgba="0 1 0 1" />
+      </body>
+      <body name="block_body" pos="0 0 0">
+        <geom name="disc_body" size="0.025 0.05 0.0095" type="box" rgba="0 0 1 1" />
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <position joint="fingertip_0_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_0_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_1_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_1_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_2_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_2_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_3_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_3_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_4_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_4_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_5_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_5_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_6_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_6_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_7_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_7_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_8_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_8_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_9_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_9_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_10_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_10_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_11_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_11_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_12_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_12_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_13_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_13_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_14_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_14_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_15_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_15_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_16_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_16_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_17_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_17_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_18_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_18_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_19_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_19_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_20_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_20_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_21_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_21_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_22_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_22_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_23_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_23_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_24_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_24_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_25_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_25_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_26_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_26_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_27_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_27_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_28_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_28_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_29_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_29_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_30_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_30_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_31_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_31_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_32_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_32_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_33_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_33_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_34_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_34_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_35_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_35_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_36_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_36_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_37_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_37_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_38_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_38_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_39_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_39_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_40_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_40_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_41_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_41_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_42_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_42_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_43_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_43_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_44_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_44_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_45_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_45_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_46_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_46_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_47_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_47_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_48_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_48_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_49_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_49_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_50_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_50_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_51_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_51_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_52_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_52_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_53_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_53_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_54_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_54_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_55_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_55_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_56_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_56_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_57_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_57_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_58_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_58_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_59_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_59_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_60_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_60_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_61_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_61_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_62_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_62_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_63_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+    <position joint="fingertip_63_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="1" kv="0.15" />
+  </actuator>
 </mujoco>

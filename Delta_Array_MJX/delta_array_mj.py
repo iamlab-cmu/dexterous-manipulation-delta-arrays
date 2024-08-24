@@ -1,59 +1,36 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import config.delta_array_generator
-
+import argparse
 import mujoco
 import glfw
 import mujoco_viewer
 
-class DeltaArrayMJ:
-    def __init__(self, mjcf_path, cfg):
-        self.model = mujoco.MjModel.from_xml_path(mjcf_path)
-        self.data = mujoco.MjData(self.model)
-        self.cfg = cfg
+import config.delta_array_generator
+from base_env import BaseMJEnv
 
-        self.setup_cam(cfg)
+class DeltaArrayMJ(BaseMJEnv):
+    def __init__(self, args):
+        super().__init__(args)
+
+    def run_sim(self):
+        loop = range(self.args.simlen) if self.args.simlen is not None else iter(int, 1)
+        for i in loop:
+            self.update_sim()
+
     
-    def setup_cam(self):
-        glfw.init()
-        glfw.window_hint(glfw.VISIBLE, self.cfg['visible'])
-        window = glfw.create_window(self.cfg['width'], self.cfg['height'], self.cfg["title"], None, None)
-        glfw.make_context_current(window)
-        glfw.swap_interval(1)
-        framebuffer_width, framebuffer_height = glfw.get_framebuffer_size(window)
-
-        self.opt = mujoco.MjvOption()
-        self.cam = mujoco.MjvCamera()
-        self.cam.lookat = np.array((0.13125, 0.1407285, 1.5))
-        self.cam.distance = 0.85
-        self.cam.azimuth = 0
-        self.cam.elevation = 90
-        self.scene = mujoco.MjvScene(self.model, maxgeom=10000)
-        self.pert = mujoco.MjvPerturb()
-
-        self.context = mujoco.MjrContext(model, mujoco.mjtFontScale.mjFONTSCALE_150.value)
-        self.viewport = mujoco.MjrRect(0, 0, framebuffer_width, framebuffer_height)
-        self.rgb_pixels = np.zeros((height, width, 3), dtype=np.uint8)
-
-    def get_image(self):
-        mujoco.mjv_updateScene(self.model, self.data, self.opt, self.pert, self.cam, mujoco.mjtCatBit.mjCAT_ALL.value, self.scene)
-        mujoco.mjr_render(self.viewport, self.scene, self.context)
-        mujoco.mjr_readPixels(self.rgb_pixels, None, self.viewport, self.context)
-        self.rgb_pixels = np.flipud(self.rgb_pixels)
-
-
-
-
-
-
 
 if __name__ == "__main__":
-    mjcf_path = './config/env.xml'
-    cfg = {
-        "width": 1920,
-        "height": 1080,
-        "visible": 0,
-        "title": "no_title"
-    }
-    delta_array_mj = DeltaArrayMJ(mjcf_path, cfg)
-    print("done")
+    # mjcf_path = './config/env.xml'
+    parser = argparse.ArgumentParser(description="A script that greets the user.")
+    parser.add_argument('-path', "--path", type=str, default="./config/env.xml", help="Path to the configuration file")
+    parser.add_argument('-H', '--height', type=int, default=1080, help='Height of the window')
+    parser.add_argument('-W', '--width', type=int, default=1920, help='Width of the window')
+    parser.add_argument('-gui', '--gui',  action='store_true', help='Whether to display the GUI')
+    parser.add_argument('-skip', '--skip', type=int, default=100, help='Number of steps to run sim blind')
+    parser.add_argument('-simlen', '--simlen', type=int, default=None, help='Number of steps to run sim')
+    parser.add_argument('-obj', "--obj_name", type=str, default="disc", help="Object to manipulate in sim")
+    
+    args = parser.parse_args()
+
+    delta_array_mj = DeltaArrayMJ(args)
+    delta_array_mj.run_sim()
