@@ -13,11 +13,12 @@ class DeltaArrayMJ(BaseMJEnv):
         super().__init__(args)
 
     def run_sim(self):
-        loop = range(self.args.simlen) if self.args.simlen is not None else iter(int, 1)
+        loop = range(self.args['simlen']) if self.args['simlen'] is not None else iter(int, 1)
         for i in loop:
             self.update_sim()
 
-    
+    def random_actions(self):
+        self.data.ctrl = np.random.uniform(-1, 1, self.data.ctrl.shape)
 
 if __name__ == "__main__":
     # mjcf_path = './config/env.xml'

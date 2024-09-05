@@ -85,7 +85,7 @@ class SACAgent:
                     run = int(f.readline())
             else:
                 run = 0
-        self.policy.load_state_dict(torch.load(f"./utils/SAC/policy_models/expt_{run}.pt"))
+        self.policy.load_state_dict(torch.load(f"./utils/SAC/policy_models/expt_{run}.pt", weights_only=True))
 
     def get_action(self, obs):
         obs = torch.FloatTensor(obs).unsqueeze(0).to(self.device)

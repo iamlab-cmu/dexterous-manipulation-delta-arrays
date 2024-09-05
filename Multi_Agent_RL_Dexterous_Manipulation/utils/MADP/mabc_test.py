@@ -83,5 +83,5 @@ class MABC:
         return actions.detach().cpu().numpy()
 
     def load_saved_policy(self, path):
-        expt_dict = torch.load(path, map_location=self.device)
+        expt_dict = torch.load(path, map_location=self.device, weights_only=False)
         self.model.load_state_dict(expt_dict['model'])

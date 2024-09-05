@@ -100,20 +100,28 @@ class DeltaArraySimEnvironment():
                     "max_agents"    : 4}
         
         self.hp_dict = {
+                # Env Params
                 "exp_name"          : args.name,
+                'algo'              : self.args.algo,
+                'data_type'         : self.args.data_type,
+                'vis_servo'         : self.args.vis_servo,
+                'test_traj'         : self.args.test_traj,
+                "dont_log"          : self.args.dont_log,
+                "replay_size"       : 500001,
+                'seed'              : 69420,
                 "data_dir"          : "./data/rl_data",
+                
+                # RL params
                 "tau"               : 0.005,
                 "gamma"             : 0.99,
                 "q_lr"              : 1e-2,
                 "pi_lr"             : 1e-2,
                 "eta_min"           : 1e-5,
                 "alpha"             : 0.2,
-                "replay_size"       : 200000,
-                'seed'              : 69420,
                 'optim'             : 'sgd',
                 'epsilon'           : 0.9,
                 "batch_size"        : self.args.bs,
-                "exploration_cutoff": self.args.expl,
+                "warmup_epochs"     : self.args.warmup,
                 "robot_frame"       : self.args.robot_frame,
                 "infer_every"       : 4000,
                 "inference_length"  : 10,
@@ -134,12 +142,8 @@ class DeltaArraySimEnvironment():
                 "delta_array_size"  : [8,8],
                 "add_vs_data"       : self.args.add_vs_data,
                 "ratio"             : self.args.vs_data,
-                "dont_log"          : self.args.dont_log,
                 'print_summary'     : self.args.print_summary,
-                'vis_servo'         : self.args.vis_servo,
-                'test_traj'         : self.args.test_traj,
                 'masked'            : not self.args.unmasked,
-                'algo'              : self.args.algo,
             }
         
         logger_kwargs = {}
@@ -301,7 +305,7 @@ if __name__ == "__main__":
     parser.add_argument("-dev_sim", "--dev_sim", type=int, default=5, help="Device for Sim")
     parser.add_argument("-dev_rl", "--dev_rl", type=int, default=1, help="Device for RL")
     parser.add_argument("-bs", "--bs", type=int, default=256, help="Batch Size")
-    parser.add_argument("-expl", "--expl", type=int, default=512, help="Exploration Cutoff")
+    parser.add_argument("-warmup", "--warmup", type=int, default=5000, help="Exploration Cutoff")
     parser.add_argument("-algo", "--algo", type=str, default="MATSAC", help="RL Algorithm")
     parser.add_argument("-rf", "--robot_frame", action="store_true", help="Robot Frame Yes or No")
     parser.add_argument("-print", "--print_summary", action="store_true", help="Print Summary and Store in Pickle File")

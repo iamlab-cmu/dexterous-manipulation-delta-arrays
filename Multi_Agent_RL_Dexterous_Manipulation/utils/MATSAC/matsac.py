@@ -14,14 +14,10 @@ from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
 import utils.MATSAC.gpt_core as core
 # from utils.openai_utils.logx import EpochLogger
-from utils.MATSAC.multi_agent_image_replay_buffer import MultiAgentImageReplayBuffer
+import utils.multi_agent_replay_buffer as MARB
 
 class MATSAC:
     def __init__(self, env_dict, hp_dict, logger_kwargs=dict(), train_or_test="train"):
-        # if train_or_test == "train":
-            # self.logger = EpochLogger(**logger_kwargs)
-            # self.logger.save_config(locals())
-
         self.train_or_test = train_or_test
         self.hp_dict = hp_dict
         self.env_dict = env_dict
@@ -30,18 +26,20 @@ class MATSAC:
         self.act_limit = self.env_dict['action_space']['high']
         self.device = self.hp_dict['dev_rl']
 
-        # n_layers_dict={'encoder': 2, 'actor': 2, 'critic': 2}
-        self.tf = core.Transformer(self.obs_dim, self.act_dim, self.act_limit, self.hp_dict["model_dim"], self.hp_dict["num_heads"], self.hp_dict["dim_ff"], self.hp_dict["n_layers_dict"], self.hp_dict["dropout"], self.device, self.hp_dict["delta_array_size"], self.hp_dict["adaln"], self.hp_dict['masked'])
-        self.tf_target = deepcopy(self.tf)
+        if self.hp_dict['data_type'] == "image":
+            self.ma_replay_buffer = MARB.MultiAgentImageReplayBuffer(act_dim=self.act_dim, size=hp_dict['replay_size'], max_agents=self.tf.max_agents)
+            # TODO: In future add ViT here as an option
+        else:
+            self.tf = core.Transformer(self.obs_dim, self.act_dim, self.act_limit, self.hp_dict["model_dim"], self.hp_dict["num_heads"], self.hp_dict["dim_ff"], self.hp_dict["n_layers_dict"], self.hp_dict["dropout"], self.device, self.hp_dict["delta_array_size"], self.hp_dict["adaln"], self.hp_dict['masked'])
+            self.tf_target = deepcopy(self.tf)
 
-        self.tf = self.tf.to(self.device)
-        self.tf_target = self.tf_target.to(self.device)
+            self.tf = self.tf.to(self.device)
+            self.tf_target = self.tf_target.to(self.device)
 
-        # Freeze target networks with respect to optimizers (only update via polyak averaging)
-        for p in self.tf_target.parameters():
-            p.requires_grad = False
-
-        self.ma_replay_buffer = MultiAgentImageReplayBuffer(act_dim=self.act_dim, size=hp_dict['replay_size'], max_agents=self.tf.max_agents)
+            # Freeze target networks with respect to optimizers (only update via polyak averaging)
+            for p in self.tf_target.parameters():
+                p.requires_grad = False
+            self.ma_replay_buffer = MARB.MultiAgentReplayBuffer(obs_dim=self.obs_dim, act_dim=self.act_dim, size=hp_dict['replay_size'], max_agents=self.tf.max_agents)
 
         # Count variables (protip: try to get a feel for how different size networks behave!)
         var_counts = tuple(core.count_vars(module) for module in [self.tf.decoder_actor, self.tf.decoder_critic1, self.tf.decoder_critic2])
@@ -62,9 +60,6 @@ class MATSAC:
         
         self.q_loss = None
         self.internal_updates_counter = 0
-        # Set up model saving
-        # if self.train_or_test == "train":
-        #     self.logger.setup_pytorch_saver(self.tf)
 
     def compute_q_loss(self, s1, a, s2, r, d, pos):
         q1 = self.tf.decoder_critic1(s1, a, pos).mean(dim=1)
@@ -120,7 +115,7 @@ class MATSAC:
                 param_group['lr'] = 1e-6
             for param_group in self.optimizer_actor.param_groups:
                 param_group['lr'] = 1e-6
-        elif self.internal_updates_counter == 10001:
+        elif self.internal_updates_counter == self.hp_dict['warmup_epochs']:
             for param_group in self.optimizer_critic.param_groups:
                 param_group['lr'] = self.hp_dict['q_lr']
             for param_group in self.optimizer_actor.param_groups:
@@ -159,5 +154,5 @@ class MATSAC:
             return actions.detach().cpu().numpy()
         
     def load_saved_policy(self, path='./data/rl_data/backup/matsac_expt_grasp/pyt_save/model.pt'):
-        self.tf.load_state_dict(torch.load(path, map_location=self.hp_dict['dev_rl']))
+        self.tf.load_state_dict(torch.load(path, map_location=self.hp_dict['dev_rl'], weights_only=True))
         # self.tf_target = deepcopy(self.tf)

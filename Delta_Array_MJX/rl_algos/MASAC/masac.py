@@ -174,7 +174,7 @@ class MASAC:
         return actions
 
     def load_saved_policy(self, path='./data/rl_data/backup/sac_expt_grasp/pyt_save/model.pt'):
-        self.ac.load_state_dict(torch.load(path))
+        self.ac.load_state_dict(torch.load(path, weights_only=True))
 
     def test_policy(self, o):
         with torch.no_grad():

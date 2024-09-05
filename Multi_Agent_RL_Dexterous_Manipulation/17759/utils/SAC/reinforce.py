@@ -119,7 +119,7 @@ class REINFORCE:
         torch.save(self.policy_nw.state_dict(), f"./utils/SAC/policy_models/reinforce_expt_{self.expt_no}.pt")
 
     def load_policy_model(self):
-        self.policy_nw.load_state_dict(torch.load(f"./utils/SAC/policy_models/reinforce_expt_None.pt"))
+        self.policy_nw.load_state_dict(torch.load(f"./utils/SAC/policy_models/reinforce_expt_None.pt", weights_only=True))
 
     def test_policy(self, state):
         self.policy_nw.eval()

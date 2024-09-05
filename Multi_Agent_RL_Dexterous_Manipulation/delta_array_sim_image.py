@@ -293,8 +293,8 @@ class DeltaArraySim:
         if goal:
             self.object[env_idx].set_rb_transforms(env_idx, self.obj_name[env_idx], [gymapi.Transform(p=self.obj_dict[self.obj_name[env_idx]][1], r=self.obj_dict[self.obj_name[env_idx]][3])])
             # self.scene.gym.set_attractor_target(self.scene.env_ptrs[env_idx], self.obj_attr_handles[self.scene.env_ptrs[env_idx]][self.obj_name[env_idx]], gymapi.Transform(p=self.obj_dict[self.obj_name[env_idx]][2], r=self.obj_dict[self.obj_name[env_idx]][3]))
-            # self.obj_name[env_idx] = random.choice(self.obj_names)
-            self.obj_name[env_idx] = "star"
+            self.obj_name[env_idx] = random.choice(self.obj_names)
+            # self.obj_name[env_idx] = "star"
             self.object[env_idx], object_p, _, object_r = self.obj_dict[self.obj_name[env_idx]]
 
             yaw = np.random.uniform(-np.pi, np.pi)
@@ -709,11 +709,17 @@ class DeltaArraySim:
         # print(self.init_images)
         self.init_images[env_idx] = cv2.resize(self.init_images[env_idx], (960, 540))
         self.goal_images[env_idx] = cv2.resize(self.goal_images[env_idx], (960, 540))
-        init_obs = np.vstack([self.init_images[env_idx], self.goal_images[env_idx]])
-        agent.ma_replay_buffer.store(init_obs, self.actions[env_idx], self.pos[env_idx], self.ep_reward[env_idx], self.final_images[env_idx], True, self.n_idxs[env_idx], self.obj_name[env_idx])
+        self.final_images[env_idx] = cv2.resize(self.final_images[env_idx], (960, 540))
+        cv2.imwrite(f'./data/expert_images/{agent.ma_replay_buffer.ptr}_init.jpg', self.init_images[env_idx])
+        cv2.imwrite(f'./data/expert_images/{agent.ma_replay_buffer.ptr}_goal.jpg', self.goal_images[env_idx])
+        cv2.imwrite(f'./data/expert_images/{agent.ma_replay_buffer.ptr}_final.jpg', self.final_images[env_idx])
+
+        # init_obs = np.vstack([self.init_images[env_idx], self.goal_images[env_idx]])
+        agent.ma_replay_buffer.store(f'./data/expert_images/{agent.ma_replay_buffer.ptr}_init.jpg', f'./data/expert_images/{agent.ma_replay_buffer.ptr}_final.jpg',
+                                     f'./data/expert_images/{agent.ma_replay_buffer.ptr}_goal.jpg', self.actions[env_idx], self.pos[env_idx], self.ep_reward[env_idx],  True, self.n_idxs[env_idx], self.obj_name[env_idx])
         
-        print(self.current_episode)
-        if (self.current_episode%10000)==0:
+        # print(self.current_episode)
+        if (self.current_episode%1000)==0:
             print(f"Reward: {self.ep_reward[env_idx]} @ {self.current_episode}")
             agent.ma_replay_buffer.save_RB()
 

@@ -99,7 +99,7 @@ class DDPG:
         return np.clip(a, -self.act_limit, self.act_limit)
 
     def load_saved_policy(self, path):
-        self.ac.load_state_dict(torch.load('./data/rl_data/ddpg_expt_0/ddpg_expt_0_s69420/pyt_save/model.pt'))
+        self.ac.load_state_dict(torch.load('./data/rl_data/ddpg_expt_0/ddpg_expt_0_s69420/pyt_save/model.pt', weights_only=True))
 
     def test_policy(self, o):
         with torch.no_grad():

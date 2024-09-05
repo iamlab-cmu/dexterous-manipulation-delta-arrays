@@ -16,3 +16,5 @@ replay_buffer*
 tensorboard/
 madp_*
 *.pkl
+*.jpg
+*.png

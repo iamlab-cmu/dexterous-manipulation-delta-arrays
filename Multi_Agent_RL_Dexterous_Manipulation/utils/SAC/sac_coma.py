@@ -147,7 +147,7 @@ class SAC:
         return self.ac.act(torch.as_tensor(obs, dtype=torch.float32), deterministic)
 
     def load_saved_policy(self, path):
-        self.ac.load_state_dict(torch.load(path, map_location=self.device))
+        self.ac.load_state_dict(torch.load(path, map_location=self.device, weights_only=True))
         # self.ac.to(device)
 
     def test_policy(self, o):
