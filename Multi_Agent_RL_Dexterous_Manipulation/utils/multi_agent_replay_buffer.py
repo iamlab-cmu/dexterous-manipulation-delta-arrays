@@ -15,6 +15,10 @@ class MultiAgentReplayBuffer:
         self.obj_names = [None]*size
         self.goal_final_pose_buf = np.zeros((size, 6), dtype=np.float32) # <x1, y1, yaw1, x2, y2, yaw2>
         self.ptr, self.size, self.max_size = 0, 0, size
+        
+        with open('./utils/MADP/normalizer_bc.pkl', 'rb') as f:
+            normalizer = pkl.load(f)
+        self.obj_name_encoder = normalizer['obj_name_encoder']
 
     def store(self, obs, act, pos, rew, next_obs, done, n_agents, obj_name, goal_final_pose=None):
         self.obs_buf[self.ptr] = obs
@@ -39,6 +43,7 @@ class MultiAgentReplayBuffer:
                      rew=self.rew_buf[idxs],
                      done=self.done_buf[idxs],
                      num_agents=self.num_agents_buf[idxs],
+                     obj_name_encs=self.obj_name_encoder.transform(self.obj_names[idxs].ravel()),
                     )
         return {k: torch.as_tensor(v, dtype=torch.float32) for k,v in batch.items()}
 

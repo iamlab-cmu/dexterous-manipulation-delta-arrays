@@ -30,6 +30,7 @@ import utils.MATSAC.matsac as matsac
 import utils.MATDQN.matdqn as matdqn
 import utils.MADP.madptest as madp0
 import utils.MADP.mabc_test as mabc
+import utils.MADP.mabc_finetune as mabc_finetune
 from utils.MADP.madp import DataNormalizer
 import config.assets.obj_dict as obj_dict
 
@@ -144,6 +145,7 @@ class DeltaArraySimEnvironment():
                 "ratio"             : self.args.vs_data,
                 'print_summary'     : self.args.print_summary,
                 'masked'            : not self.args.unmasked,
+                'cmu_ri'             : self.args.cmuri,
             }
         
         logger_kwargs = {}
@@ -171,6 +173,8 @@ class DeltaArraySimEnvironment():
             self.pushing_agent = madp0.MADP()
         elif self.args.algo=="MABC":
             self.pushing_agent = mabc.MABC()
+        elif self.args.algo=="MABC_Finetune":
+            self.pushing_agent = mabc_finetune.MABC_Finetune()
 
         if (self.train_or_test=="test") and (not self.args.behavior_cloning):
             # self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/{args.name}_s69420/pyt_save/model.pt')
@@ -318,6 +322,7 @@ if __name__ == "__main__":
     parser.add_argument("-XX", "--donothing", action="store_true", help="Do nothing to test sim")
     parser.add_argument("-gradnorm", "--gradnorm", type=float, default=1.0, help="Grad norm for training")
     parser.add_argument("-test_traj", "--test_traj", action="store_true", help="Test on trajectories")
+    parser.add_argument("-cmuri", "--cmuri", action="store_true", help="Set to use CMU RI trajectory")
     parser.add_argument("-unmasked", "--unmasked", action="store_true", help="Unmasked Attention Layers")
     args = parser.parse_args()
 

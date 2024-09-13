@@ -46,7 +46,7 @@ while name != "None":
     trajs[name] = [points, smoothed_points]
     name = input("Enter Name of Expt Traj: ")
 
-pkl.dump(trajs, open("./data/test_trajs.pkl", "wb"))
+    pkl.dump(trajs, open("./data/cmu_ri.pkl", "wb"))
 
 plt.scatter(kdtree_positions_world[:, 0], kdtree_positions_world[:, 1], c='#ddddddff')
 for traj in trajs.values():

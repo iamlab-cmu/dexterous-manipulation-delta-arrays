@@ -103,7 +103,7 @@ class DeltaArraySim:
         """ Sim Util Vars """
         self.attractor_handles = {}
         self.obj_attr_handles = {}
-        self.time_horizon = 155 # This acts as max_steps from Gym envs
+        self.time_horizon = 155 # 155 for dt=0.005, 775 for dt 0.001
         # Max episodes to train policy for
         self.max_episodes = 10000001
         # self.current_episode = -self.scene.n_envs
@@ -128,8 +128,8 @@ class DeltaArraySim:
 
         self.goal_yaw_deg = np.zeros((self.scene.n_envs))
         self.n_idxs = np.zeros((self.scene.n_envs),dtype=np.int8)
-        self.init_pose = np.zeros((self.scene.n_envs, 4))
-        self.goal_pose = np.zeros((self.scene.n_envs, 3))
+        self.init_pose = np.zeros((self.scene.n_envs, 7))
+        self.goal_pose = np.zeros((self.scene.n_envs, 7))
         self.state_dim = hp_dict['state_dim']
         self.init_state = np.zeros((self.scene.n_envs, self.max_agents, self.state_dim))
         self.init_grasp_state = np.zeros((self.scene.n_envs, self.max_agents, 4))
@@ -161,8 +161,7 @@ class DeltaArraySim:
         # encoder = LabelEncoder()
         # self.obj_name_encoder = encoder.fit_transform(np.array(self.obj_names).ravel())
 
-        
-        with open('./utils/MADP/normalizer.pkl', 'rb') as f:
+        with open('./utils/MADP/normalizer_bc.pkl', 'rb') as f:
             normalizer = pkl.load(f)
         self.state_scaler = normalizer['state_scaler']
         self.action_scaler = normalizer['action_scaler']
@@ -177,7 +176,13 @@ class DeltaArraySim:
         self.goal_traj_pose = None
         self.test_traj_reward = 0
         self.n_tries = 0
-        self.MegaTestingLoop = [pkl.load(open('./data/test_trajs.pkl', 'rb')) for _ in range(len(self.obj_names))]
+        
+        if self.hp_dict['cmu_ri']:
+            self.MegaTestingLoop = [pkl.load(open('./data/cmu_ri.pkl', 'rb')) for _ in range(len(self.obj_names))]
+        else:
+            self.MegaTestingLoop = [pkl.load(open('./data/test_trajs.pkl', 'rb')) for _ in range(len(self.obj_names))]
+        
+        self.final_pose_none = False
 
         self.tracked_trajs = {}
         for name in self.obj_names:
@@ -278,6 +283,11 @@ class DeltaArraySim:
             return vec / self.img_size * self.delta_plane
         else:
             return vec[0]/1080*self.delta_plane_x, -vec[1]/1920*self.delta_plane_y
+        
+    def get_tfed_bd_pts(self, env_idx, tf_pose):
+        _, boundary_points, normals, initial_pose = self.bd_pts_dict[self.obj_name[env_idx]]
+        tfed_bd_pts, tfed_normals = geom_utils.compute_transformation(boundary_points, normals, initial_pose, tf_pose=tf_pose)
+        return tfed_bd_pts, tfed_normals
 
     def set_block_pose(self, env_idx, goal=False):
         """ 
@@ -295,38 +305,33 @@ class DeltaArraySim:
             # self.obj_name[env_idx] = "star"
             self.object[env_idx], object_p, _, object_r = self.obj_dict[self.obj_name[env_idx]]
 
-            yaw = np.random.uniform(-np.pi, np.pi)
-            r = R.from_euler('xyz', [0, 0, yaw])
-            object_r = gymapi.Quat(*r.as_quat())
-            T = (np.random.uniform(0.011, 0.24), np.random.uniform(0.007, 0.27))
-            self.goal_pose[env_idx] = np.array([T[0], T[1], yaw])
+            rot = R.from_euler('z', np.random.uniform(-np.pi, np.pi)).as_quat()
+            T = (np.random.uniform(0.011, 0.24), np.random.uniform(0.007, 0.27), 1.002)
+            self.goal_pose[env_idx] = np.array([*T, *rot])
 
-            _, boundary_points, normals, initial_pose = self.bd_pts_dict[self.obj_name[env_idx]]
-            tfed_bd_pts, _ = geom_utils.compute_transformation(boundary_points, normals, initial_pose, final_pose=(T[0], T[1], yaw))
+            tfed_bd_pts, _ = self.get_tfed_bd_pts(env_idx, self.goal_pose[env_idx])
             self.goal_bd_pts[env_idx] = tfed_bd_pts
         else:
-            yaw = self.goal_pose[env_idx][2] + np.random.uniform(-1.5707, 1.5707)
-            r = R.from_euler('xyz', [0, 0, yaw])
-            object_r = gymapi.Quat(*r.as_quat())
+            rot = (R.from_quat(self.goal_pose[env_idx][3:]) * R.from_euler('z', np.random.uniform(-1.5707, 1.5707))).as_quat()
             com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
-            T = (com.p.x + np.random.uniform(-0.02, 0.02), com.p.y + np.random.uniform(-0.02, 0.02))
-            self.init_pose[env_idx] = np.array([T[0], T[1], yaw, com.p.z])
+            T = (com.p.x + np.random.uniform(-0.02, 0.02), com.p.y + np.random.uniform(-0.02, 0.02), 1.002)
+            self.init_pose[env_idx] = np.array([*T, *rot])
 
-        block_p = gymapi.Vec3(*T, 1.002)
-        self.object[env_idx].set_rb_transforms(env_idx, self.obj_name[env_idx], [gymapi.Transform(p=block_p, r=object_r)])
+        object_p = gymapi.Vec3(*T)
+        object_r = gymapi.Quat(*rot)
+        self.object[env_idx].set_rb_transforms(env_idx, self.obj_name[env_idx], [gymapi.Transform(p=object_p, r=object_r)])
     
-    def ret_2d_pos(self, env_idx):
-        com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
-        quat = np.array((com.r.x, com.r.y, com.r.z, com.r.w))
-        if (np.isnan(quat).any()):
-            self.dont_skip_episode = False
-            return None    
-        _, _, yaw = R.from_quat([*quat]).as_euler('xyz')
-        return com.p.x, com.p.y, yaw
+    # def ret_2d_pos(self, env_idx):
+    #     com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
+    #     quat = np.array((com.r.x, com.r.y, com.r.z, com.r.w))
+    #     if (np.isnan(quat).any()):
+    #         self.dont_skip_episode = False
+    #         return None
+    #     _, _, yaw = R.from_quat([*quat]).as_euler('xyz')
+    #     return com.p.x, com.p.y, yaw
 
     def set_traj_pose(self, env_idx, goal=False):
         return_exit = False
-        print(self.obj_names)
         if goal:
             if len(self.obj_names) == 0:
                 return_exit = True
@@ -335,14 +340,23 @@ class DeltaArraySim:
                 self.object[env_idx].set_rb_transforms(env_idx, self.obj_name[env_idx], [gymapi.Transform(p=self.obj_dict[self.obj_name[env_idx]][1], r=self.obj_dict[self.obj_name[env_idx]][3])])
                 self.obj_name[env_idx] = self.obj_names.pop(0)
                 self.object[env_idx], object_p, _, object_r = self.obj_dict[self.obj_name[env_idx]]
-
-                len(self.obj_names)
                 self.test_trajs = self.MegaTestingLoop.pop(0)
+                    
+                print(self.obj_names)
+                self.current_traj = np.array([])
 
             if len(self.current_traj) == 0:
                 self.new_traj_bool = True
+                # if len(self.obj_names) == 8:
+                #     for i in range(6):
+                #         print(self.test_trajs.keys())
+                #         traj_key = random.choice(list(self.test_trajs.keys()))
+                #         self.current_traj = self.test_trajs[traj_key].copy()
+                #         self.test_trajs.pop(traj_key)
+                # else:
                 traj_key = random.choice(list(self.test_trajs.keys()))
-                self.current_traj = self.test_trajs.pop(traj_key)
+                self.current_traj = self.test_trajs[traj_key].copy()
+                self.test_trajs.pop(traj_key)
                 
                 # plt.plot(self.current_traj[:, 0], self.current_traj[:, 1], 'o', label=f'Curve Spline')
                 # plt.quiver(self.current_traj[:, 0], self.current_traj[:, 1], np.cos(self.current_traj[:, 2]), np.sin(self.current_traj[:, 2]))
@@ -351,21 +365,21 @@ class DeltaArraySim:
                 self.init_traj_pose = self.current_traj.pop(0)
                 self.n_tries = 0
 
-            # if (self.test_traj_reward < -3) and (self.n_tries < 4):
-            #     self.current_traj.insert(0, self.goal_traj_pose)
-            #     self.n_tries += 1
-            # else:
-            #     self.n_tries = 0
+            if (self.test_traj_reward < -3) and (self.n_tries < 3):
+                self.current_traj.insert(0, self.goal_traj_pose)
+                self.n_tries += 1
+            else:
+                self.n_tries = 0
             self.goal_traj_pose = self.current_traj.pop(0)
+            print("Current Traj Len: ",len(self.current_traj))
             
             yaw = self.goal_traj_pose[2] + np.pi/2
-            r = R.from_euler('xyz', [0, 0, yaw])
-            object_r = gymapi.Quat(*r.as_quat())
-            T = self.goal_traj_pose[:2]
-            self.goal_pose[env_idx] = np.array([T[0], T[1], yaw])
-
-            _, boundary_points, normals, initial_pose = self.bd_pts_dict[self.obj_name[env_idx]]
-            tfed_bd_pts, _ = geom_utils.compute_transformation(boundary_points, normals, initial_pose, final_pose=(T[0], T[1], yaw))
+            r = R.from_euler('z', yaw).as_quat()
+            object_r = gymapi.Quat(*r)
+            T = np.array([*self.goal_traj_pose[:2], 1.002])
+            self.goal_pose[env_idx] = np.array([*T, *r])
+            
+            tfed_bd_pts, _ = self.get_tfed_bd_pts(env_idx, self.goal_pose[env_idx])
             self.goal_bd_pts[env_idx] = tfed_bd_pts
             return return_exit, self.goal_pose[env_idx]
 
@@ -374,25 +388,21 @@ class DeltaArraySim:
             quat = np.array((com.r.x, com.r.y, com.r.z, com.r.w))
             if (np.isnan(quat).any()):
                 self.dont_skip_episode = False
-                return None    
-            _, _, yaw = R.from_quat([*quat]).as_euler('xyz')
-            print(yaw)
+                return None
+            
             if self.new_traj_bool:
                 self.new_traj_bool = False
-                yaw0 = self.init_traj_pose[2] #+ np.pi/2
-                r = R.from_euler('xyz', [0, 0, yaw])
-                object_r = gymapi.Quat(*r.as_quat())
-                T = self.init_traj_pose[:2]
-                self.init_pose[env_idx] = np.array([T[0], T[1], yaw0, com.p.z])
-
-                block_p = gymapi.Vec3(*T, 1.002)
-                self.object[env_idx].set_rb_transforms(env_idx, self.obj_name[env_idx], [gymapi.Transform(p=block_p, r=object_r)])
+                yaw0 = self.init_traj_pose[2] + np.pi/2
+                r = R.from_euler('z', yaw0).as_quat()
+                T = np.array([*self.init_traj_pose[:2], 1.002])
+                
+                self.init_pose[env_idx] = np.array([*T, *r])
+                self.object[env_idx].set_rb_transforms(env_idx, self.obj_name[env_idx], [gymapi.Transform(p=gymapi.Vec3(*T), r=gymapi.Quat(*r))])
             else:
-                self.init_pose[env_idx] = np.array([com.p.x, com.p.y, yaw, com.p.z])
+                self.init_pose[env_idx] = np.array([com.p.x, com.p.y, com.p.z, *quat])
             
             # self.init_traj_pose = self.goal_traj_pose
-            self.init_traj_pose = np.array([com.p.x, com.p.y, yaw, com.p.z])
-            return return_exit, (com.p.x, com.p.y, yaw)
+            return return_exit, self.init_pose[env_idx]
 
     def get_scene_image(self, env_idx):
         """ Render a camera image """
@@ -518,25 +528,27 @@ class DeltaArraySim:
         Randomize the colors to get rgb image.
         """
         # WE ARE NOT USING NORMALS in Expt#0. Might use later. 
-        _, boundary_points, normals, initial_pose = self.bd_pts_dict[self.obj_name[env_idx]]
+        # _, boundary_points, normals, initial_pose = self.bd_pts_dict[self.obj_name[env_idx]]
 
         com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
         quat = np.array((com.r.x, com.r.y, com.r.z, com.r.w))
         if (np.isnan(quat).any()):
             self.dont_skip_episode = False
-            return None, None
+            return None
             
         roll, pitch, yaw = R.from_quat([*quat]).as_euler('xyz')
-        if (abs(roll) > 0.5)or(abs(pitch) > 0.5):
+        if (abs(roll) > 0.5)or(abs(pitch) > 0.5)or(com.p.z > 1.02):
             self.dont_skip_episode = False
-            return None, None
+            return None
         else:
-            final_pose = np.array((com.p.x, com.p.y, yaw))
-            tfed_bd_pts, transformed_normals = geom_utils.compute_transformation(boundary_points, normals, initial_pose, final_pose)
+            final_pose = np.array((com.p.x, com.p.y, com.p.z, *quat))
+            # tfed_bd_pts, transformed_normals = geom_utils.compute_transformation(boundary_points, normals, initial_pose, final_pose)
+            tfed_bd_pts, tfed_normals = self.get_tfed_bd_pts(env_idx, final_pose)
             self.bd_pts[env_idx] = tfed_bd_pts            
             if not final:
                 # Get indices of nearest robots to the boundary. We are not using neg_idxs for now. 
-                idxs, neg_idxs = self.nn_helper.get_nn_robots_world(tfed_bd_pts)
+                # idxs, _ = self.nn_helper.get_balanced_nn_robots_world(tfed_bd_pts)
+                idxs, _ = self.nn_helper.get_nn_robots_world(tfed_bd_pts)
                 self.active_idxs[env_idx] = list(idxs)
                 self.n_idxs[env_idx] = len(self.active_idxs[env_idx])
                 
@@ -546,9 +558,9 @@ class DeltaArraySim:
                 _, self.nn_bd_pts[env_idx] = self.nn_helper.get_min_dist_world(tfed_bd_pts, self.active_idxs[env_idx], self.actions[env_idx])
                 self.init_state[env_idx, :self.n_idxs[env_idx], :2] = self.nn_bd_pts[env_idx]
 
-                delta = self.goal_pose[env_idx] - self.init_pose[env_idx][:3]
+                # delta = self.goal_pose[env_idx] - self.init_pose[env_idx][:3]
                 com = np.mean(tfed_bd_pts, axis=0)
-                tfed_nn_bd_pts = geom_utils.transform_pts_wrt_com(self.nn_bd_pts[env_idx], delta, com)
+                tfed_nn_bd_pts = geom_utils.transform_pts_wrt_com(self.nn_bd_pts[env_idx], self.init_pose[env_idx], self.goal_pose[env_idx], com)
                 
                 self.init_state[env_idx, :self.n_idxs[env_idx], 2:4] = tfed_nn_bd_pts
                 self.final_state[env_idx, :self.n_idxs[env_idx], 2:4] = tfed_nn_bd_pts
@@ -600,7 +612,7 @@ class DeltaArraySim:
                 #     plt.quiver(init_pts[:, 0], init_pts[:, 1], acts[:, 0], acts[:, 1], scale=1, scale_units='xy')
                 #     plt.gca().set_aspect('equal')
                 #     plt.show()
-        return final_pose, quat
+        return final_pose
 
     # def gaussian_reward_shaping(self, x, ampl, width, center=0, vertical_shift=0):
     #     return ampl * np.exp(-width * (x - center)**2) - vertical_shift
@@ -623,10 +635,11 @@ class DeltaArraySim:
         delta_theta = (delta_theta + np.pi) % (2 * np.pi) - np.pi
         return np.abs(delta_theta)
 
-    def yaw_error(self, q1, q2):
+    def yaw_error(self, pose1, pose2):
         """ Calculate the shortest path difference between two quaternions and return only the yaw component """
-        q_diff = R.from_quat([q1]).inv() * R.from_quat([q2])
-        return q_diff.as_euler('xyz')[2]
+        q_diff = R.from_quat([pose1[3:]]).inv() * R.from_quat([pose2[3:]])
+        # print(q_diff.as_euler('z'))
+        return q_diff.as_euler('xyz')[0][2]
     
     def compute_reward(self, env_idx, t_step):
         """ 
@@ -638,6 +651,7 @@ class DeltaArraySim:
         init_bd_pts = self.bd_pts[env_idx].copy()
         final_pose = self.get_nearest_robots_and_state_v2(env_idx, final=True, init_bd_pts=init_bd_pts)
         
+        # print(final_pose, self.goal_pose[env_idx])
         if final_pose is None:
             self.ep_reward[env_idx] = -5
             return
@@ -645,7 +659,9 @@ class DeltaArraySim:
         if self.obj_name[env_idx]=="disc":
             self.ep_reward[env_idx] = 0
         else:
-            self.ep_reward[env_idx] = -2*self.angle_difference(final_pose[2], self.goal_pose[env_idx, 2])
+            # self.ep_reward[env_idx] = -2*self.angle_difference(final_pose[2], self.goal_pose[env_idx, 2])
+            self.ep_reward[env_idx] = -2*abs(self.yaw_error(final_pose, self.goal_pose[env_idx]))
+        
         loss = 100*np.linalg.norm(self.goal_pose[env_idx][:2] - final_pose[:2])
         if loss < 1:
             self.ep_reward[env_idx] -= 0.5  * loss**2
@@ -992,12 +1008,15 @@ class DeltaArraySim:
                 del self.images_to_video[:]
         else:         
             if t_step == 0:
-                self.vs_step(env_idx, t_step) # Only Store Actions from MARL Policy
+                # self.vs_step(env_idx, t_step) # Only Store Actions from MARL Policy
                 self.bc_step(env_idx, self.agent) # Only Store Actions from MARL Policy
             elif t_step == 1:
                 self.set_attractor_target(env_idx, t_step, self.actions)
             elif t_step == (self.time_horizon-2):
                 final_pose = self.compute_reward(env_idx, t_step)
+                if final_pose is None:
+                    self.final_pose_none = True
+                    return
                 print(f"{len(self.current_traj)} Reward: {self.ep_reward[env_idx]}, L2_dist: {np.linalg.norm(self.goal_pose[env_idx][:2] - final_pose[:2])}, Angle_diff: {(final_pose[2], self.goal_pose[env_idx, 2])}")
 
                 if self.hp_dict["print_summary"]:
@@ -1012,13 +1031,17 @@ class DeltaArraySim:
                             pkl.dump(self.temp_var, f)
 
                 if self.hp_dict['save_videos'] and (len(self.current_traj) == 0):
-                    self.convert_images_to_video(self.images_to_video, f"./data/videos/{self.hp_dict['exp_name']}/{self.hp_dict['algo']}_{len(self.obj_names)}_{len(self.test_trajs)}.avi", fps=30)
+                    if self.hp_dict['cmu_ri']:
+                        name = f"cmuri_{self.hp_dict['algo']}_{len(self.obj_names)}_{len(self.test_trajs)}"
+                    else:
+                        name = f"{self.hp_dict['algo']}_{len(self.obj_names)}_{len(self.test_trajs)}"
+                    self.convert_images_to_video(self.images_to_video, f"./data/videos/{self.hp_dict['exp_name']}/{name}.avi", fps=30)
                     del self.images_to_video[:]
 
                 self.test_traj_reward = self.ep_reward[env_idx]
                 self.reset(env_idx)
                 self.current_episode += 1
-            elif t_step == (self.time_horizon - 1):
+            elif (t_step == (self.time_horizon - 1)) and (not self.final_pose_none):
                 if self.hp_dict['test_traj']:
                     exit_bool, pos = self.set_traj_pose(env_idx, goal=True)
                     self.tracked_trajs[self.obj_name[env_idx]]['traj'].append(pos)
@@ -1030,18 +1053,18 @@ class DeltaArraySim:
                     self.set_block_pose(env_idx, goal=True)
                 
                 self.ep_len[env_idx] = 0
+            elif (t_step == (self.time_horizon - 1)) and (self.final_pose_none):
+                self.reset(env_idx)
+                self.final_pose_none = False
 
     def vs_step(self, env_idx, t_step):
-        
-        _, boundary_points, normals, initial_pose = self.bd_pts_dict[self.obj_name[env_idx]]
-
         com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
         quat = np.array((com.r.x, com.r.y, com.r.z, com.r.w))
         if (np.isnan(quat).any()):
             self.dont_skip_episode = False
             return None
         roll, pitch, yaw = R.from_quat([*quat]).as_euler('xyz')
-        intermediate_pose = (com.p.x, com.p.y, yaw)
+        intermediate_pose = (com.p.x, com.p.y, com.p.z, *quat)
         if (abs(roll) > 0.5)or(abs(pitch) > 0.5):
             self.dont_skip_episode = False
             return None, None
@@ -1053,7 +1076,7 @@ class DeltaArraySim:
         #     self.dont_skip_episode = False
         #     return None, None
         else:
-            tfed_bd_pts, transformed_normals = geom_utils.compute_transformation(boundary_points, normals, initial_pose, intermediate_pose)
+            tfed_bd_pts, transformed_normals = self.get_tfed_bd_pts(env_idx, intermediate_pose)
             self.bd_pts[env_idx] = tfed_bd_pts
 
             if self.current_episode >= 0:
