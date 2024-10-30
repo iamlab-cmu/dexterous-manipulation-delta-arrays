@@ -21,6 +21,16 @@ from skimage.measure import find_contours
 #         return (0, 0)  # Avoid division by zero
 #     return normal / norm
 
+def transform_pts_wrt_com_real(points, transform, com):
+    """
+    Apply a 2D transformation to a set of points.
+    """
+    rot_m = np.array([[np.cos(transform[2]), -np.sin(transform[2])], [np.sin(transform[2]), np.cos(transform[2])]])
+    points = points - com
+    points = com + np.dot(points, rot_m)
+    points = points + transform[:2]
+    return points
+
 def transform_pts_wrt_com(points, init_pose, goal_pose, com):
     """
     Apply a 2D transformation to a set of points.
@@ -227,15 +237,29 @@ def normalize_angle(theta):
     """Normalize the angle to be within the range [-pi, pi]."""
     return (theta + np.pi) % (2 * np.pi) - np.pi
 
-def compute_transformation(points, normals, initial_pose, tf_pose):
-    """Compute the transformed points and normals given initial and tf poses."""
-    x0, y0, rot0 = initial_pose[0], initial_pose[1], R.from_euler('z', initial_pose[2])
-    x1, y1, rot1 = tf_pose[0], tf_pose[1], R.from_quat(tf_pose[3:])
-    # translation = np.array([x1 - x0, y1 - y0])
-    
+def process_poses(init_pose, tf_pose):
+    if len(init_pose) == 3:
+        x0, y0, rot0 = init_pose[0], init_pose[1], R.from_euler('z', init_pose[2])
+    else:
+        x0, y0, rot0 = init_pose[0], init_pose[1], R.from_quat(init_pose[3:])
+    if len(tf_pose) == 3:
+        x1, y1, rot1 = tf_pose[0], tf_pose[1], R.from_euler('z', tf_pose[2])
+    else:
+        x1, y1, rot1 = tf_pose[0], tf_pose[1], R.from_quat(tf_pose[3:])
     rotation_diff = rot1 * rot0.inv()
     rotation_matrix = rotation_diff.as_matrix()[:2, :2]
+    return x0, y0, x1, y1, rotation_matrix
 
-    rotated_points = np.dot(points - np.array([x0, y0]), rotation_matrix.T) + np.array([x1, y1])# np.array([x0, y0]) + translation
-    rotated_normals = np.dot(normals, rotation_matrix.T)
+def compute_transformation(points, normals, init_pose, tf_pose, com=None):
+    """Compute the transformed points and normals given initial and tf poses."""
+    x0, y0, x1, y1, rotation_matrix = process_poses(init_pose, tf_pose)
+
+    if com is None:
+        rotated_points = np.dot(points - np.array([x0, y0]), rotation_matrix.T) + np.array([x1, y1])
+    else:
+        rotated_points = np.dot(points - com, rotation_matrix.T) + np.array([x1, y1])
+    if normals is not None:
+        rotated_normals = np.dot(normals, rotation_matrix.T)
+    else:
+        rotated_normals = None
     return rotated_points, rotated_normals

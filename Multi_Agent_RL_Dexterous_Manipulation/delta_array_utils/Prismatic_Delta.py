@@ -5,8 +5,13 @@ import serial
 import math
 import numpy as np
 import ipdb
+import pickle as pkl
+from scipy.spatial import ConvexHull, Delaunay
+from shapely.geometry import Polygon, MultiPolygon, Point, LineString
+from shapely.ops import nearest_points, polygonize, unary_union
 
 PI = math.pi
+eps = np.finfo(np.float32).eps
 
 class Prismatic_Delta:
     def __init__(self, s_p, s_b, l):
@@ -36,6 +41,14 @@ class Prismatic_Delta:
         self.base2 = np.array([[u_b * math.cos(a2), u_b * math.sin(a2), 0]])
         a3 = 7 * math.pi / 6
         self.base3 = np.array([[u_b * math.cos(a3), u_b * math.sin(a3), 0]])
+        
+        try:
+            # self.hull = pkl.load(open('./delta_array_utils/workspace_hull.pkl', 'rb'))
+            self.boundary = pkl.load(open('./delta_array_utils/workspace_alpha_shape.pkl', 'rb'))
+        except:
+            # self.hull = pkl.load(open('./workspace_hull.pkl', 'rb'))
+            self.boundary = pkl.load(open('./workspace_alpha_shape.pkl', 'rb'))
+        # self.hull_A, self.hull_b = self.hull.equations[:, :-1], self.hull.equations[:, -1:]
 
     def get_base_verteces(self, offset, rotation):
         bv1 = np.transpose((rotation * np.transpose(self.base1))) + offset
@@ -139,6 +152,48 @@ class Prismatic_Delta:
 
         heights = [h1, h2, h3]
         return heights
+
+    # def project_point_to_hull(self, point):
+    #     hull_points = self.hull.points[self.hull.vertices]
+    #     hull_vectors = hull_points - point
+    #     distances = np.linalg.norm(hull_vectors, axis=1)
+    #     nearest_idx = np.argmin(distances)
+        
+    #     n = len(self.hull.vertices)
+    #     prev_idx = (nearest_idx - 1) % n
+    #     next_idx = (nearest_idx + 1) % n
+        
+    #     v1 = hull_points[prev_idx] - hull_points[nearest_idx]
+    #     v2 = hull_points[next_idx] - hull_points[nearest_idx]
+    #     p = point - hull_points[nearest_idx]
+        
+    #     if np.dot(p, v1) > 0 and np.dot(p, v2) < 0:
+    #         t = np.dot(p, v1) / np.dot(v1, v1)
+    #         return hull_points[nearest_idx] + t * v1
+    #     else:
+    #         return hull_points[nearest_idx]
+        
+    def clip_points_to_workspace(self, points):
+        points = points.reshape(-1, 2)
+        clipped_points = []
+        for point in points:
+            pt = Point(point[:2])
+            if self.boundary.contains(pt):
+                clipped_points.append(point)
+            else:
+                projected_point = nearest_points(self.boundary.boundary, pt)[0]
+                clipped_points.append(np.array([projected_point.x, projected_point.y]))
+        return np.array(clipped_points)
+        
+        # points = points.reshape(-1, 2)
+        # clipped_points = []
+        # for point in points:
+        #     if np.all(point @ self.hull_A.T + self.hull_b.T < eps, axis=1):
+        #         clipped_points.append(point)
+        #     else:
+        #         projected_point = self.project_point_to_hull(point)
+        #         clipped_points.append(np.array([projected_point[0], projected_point[1]]))
+        # return np.array(clipped_points)
 
     def IK_Traj(self, trajectory):
         traj = np.zeros((len(trajectory), 3))

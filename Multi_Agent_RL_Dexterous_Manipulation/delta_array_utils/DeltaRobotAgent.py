@@ -50,19 +50,9 @@ class DeltaArrayAgent:
         """ If given trajectory is less than 20, pad with last point """
         assert isinstance(traj, list), "Trajectory must be a list"
         new_idx = (idx[0]%2, idx[1]%2)
-        # print(idx, new_idx)
-        traj_len = len(traj)
-        # print(traj)
-        if traj_len == 20:
-            # print([np.clip(np.array(Delta.IK(pos))*0.01, self.min_joint_pos, self.max_joint_pos) for pos in traj])
-            self.robot_pos_ctrl_dict[new_idx] = np.array([np.clip(np.array(Delta.IK(pos))*0.01, self.min_joint_pos, self.max_joint_pos) for pos in traj])
-        elif traj_len == 0:
-            self.robot_pos_ctrl_dict[new_idx] = [np.clip(np.array(Delta.IK([0,0,5.5]))*0.01, self.min_joint_pos, self.max_joint_pos) for i in range(20)]
-        else:
-            self.robot_pos_ctrl_dict[new_idx] = [np.clip(np.array(Delta.IK(pos))*0.01, self.min_joint_pos, self.max_joint_pos) for pos in traj]
-            self.robot_pos_ctrl_dict[new_idx] += [[-1, -1, -1]]
-            self.robot_pos_ctrl_dict[new_idx] += [[-1, -1, -1] for i in range(20-traj_len-1)]
-            self.robot_pos_ctrl_dict[new_idx] = np.array(self.robot_pos_ctrl_dict[new_idx])
+        # print(np.clip(np.array(Delta.IK(traj[10]))*0.01, self.min_joint_pos, self.max_joint_pos))
+        self.robot_pos_ctrl_dict[new_idx] = np.array([np.clip(np.array(Delta.IK(pos))*0.01, self.min_joint_pos, self.max_joint_pos) for pos in traj])
+
 
     # Move useful robots
     def move_useful(self):
@@ -85,6 +75,10 @@ class DeltaArrayAgent:
         for j in range(20):
             _ = [self.delta_message.trajectory.append(final_jt_pos[j][i]) for i in range(12)]
         self.send_proto_cmd()
+        self.clear_buffer()
+        
+    def clear_buffer(self):
+        self.robot_pos_ctrl_dict = {(0,0):[], (1,0):[], (1,1):[], (0,1):[]}
         del self.delta_message.trajectory[:]
 
     def stop(self):

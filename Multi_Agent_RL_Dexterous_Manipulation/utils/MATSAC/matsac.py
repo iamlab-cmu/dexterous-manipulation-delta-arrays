@@ -4,6 +4,7 @@ from copy import deepcopy
 import time
 import itertools
 import wandb
+import pickle as pkl
 
 import torch
 import torch.nn as nn
@@ -30,7 +31,8 @@ class MATSAC:
             self.ma_replay_buffer = MARB.MultiAgentImageReplayBuffer(act_dim=self.act_dim, size=hp_dict['replay_size'], max_agents=self.tf.max_agents)
             # TODO: In future add ViT here as an option
         else:
-            self.tf = core.Transformer(self.obs_dim, self.act_dim, self.act_limit, self.hp_dict["model_dim"], self.hp_dict["num_heads"], self.hp_dict["dim_ff"], self.hp_dict["n_layers_dict"], self.hp_dict["dropout"], self.device, self.hp_dict["delta_array_size"], self.hp_dict["adaln"], self.hp_dict['masked'])
+            # self.tf = core.Transformer(self.obs_dim, self.act_dim, self.act_limit, self.hp_dict["model_dim"], self.hp_dict["num_heads"], self.hp_dict["dim_ff"], self.hp_dict["n_layers_dict"], self.hp_dict["dropout"], self.device, self.hp_dict["delta_array_size"], self.hp_dict["adaln"], self.hp_dict['masked'])
+            self.tf = core.Transformer(self.hp_dict)
             self.tf_target = deepcopy(self.tf)
 
             self.tf = self.tf.to(self.device)
@@ -60,10 +62,13 @@ class MATSAC:
         
         self.q_loss = None
         self.internal_updates_counter = 0
+        with open('./utils/MADP/normalizer_bc.pkl', 'rb') as f:
+            normalizer = pkl.load(f)
+        self.obj_name_encoder = normalizer['obj_name_encoder']
 
-    def compute_q_loss(self, s1, a, s2, r, d, pos):
-        q1 = self.tf.decoder_critic1(s1, a, pos).mean(dim=1)
-        q2 = self.tf.decoder_critic2(s1, a, pos).mean(dim=1)
+    def compute_q_loss(self, s1, a, s2, r, d, obj_name_encs, pos):
+        q1 = self.tf.decoder_critic1(s1, a, obj_name_encs, pos).mean(dim=1)
+        q2 = self.tf.decoder_critic2(s1, a, obj_name_encs, pos).mean(dim=1)
         
         with torch.no_grad():
             # next_state_enc = self.tf.encoder(s2)
@@ -86,15 +91,15 @@ class MATSAC:
             self.q_loss = q_loss1.cpu().detach().numpy() + q_loss2.cpu().detach().numpy()
             wandb.log({"Q loss":self.q_loss})
 
-    def compute_pi_loss(self, s1, current_episode, pos):
+    def compute_pi_loss(self, s1, obj_name_encs, pos):
         for p in self.critic_params:
             p.requires_grad = False
 
-        actions = self.tf.get_actions(s1, pos)
+        actions = self.tf.get_actions(s1, obj_name_encs, pos)
         # actions = self.tf.get_actions(s1, pos)
         
-        q1_pi = self.tf.decoder_critic1(s1, actions, pos)
-        q2_pi = self.tf.decoder_critic2(s1, actions, pos)
+        q1_pi = self.tf.decoder_critic1(s1, actions, obj_name_encs, pos)
+        q2_pi = self.tf.decoder_critic2(s1, actions, obj_name_encs, pos)
         q_pi = torch.min(q1_pi, q2_pi)
         pi_loss = -q_pi.mean() #self.hp_dict['alpha'] * logp_pi 
 
@@ -108,50 +113,56 @@ class MATSAC:
         for p in self.critic_params:
             p.requires_grad = True
 
-    def update(self, batch_size, current_episode):
-        self.internal_updates_counter += 1
-        if self.internal_updates_counter == 1:
-            for param_group in self.optimizer_critic.param_groups:
-                param_group['lr'] = 1e-6
-            for param_group in self.optimizer_actor.param_groups:
-                param_group['lr'] = 1e-6
-        elif self.internal_updates_counter == self.hp_dict['warmup_epochs']:
-            for param_group in self.optimizer_critic.param_groups:
-                param_group['lr'] = self.hp_dict['q_lr']
-            for param_group in self.optimizer_actor.param_groups:
-                param_group['lr'] = self.hp_dict['pi_lr']
+    def update(self, batch_size, current_episode, n_envs):
+        for _ in range(n_envs):
+            self.internal_updates_counter += 1
+            if self.internal_updates_counter == 1:
+                for param_group in self.optimizer_critic.param_groups:
+                    param_group['lr'] = 1e-6
+                for param_group in self.optimizer_actor.param_groups:
+                    param_group['lr'] = 1e-6
+            elif self.internal_updates_counter == self.hp_dict['warmup_epochs']:
+                for param_group in self.optimizer_critic.param_groups:
+                    param_group['lr'] = self.hp_dict['q_lr']
+                for param_group in self.optimizer_actor.param_groups:
+                    param_group['lr'] = self.hp_dict['pi_lr']
 
-        data = self.ma_replay_buffer.sample_batch(batch_size)
-        n_agents = int(torch.max(data['num_agents']))
-        states, actions, rews, new_states, dones = data['obs'][:,:n_agents].to(self.device), data['act'][:,:n_agents].to(self.device), data['rew'].to(self.device), data['obs2'][:,:n_agents].to(self.device), data['done'].to(self.device)
-        pos = data['pos'][:,:n_agents].type(torch.int64).to(self.device)
+            data = self.ma_replay_buffer.sample_batch(batch_size)
+            n_agents = int(torch.max(data['num_agents']))
+            states = data['obs'][:,:n_agents].to(self.device)
+            actions = data['act'][:,:n_agents].to(self.device)
+            rews = data['rew'].to(self.device)
+            new_states = data['obs2'][:,:n_agents].to(self.device)
+            dones = data['done'].to(self.device)
+            obj_name_encs = data['obj_name_encs'].to(self.device)
+            pos = data['pos'][:,:n_agents].to(self.device)
 
-        # Critic Update
-        self.optimizer_critic.zero_grad()
-        self.compute_q_loss(states, actions, new_states, rews, dones, pos)
+            # Critic Update
+            self.optimizer_critic.zero_grad()
+            self.compute_q_loss(states, actions, new_states, rews, dones, obj_name_encs, pos)
 
-        # Actor Update
-        # with torch.autograd.set_detect_anomaly(True):
-        self.optimizer_actor.zero_grad()
-        self.compute_pi_loss(states, current_episode, pos)
+            # Actor Update
+            # with torch.autograd.set_detect_anomaly(True):
+            self.optimizer_actor.zero_grad()
+            self.compute_pi_loss(states, obj_name_encs, pos)
 
-        # Target Update
-        with torch.no_grad():
-            for p, p_target in zip(self.tf.parameters(), self.tf_target.parameters()):
-                p_target.data.mul_(self.hp_dict['tau'])
-                p_target.data.add_((1 - self.hp_dict['tau']) * p.data)
+            # Target Update
+            # with torch.no_grad():
+            #     for p, p_target in zip(self.tf.parameters(), self.tf_target.parameters()):
+            #         p_target.data.mul_(self.hp_dict['tau'])
+            #         p_target.data.add_((1 - self.hp_dict['tau']) * p.data)
 
         if (self.train_or_test == "train") and (current_episode % 5000) == 0:
             torch.save(self.tf.state_dict(), f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
     
     @torch.no_grad()
-    def get_actions(self, obs, pos, deterministic=False):
+    def get_actions(self, obs, pos, obj_name, deterministic=False):
         obs = torch.as_tensor(obs, dtype=torch.float32).unsqueeze(0).to(self.device)
-        pos = torch.as_tensor(pos, dtype=torch.int64).unsqueeze(0).to(self.device)
-        with torch.no_grad():
-            # actions, _ = self.tf.get_actions_gauss(state_enc, deterministic=deterministic)
-            actions = self.tf.get_actions(obs, pos, deterministic=deterministic)
-            return actions.detach().cpu().numpy()
+        pos = torch.as_tensor(pos, dtype=torch.int32).unsqueeze(0).to(self.device)
+        obj_name_encs = torch.as_tensor(self.obj_name_encoder.transform(np.array(obj_name).ravel()), dtype=torch.int32).to(self.device)
+        
+        actions = self.tf.get_actions(obs, obj_name_encs, pos, deterministic=deterministic)
+        return actions.detach().cpu().numpy()
         
     def load_saved_policy(self, path='./data/rl_data/backup/matsac_expt_grasp/pyt_save/model.pt'):
         self.tf.load_state_dict(torch.load(path, map_location=self.hp_dict['dev_rl'], weights_only=True))

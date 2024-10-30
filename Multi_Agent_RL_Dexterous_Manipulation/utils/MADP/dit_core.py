@@ -212,20 +212,23 @@ class FinalLayer(nn.Module):
         x = self.linear(x)
         return x
 
-
 class DiT(nn.Module):
-    def __init__(self, state_dim, obj_name_enc_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers):
+    def __init__(self, state_dim, obj_name_enc_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False):
         super(DiT, self).__init__()
         self.state_enc = wt_init_(nn.Linear(state_dim, model_dim))
         self.obj_name_enc = nn.Embedding(obj_name_enc_dim, model_dim)
         self.action_embedding = wt_init_(nn.Linear(action_dim, model_dim))
         self.pos_embedding = pos_embedding
         self.dropout = nn.Dropout(dropout)
+        self.critic = critic
 
         # self.decoder_layers = nn.ModuleList([DiTLayer(model_dim, num_heads, max_agents, dim_ff, dropout) for _ in range(n_layers)])
         self.decoder_layers = nn.ModuleList([DiTBlock(model_dim, num_heads, max_agents, dim_ff, dropout) for _ in range(n_layers)])
         # self.final_layer = wt_init_(nn.Linear(model_dim, action_dim))
-        self.final_layer = FinalLayer(model_dim, action_dim)
+        if self.critic:
+            self.final_layer = FinalLayer(model_dim, 1)
+        else:
+            self.final_layer = FinalLayer(model_dim, action_dim)
         # self.actor_std_layer = wt_init_(nn.Linear(model_dim, action_dim))
         self.activation = nn.GELU()
 
@@ -247,7 +250,7 @@ class DiT(nn.Module):
         return pred_noise
 
 class DiffusionTransformer(nn.Module):
-    def __init__(self, hp_dict, delta_array_size = (8,8)):
+    def __init__(self, hp_dict, mfrl=False, delta_array_size = (8,8)):
         super(DiffusionTransformer, self).__init__()
         """
         For 2D planar manipulation:
@@ -288,7 +291,11 @@ class DiffusionTransformer(nn.Module):
         self.posterior_mean_coef1 = (self.betas * np.sqrt(self.alphas_cumprod_prev) /(1.0 - self.alphas_cumprod))
         self.posterior_mean_coef2 = ((1.0 - self.alphas_cumprod_prev) *np.sqrt(alphas) / (1.0 - self.alphas_cumprod))
 
-        self.denoising_decoder = DiT(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['denoising_decoder'])
+        if mfrl:
+            self.decoder_actor = DiT(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['denoising_decoder'])
+            self.decoder_critic = DiT(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['denoising_decoder'], critic=True)
+        else:
+            self.denoising_decoder = DiT(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['denoising_decoder'])
 
     def sample_q(self, x_0, t, noise):
         return (_extract_into_tensor(self.sqrt_alphas_cumprod, t, x_0.shape) * x_0
@@ -343,6 +350,73 @@ class DiffusionTransformer(nn.Module):
         for i in range(n_agents):
             updated_actions = self.denoising_decoder(states, actions, pos, i)
         return actions
+    
+    def get_actions_mfrl(self, x_T, states, obj_name_encs, pos, deterministic=False):
+        actions = x_T
+        shape = actions.shape
+            
+        for i in reversed(range(self.denoising_params['num_train_timesteps'])):
+            t = torch.tensor([i]*shape[0], device=self.device)
+            ### p_mean_variance
+            pred_noise = self.decoder_actor(actions, states, obj_name_encs, pos)
+
+            model_variance = _extract_into_tensor(self.posterior_variance, t, shape)
+            model_log_variance = _extract_into_tensor(self.posterior_log_variance_clipped, t, shape)
+
+            pred_x_start = _extract_into_tensor(self.sqrt_recip_alphas_cumprod, t, shape) * actions\
+                        - _extract_into_tensor(self.sqrt_recipm1_alphas_cumprod, t, shape) * pred_noise
+            
+            model_mean = _extract_into_tensor(self.posterior_mean_coef1, t, shape) * pred_x_start\
+                        + _extract_into_tensor(self.posterior_mean_coef2, t, shape) * actions
+            
+            ### p_sample
+            noise = torch.randn(shape, device=self.device)
+            nonzero_mask = ((t != 0).float().view(-1, *([1] * (len(shape) - 1))))
+            # actions = model_mean + nonzero_mask * torch.exp(0.5*model_log_variance) * noise
+            actions = model_mean + nonzero_mask * model_variance * noise
+        return actions
+    
+    def compute_q_loss(self, q_value, states, actions, obj_name_encs, pos):
+        SA = torch.cat((states, actions), dim=-1)
+        bs, n_agents, _ = SA.size()
+        noise = torch.randn(q_value.shape, device=self.device)
+        t_steps = torch.randint(0, self.denoising_params['num_train_timesteps'], (bs,), device=self.device)
+
+        # denoising transition mean calculation
+        noisy_q = self.sample_q(q_value, t_steps, noise)
+
+        pred_noise = self.decoder_critic(noisy_q, SA, obj_name_encs, pos)
+        loss = F.mse_loss(noise, pred_noise, reduction='none')
+        loss = reduce(loss, 'b ... -> b(...)', 'mean')
+        loss = loss.mean()
+        return loss
+    
+    def get_q_values(self, x_T, states, actions, obj_name_encs, pos):
+        q_values = x_T
+        SA = torch.cat((states, actions), dim=-1)
+        shape = SA.shape
+            
+        for i in reversed(range(self.denoising_params['num_train_timesteps'])):
+            t = torch.tensor([i]*shape[0], device=self.device)
+            ### p_mean_variance
+            pred_noise = self.decoder_critic(q_values, SA, obj_name_encs, pos)
+
+            model_variance = _extract_into_tensor(self.posterior_variance, t, shape)
+            model_log_variance = _extract_into_tensor(self.posterior_log_variance_clipped, t, shape)
+
+            pred_x_start = _extract_into_tensor(self.sqrt_recip_alphas_cumprod, t, shape) * q_values\
+                        - _extract_into_tensor(self.sqrt_recipm1_alphas_cumprod, t, shape) * pred_noise
+            
+            model_mean = _extract_into_tensor(self.posterior_mean_coef1, t, shape) * pred_x_start\
+                        + _extract_into_tensor(self.posterior_mean_coef2, t, shape) * q_values
+            
+            ### p_sample
+            noise = torch.randn(shape, device=self.device)
+            nonzero_mask = ((t != 0).float().view(-1, *([1] * (len(shape) - 1))))
+            # q_values = model_mean + nonzero_mask * torch.exp(0.5*model_log_variance) * noise
+            q_values = model_mean + nonzero_mask * model_variance * noise
+        return q_values
+        
 
 class EMA:
     def __init__(self, ema_model, update_after_step, inv_gamma, power, min_value, max_value):

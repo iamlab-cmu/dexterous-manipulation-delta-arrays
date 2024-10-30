@@ -12,6 +12,7 @@ from isaacgym_utils.camera import GymCamera
 from isaacgym_utils.math_utils import RigidTransform_to_transform, rpy_to_quat
 from isaacgym_utils.draw import draw_transforms, draw_contacts, draw_camera
 import wandb
+import random
 
 import torch
 from torch.utils.tensorboard import SummaryWriter
@@ -19,10 +20,11 @@ import torchvision.transforms as transforms
 from torchvision.models import resnet18
 from scipy.spatial.distance import cosine
 
-import delta_array_sim
-import delta_array_simplified
-import delta_array_sim_image
-import delta_array_real
+import src.delta_array_sim as delta_array_sim
+import src.delta_array_simplified as delta_array_simplified
+import src.delta_array_sim_image as delta_array_sim_image
+import src.delta_array_real as delta_array_real
+import src.delta_array_rope as delta_array_rope
 import utils.SAC.sac as sac
 # import utils.DDPG.ddpg as ddpg
 # import utils.MASAC.masac as masac
@@ -117,10 +119,13 @@ class DeltaArraySimEnvironment():
                 "gamma"             : 0.99,
                 "q_lr"              : 1e-2,
                 "pi_lr"             : 1e-2,
-                "eta_min"           : 1e-5,
+                'obj_name_enc_dim'  : 9,
+                "q_eta_min"         : self.args.q_etamin,
+                "pi_eta_min"        : self.args.pi_etamin,
+                "eta_min"           : self.args.q_etamin,
                 "alpha"             : 0.2,
-                'optim'             : 'sgd',
-                'epsilon'           : 0.9,
+                'optim'             : 'adam',
+                'epsilon'           : 1.0,
                 "batch_size"        : self.args.bs,
                 "warmup_epochs"     : self.args.warmup,
                 "robot_frame"       : self.args.robot_frame,
@@ -131,14 +136,15 @@ class DeltaArraySimEnvironment():
 
                 # Multi Agent Part Below:
                 'state_dim'         : 6,
+                'action_dim'        : 2,
                 "dev_sim"           : torch.device(f"cuda:{self.args.dev_sim}"),
                 "dev_rl"            : torch.device(f"cuda:{self.args.dev_rl}"),
                 "model_dim"         : 256,
                 "num_heads"         : 8,
                 "dim_ff"            : 128,
-                "n_layers_dict"     : {'encoder': 10, 'actor': 10, 'critic': 10},
+                "n_layers_dict"     : {'actor': 10, 'critic': 10},
                 "dropout"           : 0,
-                "max_grad_norm"     : 1.0,
+                "max_grad_norm"     : self.args.gradnorm,
                 "adaln"             : self.args.adaln,
                 "delta_array_size"  : [8,8],
                 "add_vs_data"       : self.args.add_vs_data,
@@ -174,7 +180,7 @@ class DeltaArraySimEnvironment():
         elif self.args.algo=="MABC":
             self.pushing_agent = mabc.MABC()
         elif self.args.algo=="MABC_Finetune":
-            self.pushing_agent = mabc_finetune.MABC_Finetune()
+            self.pushing_agent = mabc_finetune.MABC_Finetune(self.hp_dict)
 
         if (self.train_or_test=="test") and (not self.args.behavior_cloning):
             # self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/{args.name}_s69420/pyt_save/model.pt')
@@ -186,6 +192,8 @@ class DeltaArraySimEnvironment():
             self.fingers = delta_array_simplified.DeltaArraySim(self.scene, self.cfg, self.objects, self.table, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
         elif self.args.data_type=="images":
             self.fingers = delta_array_sim_image.DeltaArraySim(self.scene, self.cfg, self.objects, self.table, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
+        elif self.args.rope:
+            self.fingers = delta_array_rope.DeltaArraySim(self.scene, self.cfg, self.objects, self.table, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
         else:
             self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.objects, self.table, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
         
@@ -195,6 +203,7 @@ class DeltaArraySimEnvironment():
         self.cam_offset_transform = RigidTransform_to_transform(RigidTransform(
             rotation=rot,
             translation = np.array([0.13125, 0.1407285, 0.65])
+            # translation = np.array([2, 2, 0.65])
         ))
         self.cam_name = 'hand_cam0'
         self.fingers.cam = self.cam 
@@ -204,14 +213,19 @@ class DeltaArraySimEnvironment():
         self.setup_objects()
 
     def setup_scene(self, scene, _):
-        # we'll sample block poses later
         self.fingers.add_asset(scene)
-        # Add either rigid body or soft body as an asset to the scene
-
-        for obj_name in self.objects.keys():
-            obj, object_p, _, object_r = self.objects[obj_name]
-            scene.add_asset(obj_name, obj, gymapi.Transform(p=object_p, r=object_r)) 
         scene.add_asset("table", self.table, gymapi.Transform())
+        if self.args.rope:
+            self.rope = GymURDFAsset('assets/rope.urdf', scene, 
+                    shape_props=self.cfg['rope']['shape_props'], 
+                    rb_props=self.cfg['rope']['rb_props'],
+                    asset_options=self.cfg['rope']['asset_options'],
+                    assets_root=Path('config'))
+            scene.add_asset('rope', self.rope, gymapi.Transform(p=gymapi.Vec3(0.13125, 0.1407285, 1.5), r=gymapi.Quat(0.8509035, 0, 0, 0.525322)))
+        else:    
+            for obj_name in self.objects.keys():
+                obj, object_p, _, object_r = self.objects[obj_name]
+                scene.add_asset(obj_name, obj, gymapi.Transform(p=object_p, r=object_r))
         # scene.add_asset("fiducial_lt", self.fiducial_lt, gymapi.Transform()) 
         # scene.add_asset("fiducial_rb", self.fiducial_rb, gymapi.Transform()) 
         scene.add_standalone_camera(self.cam_name, self.cam, self.cam_offset_transform)
@@ -228,13 +242,8 @@ class DeltaArraySimEnvironment():
         # fiducial_lt = [gymapi.Transform(p=gymapi.Vec3(0.2625 + 0.062, 0.303107 + 0.1855, 1.0052)) for _ in range(self.scene.n_envs)]
         for env_idx in self.scene.env_idxs:
             self.table.set_rb_transforms(env_idx, 'table', [table_transforms[env_idx]])
-            # for obj_name in self.objects.keys():
-            #     obj, object_p, object_r = self.objects[obj_name]
-            #     object_transforms = [gymapi.Transform(p=object_p, r=object_r) for _ in range(self.scene.n_envs)]
-            #     obj.set_rb_transforms(env_idx, obj_name, [object_transforms[env_idx]])
-
-            self.fingers.obj_name[env_idx] = "disc"
-            self.fingers.object[env_idx] = self.objects["disc"][0]
+            self.fingers.obj_name[env_idx] = "rope" if self.args.rope else "disc" 
+            self.fingers.object[env_idx] = self.rope if self.args.rope else self.objects[self.fingers.obj_name[env_idx]][0]
             
             if self.hp_dict['test_traj']:
                 exit_bool, pos = self.fingers.set_traj_pose(env_idx, goal=True)
@@ -243,7 +252,7 @@ class DeltaArraySimEnvironment():
             else:
                 self.fingers.set_block_pose(env_idx, goal=True)
             self.fingers.set_all_fingers_pose(env_idx)
-            # self.fingers.set_block_pose(env_idx)
+            
             # self.fiducial_lt.set_rb_transforms(env_idx, "fiducial_lt", [fiducial_lt[env_idx]])
             # self.fiducial_rb.set_rb_transforms(env_idx, "fiducial_rb", [fiducial_rb[env_idx]])
 
@@ -316,7 +325,8 @@ if __name__ == "__main__":
     parser.add_argument("-pilr", "--pilr", type=float, default=1e-2, help="% of data to use for visual servoing")
     parser.add_argument("-qlr", "--qlr", type=float, default=1e-2, help="% of data to use for visual servoing")
     parser.add_argument("-adaln", "--adaln", action="store_true", help="Use AdaLN Zero Transformer")
-    parser.add_argument("-etamin", "--etamin", type=float, default=1e-5, help="% of data to use for visual servoing")
+    parser.add_argument("-q_etamin", "--q_etamin", type=float, default=1e-5, help="% of data to use for visual servoing")
+    parser.add_argument("-pi_etamin", "--pi_etamin", type=float, default=1e-5, help="% of data to use for visual servoing")
     parser.add_argument("-savevid", "--save_vid", action="store_true", help="Save Videos at inference")
     parser.add_argument("-data", "--data_type", type=str, default=None, help="Use simplified setup with only 4 fingers")
     parser.add_argument("-XX", "--donothing", action="store_true", help="Do nothing to test sim")
@@ -324,6 +334,7 @@ if __name__ == "__main__":
     parser.add_argument("-test_traj", "--test_traj", action="store_true", help="Test on trajectories")
     parser.add_argument("-cmuri", "--cmuri", action="store_true", help="Set to use CMU RI trajectory")
     parser.add_argument("-unmasked", "--unmasked", action="store_true", help="Unmasked Attention Layers")
+    parser.add_argument("-rope", "--rope", action="store_true", help="To rope or not to rope")
     args = parser.parse_args()
 
     if args.vis_servo and not args.test:

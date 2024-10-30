@@ -53,8 +53,8 @@ class SAC:
         self.pi_optimizer = Adam(self.ac.pi.parameters(), lr=hp_dict['pi_lr'])
         self.q_optimizer = Adam(self.q_params, lr=hp_dict['q_lr'])
 
-        self.scheduler_actor = CosineAnnealingWarmRestarts(self.pi_optimizer, T_0=2, T_mult=2, eta_min=hp_dict['eta_min'])
-        self.scheduler_critic = CosineAnnealingWarmRestarts(self.q_optimizer, T_0=2, T_mult=2, eta_min=hp_dict['eta_min'])
+        self.scheduler_actor = CosineAnnealingWarmRestarts(self.pi_optimizer, T_0=2, T_mult=2, eta_min=hp_dict['pi_eta_min'])
+        self.scheduler_critic = CosineAnnealingWarmRestarts(self.q_optimizer, T_0=2, T_mult=2, eta_min=hp_dict['q_eta_min'])
 
         self.q_loss = None
         # Set up model saving

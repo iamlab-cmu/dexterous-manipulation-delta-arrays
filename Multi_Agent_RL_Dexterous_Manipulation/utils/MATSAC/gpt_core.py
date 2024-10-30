@@ -111,9 +111,10 @@ class GPTLayer(nn.Module):
         return x
 
 class GPT(nn.Module):
-    def __init__(self, state_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False, masked=True):
+    def __init__(self, state_dim, obj_name_enc_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False, masked=True):
         super(GPT, self).__init__()
         self.state_enc = nn.Linear(state_dim, model_dim)
+        self.obj_name_enc = nn.Embedding(obj_name_enc_dim, model_dim)
         self.action_embedding = wt_init_(nn.Linear(action_dim, model_dim))
         self.pos_embedding = pos_embedding
         self.dropout = nn.Dropout(dropout)
@@ -127,7 +128,7 @@ class GPT(nn.Module):
             # self.actor_std_layer = wt_init_(nn.Linear(model_dim, action_dim))
         self.activation = nn.GELU()
 
-    def forward(self, state, actions, pos, idx=None):
+    def forward(self, state, actions, obj_name_encs, pos, idx=None):
         """
         Input: state (bs, n_agents, state_dim)
                actions (bs, n_agents, action_dim)
@@ -135,10 +136,13 @@ class GPT(nn.Module):
         """
         # act_enc = self.dropout(self.positional_encoding(F.ReLU(self.action_embedding(actions))))
         state_enc = self.state_enc(state)
+        obj_name_enc = self.obj_name_enc(obj_name_encs)
         pos_embed = self.pos_embedding(pos)
-        act_enc = pos_embed.squeeze(2) + self.activation(self.action_embedding(actions))
+        
+        conditional_enc = pos_embed.squeeze(2) + state_enc + obj_name_enc.unsqueeze(1)
+        act_enc = self.activation(self.action_embedding(actions))
         for layer in self.decoder_layers:
-            act_enc = layer(act_enc, state_enc)
+            act_enc = layer(act_enc, conditional_enc)
         act_mean = self.actor_mu_layer(act_enc)
         
         return act_mean
@@ -225,7 +229,7 @@ class GPT_AdaLN(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, state_dim, action_dim, action_limit, model_dim, num_heads, dim_ff, num_layers, dropout, device, delta_array_size = (8,8), adaln=False, masked=True):
+    def __init__(self, hp_dict, delta_array_size = (8, 8)):
         super(Transformer, self).__init__()
         """
         For 2D planar manipulation:
@@ -236,32 +240,33 @@ class Transformer(nn.Module):
         dim_ff: size of MLPs
         num_layers: number of layers in encoder and decoder
         """
-        self.device = device
+        self.hp_dict = hp_dict
+        self.device = hp_dict['dev_rl']
         self.max_agents = delta_array_size[0] * delta_array_size[1]
-        self.act_limit = action_limit
-        self.action_dim = action_dim
+        self.act_limit = hp_dict['act_limit']
+        self.action_dim = hp_dict['action_dim']
         self.pos_embedding = IntegerEmbeddingModel(self.max_agents, embedding_dim=256)
-        self.pos_embedding.load_state_dict(torch.load("./utils/MATSAC/idx_embedding_new.pth", map_location=device, weights_only=True))
+        self.pos_embedding.load_state_dict(torch.load("./utils/MATSAC/idx_embedding_new.pth", map_location=self.device, weights_only=True))
         for param in self.pos_embedding.parameters():
             param.requires_grad = False
         log_std = -0.5 * torch.ones(self.action_dim)
         self.log_std = torch.nn.Parameter(log_std)
 
-        if adaln:
-            self.decoder_actor = GPT_AdaLN(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['actor'], masked=masked)
-            self.decoder_critic1 = GPT_AdaLN(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['critic'], critic=True, masked=masked)
-            self.decoder_critic2 = GPT_AdaLN(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['critic'], critic=True, masked=masked)
+        if hp_dict["adaln"]:
+            self.decoder_actor = GPT_AdaLN(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['actor'], masked=hp_dict['masked'])
+            self.decoder_critic1 = GPT_AdaLN(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'], critic=True, masked=hp_dict['masked'])
+            self.decoder_critic2 = GPT_AdaLN(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'], critic=True, masked=hp_dict['masked'])
         else:
-            self.decoder_actor = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['actor'], masked=masked)
-            self.decoder_critic1 = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['critic'], critic=True, masked=masked)
-            self.decoder_critic2 = GPT(state_dim, model_dim, action_dim, num_heads, self.max_agents, dim_ff, self.pos_embedding, dropout, num_layers['critic'], critic=True, masked=masked)
+            self.decoder_actor = GPT(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['actor'], masked=hp_dict['masked'])
+            self.decoder_critic1 = GPT(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'], critic=True, masked=hp_dict['masked'])
+            self.decoder_critic2 = GPT(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'], critic=True, masked=hp_dict['masked'])
 
-    def get_actions(self, states, pos, deterministic=False):
+    def get_actions(self, states,  obj_name_encs, pos, deterministic=False):
         """ Returns actor actions """
         bs, n_agents, _ = states.size()
         actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
         for i in range(n_agents):
-            updated_actions = self.decoder_actor(states, actions, pos, i)
+            updated_actions = self.decoder_actor(states, actions, obj_name_encs, pos, i)
 
             # TODO: Ablate here with all actions cloned so that even previous actions are updated with new info. 
             # TODO: Does it cause instability? How to know if it does?

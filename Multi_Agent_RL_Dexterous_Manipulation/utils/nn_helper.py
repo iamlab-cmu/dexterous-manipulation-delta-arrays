@@ -11,24 +11,18 @@ class NNHelper:
     def __init__(self, plane_size, real_or_sim="real"):
         self.rb_pos_pix = np.zeros((8,8,2))
         self.rb_pos_world = np.zeros((8,8,2))
-        self.rb_pos_world_sim = np.zeros((8,8,2))
         self.kdtree_positions_pix = np.zeros((64, 2))
         self.kdtree_positions_world = np.zeros((64, 2))
-        self.kdtree_positions_world_sim = np.zeros((64, 2))
         for i in range(8):
             for j in range(8):
                 if real_or_sim=="real":
                     """ Let's just use sim coords for real also as the learning methods are trained on sim data """
                     if i%2!=0:
-                        finger_pos = np.array((i*3.75, -j*4.3301 + 2.165))
-                        # finger_pos = np.array((i*0.0375, j*0.043301 - 0.02165))
-                        self.rb_pos_world[i,j] = np.array((i*3.75, -j*4.3301 + 2.165))
-                        self.rb_pos_world_sim[i,j] = np.array((i*0.0375, j*0.043301 - 0.02165))
+                        finger_pos = np.array((i*0.0375, -j*0.043301 + 0.02165))
+                        self.rb_pos_world[i,j] = np.array((i*0.0375, -j*0.043301 + 0.02165))
                     else:
-                        finger_pos = np.array((i*3.75, -j*4.3301))
-                        # finger_pos = np.array((i*0.0375, j*0.043301))
-                        self.rb_pos_world[i,j] = np.array((i*3.75, -j*4.3301))
-                        self.rb_pos_world_sim[i,j] = np.array((i*0.0375, j*0.043301))
+                        finger_pos = np.array((i*0.0375, -j*0.043301))
+                        self.rb_pos_world[i,j] = np.array((i*0.0375, -j*0.043301))
                 else:
                     if i%2!=0:
                         finger_pos = np.array((i*0.0375, j*0.043301 - 0.02165))
@@ -37,10 +31,13 @@ class NNHelper:
                         finger_pos = np.array((i*0.0375, j*0.043301))
                         self.rb_pos_world[i,j] = np.array((i*0.0375, j*0.043301))
                 self.kdtree_positions_world[i*8 + j, :] = self.rb_pos_world[i,j]
-                self.kdtree_positions_world_sim[i*8 + j, :] = self.rb_pos_world_sim[i,j]
         
                 finger_pos[0] = (finger_pos[0] - plane_size[0][0])/(plane_size[1][0]-plane_size[0][0])*1080 - 0
-                finger_pos[1] = 1920 - (finger_pos[1] - plane_size[0][1])/(plane_size[1][1]-plane_size[0][1])*1920
+                if real_or_sim=="real":
+                    finger_pos[1] = (finger_pos[1] - plane_size[0][1])/(plane_size[1][1]-plane_size[0][1])*1920 - 0
+                else:
+                    finger_pos[1] = 1920 - (finger_pos[1] - plane_size[0][1])/(plane_size[1][1]-plane_size[0][1])*1920
+                
                 # finger_pos = finger_pos.astype(np.int32)
                 self.rb_pos_pix[i,j] = finger_pos
                 self.kdtree_positions_pix[i*8 + j, :] = self.rb_pos_pix[i,j]
