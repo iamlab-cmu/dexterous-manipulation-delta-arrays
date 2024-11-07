@@ -1,9 +1,7 @@
 {
-	"folders": [
-		{
-			"name": "dexterous-manipulation-delta-arrays",
-			"path": "../.."
-		}
-	],
-	"settings": {}
+    "folders": [
+        {
+            "path": "../../Multi_Agent_RL_Dexterous_Manipulation"
+        }
+    ]
 }

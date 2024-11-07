@@ -46,6 +46,8 @@ class GroundedSAM:
         self.object_detector = pipeline(model=obj_detection_model, task="zero-shot-object-detection", device=device)
         self.object_segmentor = AutoModelForMaskGeneration.from_pretrained(segmentation_model).to(device)
         self.processor = AutoProcessor.from_pretrained(segmentation_model)
+        self.lower_green_filter = np.array([35, 50, 50])
+        self.upper_green_filter = np.array([85, 255, 255])
                 
     def get_boxes(self, results: DetectionResult) -> List[List[List[float]]]:
         boxes = []
@@ -116,14 +118,18 @@ class GroundedSAM:
         masks = self.refine_masks(masks, polygon_refinement)
         return masks
         
-    def grounded_obj_segmentation(self, image:np.array, labels:List[str], threshold:float=0.3, polygon_refinement=True) -> List[np.array]:
+    def grounded_obj_segmentation(self, image:np.array, labels:List[str], threshold:float=0.5, polygon_refinement=True) -> List[np.array]:
         # TODO: See if this works. If not, add Image.fromarray(image) to the input of the object detector
         results = self.detect_obj_from_labels(Image.fromarray(image), labels, threshold)
-        # print(results)
         masks = self.segment_obj_from_bb(Image.fromarray(image), results, polygon_refinement)
-        boundary = cv2.Canny(masks[0],100,200)
+        
+        og_mask = masks[0]
+        image = cv2.bitwise_and(image, image, mask = og_mask)
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
+        
+        hsv_mask = cv2.inRange(image, self.lower_green_filter, self.upper_green_filter)
+        og_mask = cv2.bitwise_and(og_mask, og_mask, mask = hsv_mask)
+        
+        boundary = cv2.Canny(og_mask,100,200)
         boundary_pts = np.array(np.where(boundary==255)).T
-        # plt.imshow(masks[0])
-        # plt.scatter(boundary_pts[:,1], boundary_pts[:,0], c='r', s=1)
-        # plt.show()
-        return masks[0]
+        return masks[0], boundary_pts

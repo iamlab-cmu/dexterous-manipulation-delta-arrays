@@ -41,19 +41,19 @@ class DeltaArrayEnvCreator:
         
         worldbody = ET.SubElement(mujoco, 'worldbody')
         
-        # # Add fiducial markers
-        # fiducial_positions = [
-        #     ("fiducial_lt", [-0.06, -0.2035, 1.021]),
-        #     ("fiducial_rb", [0.3225, 0.485107, 1.021])
-        # ]
-        # for name, pos in fiducial_positions:
-        #     worldbody.append(self.create_fiducial_marker(name, pos))
+        # Add fiducial markers
+        fiducial_positions = [
+            ("fiducial_lt", [-0.06, -0.2035, 1.021]),
+            ("fiducial_rb", [0.3225, 0.485107, 1.021])
+        ]
+        for name, pos in fiducial_positions:
+            worldbody.append(self.create_fiducial_marker(name, pos))
             
         # Create fingertip bodies
         arr = np.zeros((8, 8, 3))
         for i in range(arr.shape[0]):
             for j in range(arr.shape[1]):
-                arr[i, j] = (i*0.0375, j*0.043301 - (0.02165 if i%2 else 0), 1.5)
+                arr[i, j] = (i*0.0375, j*0.043301 - (0.02165 if i%2 else 0), 1.1)
                 name = f"fingertip_{arr.shape[0]*i + j}"
                 worldbody.append(self.create_fingertip_body(name, arr[i, j]))
         

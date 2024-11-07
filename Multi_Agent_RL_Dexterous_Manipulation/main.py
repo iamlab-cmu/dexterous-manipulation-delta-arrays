@@ -117,8 +117,8 @@ class DeltaArraySimEnvironment():
                 # RL params
                 "tau"               : 0.005,
                 "gamma"             : 0.99,
-                "q_lr"              : 1e-2,
-                "pi_lr"             : 1e-2,
+                "q_lr"              : self.args.qlr,
+                "pi_lr"             : self.args.pilr,
                 'obj_name_enc_dim'  : 9,
                 "q_eta_min"         : self.args.q_etamin,
                 "pi_eta_min"        : self.args.pi_etamin,
@@ -142,13 +142,13 @@ class DeltaArraySimEnvironment():
                 "model_dim"         : 256,
                 "num_heads"         : 8,
                 "dim_ff"            : 128,
-                "n_layers_dict"     : {'actor': 10, 'critic': 10},
+                "n_layers_dict"     : {'actor': 12, 'critic': 12},
                 "dropout"           : 0,
                 "max_grad_norm"     : self.args.gradnorm,
                 "adaln"             : self.args.adaln,
                 "delta_array_size"  : [8,8],
                 "add_vs_data"       : self.args.add_vs_data,
-                "ratio"             : self.args.vs_data,
+                "vs_ratio"             : self.args.vs_data,
                 'print_summary'     : self.args.print_summary,
                 'masked'            : not self.args.unmasked,
                 'cmu_ri'             : self.args.cmuri,
@@ -311,7 +311,7 @@ if __name__ == "__main__":
     parser.add_argument("-nexp", "--num_expts", type=int, default=1, help="Number of Experiments to run")
     parser.add_argument("-gui", "--gui", action="store_true", help="True for GUI")
     parser.add_argument("-avsd", "--add_vs_data", action="store_true", help="True for adding visual servoing data")
-    parser.add_argument("-vsd", "--vs_data", type=float, help="% of data to use for visual servoing")
+    parser.add_argument("-vsd", "--vs_data", type=float, help="[0 to 1] ratio of data to use for visual servoing")
     parser.add_argument("-n", "--name", type=str, default="HAKUNA", help="Expt Name")
     parser.add_argument("-obj_name", "--obj_name", type=str, default="disc", help="Object Name in env.yaml")
     parser.add_argument("-dontlog", "--dont_log", action="store_true", help="Don't Log Experiment")

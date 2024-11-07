@@ -14,10 +14,9 @@ def run_env(env_id, env, sim_len, return_dict):
     state = env.reset()
     # env.set_rope_curve()
     stored_data = []
-    for t_step in range(5000):
-        if t_step == 1:
-            env.set_rope_curve()
-            env.preprocess_state()
+    for t_step in range(sim_len):
+        # if t_step == 1:
+        #     env.preprocess_state()
         env.update_sim()
         stored_data.append(env.data)
     
@@ -37,6 +36,10 @@ if __name__ == "__main__":
     parser.add_argument('-devrl', '--rl_device', type=int, default=0, help='Device on which to run RL policies')
     parser.add_argument('-devv', '--vis_device', type=int, default=1, help='Device on which to run VLMs')
     parser.add_argument('-nrb', '--num_rope_bodies', type=int, default=30, help='Number of cylinders in the rope')
+    parser.add_argument('-algo', "--algo", type=str, default="MATSAC", help="Name of the algorithm to run")
+    parser.add_argument('-t', '--test',  action='store_true', help='True to run tests')
+    parser.add_argument("-dontlog", "--dont_log", action="store_true", help="Don't Log Experiment")
+    parser.add_argument("-v", "--vis_servo", action="store_true", help="True for Visual Servoing")
     args = parser.parse_args()
     args = vars(args)
 
@@ -44,6 +47,7 @@ if __name__ == "__main__":
     if args['gui'] and args['nenv'] > 1:
         raise ValueError("Cannot run multiple environments with GUI")
     
+    # run_env(0, envs[0], args['simlen'], {})
     try:
         # while True:
         if args['gui']:

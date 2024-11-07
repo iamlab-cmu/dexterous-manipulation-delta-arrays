@@ -219,14 +219,14 @@ class Transformer(nn.Module):
         # log_std = -0.5 * torch.ones(self.action_dim)
         # self.log_std = torch.nn.Parameter(log_std)
 
-        self.decoder_actor = GPT_AdaLn_Actor(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], 2*self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['decoder'])
+        self.decoder_actor = GPT_AdaLn_Actor(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['decoder'])
         self.decoder_critic = GPT_AdaLn_Critic(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['decoder'])
         # self.decoder_critic2 = GPT_AdaLn_Critic(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['decoder'])
         
     def forward(self, states, obj_name_encs, pos, deterministic=False):
         """ Returns actor actions """
         bs, n_agents, _ = states.size()
-        actions = torch.zeros((bs, n_agents, 2*self.action_dim)).to(self.device)
+        actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
 
         for i in range(n_agents):
             updated_actions = self.decoder_actor(states, actions, obj_name_encs, pos)
@@ -235,22 +235,22 @@ class Transformer(nn.Module):
             # TODO: Does it cause instability? How to know if it does?
             actions = actions.clone()
             actions[:, i, :] = self.act_limit * torch.tanh(updated_actions[:, i, :])
-            actions[:, i, :] = updated_actions[:, i, :]
+            # actions[:, i, :] = updated_actions[:, i, :]
             
-        mus = actions[:, :, ::2]
-        if deterministic:
-            action = mus
-            log_prob = None
-        else:
-            log_stds = updated_actions[:, :, 1::2]
-            log_stds = torch.clamp(log_stds, LOG_STD_MIN, LOG_STD_MAX)
-            stds = torch.exp(log_stds)
-            dist = torch.distributions.Normal(mus, stds)
-            action = dist.rsample()
-            log_prob = dist.log_prob(action).sum(axis=-1)
-            log_prob -= (2 * (np.log(2) - action - F.softplus(-2 * action))).sum(axis=-1)
-        actions = self.act_limit * torch.tanh(action)
-        return actions, log_prob
+        # mus = actions[:, :, ::2]
+        # if deterministic:
+        #     action = mus
+        #     log_prob = None
+        # else:
+        #     log_stds = actions[:, :, 1::2]
+        #     log_stds = torch.clamp(log_stds, LOG_STD_MIN, LOG_STD_MAX)
+        #     stds = torch.exp(log_stds)
+        #     dist = torch.distributions.Normal(mus, stds)
+        #     action = dist.rsample()
+        #     log_prob = dist.log_prob(action).sum(axis=-1)
+        #     log_prob -= (2 * (np.log(2) - action - F.softplus(-2 * action))).sum(axis=-1)
+        # actions = self.act_limit * torch.tanh(action)
+        return actions
 
     def compute_actor_loss(self, actions, states, obj_name_encs, pos):
         pred_actions, _ = self.forward(states, obj_name_encs, pos)

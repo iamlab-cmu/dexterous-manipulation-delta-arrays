@@ -195,14 +195,15 @@ class FinalLayer(nn.Module):
 
 
 class GPT_AdaLN(nn.Module):
-    def __init__(self, state_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False, masked=True):
+    def __init__(self, state_dim, obj_name_enc_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False, masked=True):
         super(GPT_AdaLN, self).__init__()
         self.state_enc = nn.Linear(state_dim, model_dim)
+        self.obj_name_enc = nn.Embedding(obj_name_enc_dim, model_dim)
         self.action_embedding = wt_init_(nn.Linear(action_dim, model_dim))
         self.pos_embedding = pos_embedding
         self.dropout = nn.Dropout(dropout)
 
-        self.decoder_layers = nn.ModuleList([AdaLNLayer(model_dim, num_heads, max_agents, dim_ff, dropout) for _ in range(n_layers)])
+        self.decoder_layers = nn.ModuleList([AdaLNLayer(model_dim, num_heads, max_agents, dim_ff, dropout, masked) for _ in range(n_layers)])
         self.critic = critic
         if self.critic:
             self.final_layer = FinalLayer(model_dim, 1)
@@ -211,7 +212,7 @@ class GPT_AdaLN(nn.Module):
             # self.actor_std_layer = wt_init_(nn.Linear(model_dim, action_dim))
         self.activation = nn.GELU()
 
-    def forward(self, state, actions, pos, idx=None):
+    def forward(self, state, actions, obj_name_encs, pos, idx=None):
         """
         Input: state (bs, n_agents, state_dim)
                actions (bs, n_agents, action_dim)
@@ -220,7 +221,9 @@ class GPT_AdaLN(nn.Module):
         # act_enc = self.dropout(self.positional_encoding(F.ReLU(self.action_embedding(actions))))
         state_enc = self.state_enc(state)
         pos_embed = self.pos_embedding(pos)
-        conditional_enc = pos_embed.squeeze(2) + state_enc
+        obj_name_enc = self.obj_name_enc(obj_name_encs)
+        
+        conditional_enc = pos_embed.squeeze(2) + obj_name_enc.unsqueeze(1) + state_enc
         act_enc = self.activation(self.action_embedding(actions))
         for layer in self.decoder_layers:
             act_enc = layer(act_enc, conditional_enc)

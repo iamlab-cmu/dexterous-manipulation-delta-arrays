@@ -856,10 +856,10 @@ class DeltaArraySim:
                     self.reset(env_idx)
             else:
                 if t_step == 0:
-                    # if self.hp_dict["add_vs_data"] and (np.random.rand() <= self.hp_dict['ratio']):
-                    #     self.vs_step(env_idx, t_step)
-                    # else:
-                    self.env_step(env_idx, t_step, self.agent)
+                    if self.hp_dict["add_vs_data"] and (np.random.rand() <= self.hp_dict['vs_ratio']):
+                        self.vs_step(env_idx, t_step)
+                    else:
+                        self.env_step(env_idx, t_step, self.agent)
                 elif t_step == 2:
                     self.set_attractor_target(env_idx, self.actions)
                 elif t_step == (self.time_horizon-1):
@@ -894,6 +894,7 @@ class DeltaArraySim:
             if t_step == 0:
                 self.env_step(env_idx, t_step, self.agent, test=True) # Only Store Actions from MARL Policy
             elif t_step == 1:
+                print(self.actions[env_idx, :self.n_idxs[env_idx]])
                 self.set_attractor_target(env_idx, self.actions)
             elif t_step == (self.time_horizon-1):
                 final_pose = self.compute_reward(env_idx, t_step)
