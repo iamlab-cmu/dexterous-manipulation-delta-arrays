@@ -153,9 +153,7 @@ class DeltaArraySimEnvironment():
                 'masked'            : not self.args.unmasked,
                 'cmu_ri'             : self.args.cmuri,
             }
-        git rm --cached /path/to/file
-git commit -am "Remove file"
-git push
+        
         logger_kwargs = {}
         if self.train_or_test=="train":
             if not self.hp_dict["dont_log"]:
