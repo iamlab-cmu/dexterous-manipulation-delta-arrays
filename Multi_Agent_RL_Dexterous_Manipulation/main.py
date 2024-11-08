@@ -124,7 +124,7 @@ class DeltaArraySimEnvironment():
                 "pi_eta_min"        : self.args.pi_etamin,
                 "eta_min"           : self.args.q_etamin,
                 "alpha"             : 0.2,
-                'optim'             : 'adam',
+                'optim'             : self.args.optim,
                 'epsilon'           : 1.0,
                 "batch_size"        : self.args.bs,
                 "warmup_epochs"     : self.args.warmup,
@@ -335,6 +335,7 @@ if __name__ == "__main__":
     parser.add_argument("-cmuri", "--cmuri", action="store_true", help="Set to use CMU RI trajectory")
     parser.add_argument("-unmasked", "--unmasked", action="store_true", help="Unmasked Attention Layers")
     parser.add_argument("-rope", "--rope", action="store_true", help="To rope or not to rope")
+    parser.add_argument("-optim", "--optim", type=str, default="adam", help="Optimizer to use adam vs sgd")
     args = parser.parse_args()
 
     if args.vis_servo and not args.test:
