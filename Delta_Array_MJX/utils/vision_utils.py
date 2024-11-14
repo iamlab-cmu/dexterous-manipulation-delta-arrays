@@ -113,7 +113,7 @@ class GroundedSAM:
             masks=outputs.pred_masks,
             original_sizes=inputs.original_sizes,
             reshaped_input_sizes=inputs.reshaped_input_sizes
-        )[0]
+        )[0] 
 
         masks = self.refine_masks(masks, polygon_refinement)
         return masks

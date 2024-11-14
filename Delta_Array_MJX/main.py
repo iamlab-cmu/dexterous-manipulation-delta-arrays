@@ -11,8 +11,15 @@ from src.delta_array_mj import DeltaArrayMJ
 
 
 def run_env(env_id, env, sim_len, return_dict):
-    state = env.reset()
-    # env.set_rope_curve()
+    env.reset()
+    # TODO: Query SAC Policy here for grasping and fwd sim with grasping actions.
+    env.actions_grasp = ?
+    for t_step in range(sim_len):
+        env.update_sim()
+        
+    env.state[:env.n_idxs, 4:6] = env.actions_grasp
+    # TODO: Then query MATSAC for actions 
+    env.actions = ?
     stored_data = []
     for t_step in range(sim_len):
         # if t_step == 1:

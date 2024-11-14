@@ -9,10 +9,12 @@ import networkx as nx
 import triangle as tr
 
 import scipy.linalg as linalg
-from scipy.spatial import Delaunay
+from scipy.spatial import KDTree, Delaunay
 from scipy.spatial.transform import Rotation as R
 from scipy.interpolate import CubicSpline
 from skimage.measure import find_contours
+from scipy.interpolate import interp1d
+from scipy.spatial.distance import euclidean
 
 lower_green_filter = np.array([35, 50, 50])
 upper_green_filter = np.array([85, 255, 255])
@@ -49,6 +51,141 @@ def icp(a, b, icp_radius = 200):
     reg_p2p = o3d.pipelines.registration.registration_icp(src, dest, icp_radius, np.identity(4),
                             o3d.pipelines.registration.TransformationEstimationPointToPoint())
     return reg_p2p.transformation
+
+def sample_boundary_points(boundary_points: np.ndarray, n_samples: int) -> np.ndarray:
+    diffs = np.diff(boundary_points, axis=0)
+    segment_lengths = np.sqrt(np.sum(diffs**2, axis=1))
+    cumulative_dist = np.concatenate(([0], np.cumsum(segment_lengths)))
+    cumulative_dist = cumulative_dist / cumulative_dist[-1]
+    
+    fx = interp1d(cumulative_dist, boundary_points[:, 0], kind='cubic')
+    fy = interp1d(cumulative_dist, boundary_points[:, 1], kind='cubic')
+    
+    t = np.linspace(0, 1, n_samples)
+    return np.column_stack([fx(t), fy(t)])
+
+def transform_boundary_points(init_bd_pts, goal_bd_pts, init_nn_bd_pts, method: str = 'rigid') -> np.ndarray:
+    """
+    Transform initial nearest neighbor boundary points to goal configuration.
+    
+    Args:
+        init_bd_pts: Initial boundary points (N, 2)
+        goal_bd_pts: Goal boundary points (N, 2)
+        init_nn_bd_pts: Initial nearest neighbor points to transform (M, 2)
+        method: Transformation method ('rigid', 'affine', or 'local')
+        
+    Returns:
+        goal_nn_bd_pts: Transformed nearest neighbor points (M, 2)
+    """
+    if method == 'rigid':
+        return transform_rigid(init_bd_pts, goal_bd_pts, init_nn_bd_pts)
+    elif method == 'affine':
+        return transform_affine(init_bd_pts, goal_bd_pts, init_nn_bd_pts)
+    elif method == 'local':
+        return transform_local(init_bd_pts, goal_bd_pts, init_nn_bd_pts)
+    else:
+        raise ValueError(f"Unknown method: {method}")
+
+def find_rigid_transform(A, B):
+    """
+    Find rigid transformation (rotation + translation) between point sets A and B.
+    
+    Args:
+        A: Source points (N, 2)
+        B: Target points (N, 2)
+        
+    Returns:
+        R: Rotation matrix (2, 2)
+        t: Translation vector (2,)
+    """
+    centroid_A = np.mean(A, axis=0)
+    centroid_B = np.mean(B, axis=0)
+    Am = A - centroid_A
+    Bm = B - centroid_B
+    
+    # Compute rotation using SVD
+    H = Am.T @ Bm
+    U, _, Vt = np.linalg.svd(H)
+    R = Vt.T @ U.T
+    
+    # Special reflection case
+    if np.linalg.det(R) < 0:
+        Vt[-1,:] *= -1
+        R = Vt.T @ U.T
+        
+    t = centroid_B - R @ centroid_A
+    return R, t
+
+def transform_rigid(init_bd_pts, goal_bd_pts, init_nn_bd_pts):
+    """Apply rigid transformation to points"""
+    R, t = find_rigid_transform(init_bd_pts, goal_bd_pts)
+    return (R @ init_nn_bd_pts.T).T + t
+
+def find_affine_transform(A, B):
+    """
+    Find affine transformation between point sets A and B.
+    
+    Args:
+        A: Source points (N, 2)
+        B: Target points (N, 2)
+        
+    Returns:
+        M: Affine transformation matrix (2, 2)
+        t: Translation vector (2,)
+    """
+    A_hom = np.hstack([A, np.ones((A.shape[0], 1))])
+    transform = np.linalg.lstsq(A_hom, B, rcond=None)[0]
+    
+    return transform[:2, :].T, transform[2, :]
+
+def transform_affine(init_bd_pts, goal_bd_pts, init_nn_bd_pts):
+    """Apply affine transformation to points"""
+    M, t = find_affine_transform(init_bd_pts, goal_bd_pts)
+    return (M @ init_nn_bd_pts.T).T + t
+
+def transform_local(init_bd_pts, goal_bd_pts, init_nn_bd_pts, k=5):
+    """
+    Apply locally weighted transformation based on nearest neighbors.
+    
+    Args:
+        init_bd_pts: Initial boundary points
+        goal_bd_pts: Goal boundary points
+        init_nn_bd_pts: Points to transform
+        k: Number of nearest neighbors for local transformation
+        
+    Returns:
+        Transformed points
+    """
+    tree = KDTree(init_bd_pts)
+    goal_nn_bd_pts = np.zeros_like(init_nn_bd_pts)
+    for i, point in enumerate(init_nn_bd_pts):
+        distances, indices = tree.query(point, k=k)
+        
+        weights = 1 / (distances + 1e-10)
+        weights = weights / np.sum(weights)
+        
+        local_init = init_bd_pts[indices]
+        local_goal = goal_bd_pts[indices]
+        
+        R, t = find_rigid_transform(local_init, local_goal)
+        
+        goal_nn_bd_pts[i] = (R @ point) + t
+    return goal_nn_bd_pts
+
+
+def random_resample_boundary_points(init_bd_pts: np.ndarray, goal_bd_pts: np.ndarray):
+    n1, n2 = len(init_bd_pts), len(goal_bd_pts)
+    target_size = min(n1, n2)
+    
+    if n1 > target_size:
+        indices = np.random.choice(n1, size=target_size, replace=False)
+        init_bd_pts = init_bd_pts[indices]
+    
+    if n2 > target_size:
+        indices = np.random.choice(n2, size=target_size, replace=False)
+        goal_bd_pts = goal_bd_pts[indices]
+        
+    return init_bd_pts, goal_bd_pts
 
 class GFT:
     def __init__(self, boundary, n_triangles=60, plot_boundary=False):
@@ -171,289 +308,3 @@ class GFT:
             plt.scatter(*np.mean(residual, axis=1))
         plt.show()
         
-def calculate_curve_length(points):
-    """Calculate the total length of a curve defined by points"""
-    diff = np.diff(points, axis=0)
-    segment_lengths = np.sqrt(np.sum(diff * diff, axis=1))
-    return np.sum(segment_lengths)
-
-def resample_equidistant_points(points, num_points):
-    """
-    Resample points along a curve to be equidistant.
-    
-    Args:
-        points: Original points along curve (N x 2 or N x 3 array)
-        num_points: Number of equidistant points to generate
-        
-    Returns:
-        Array of equidistant points along the curve
-    """
-    # Calculate cumulative distances along the curve
-    diff = np.diff(points, axis=0)
-    segment_lengths = np.sqrt(np.sum(diff * diff, axis=1))
-    cumulative_lengths = np.concatenate(([0], np.cumsum(segment_lengths)))
-    total_length = cumulative_lengths[-1]
-    
-    print("TOTAL LENGTH:", total_length)
-    
-    # Create interpolation for each dimension
-    splines = [
-        CubicSpline(cumulative_lengths, points[:, i])
-        for i in range(points.shape[1])
-    ]
-    
-    # Generate equidistant points
-    desired_distances = np.linspace(0, total_length, num_points)
-    resampled_points = np.zeros((num_points, points.shape[1]))
-    
-    for i in range(points.shape[1]):
-        resampled_points[:, i] = splines[i](desired_distances)
-    
-    return resampled_points
-
-def normalize_angle(angle):
-    """Normalize angle to [-pi, pi]"""
-    return np.arctan2(np.sin(angle), np.cos(angle))
-
-def normalize_angles(angles):
-    """Normalize an array of angles to [-pi, pi]"""
-    return np.array([normalize_angle(a) for a in angles])
-
-def calculate_total_length(positions):
-    """Calculate total length of the curve from discrete points"""
-    diff = np.diff(positions, axis=0)
-    segment_lengths = np.sqrt(np.sum(diff * diff, axis=1))
-    return np.sum(segment_lengths)
-
-def scale_to_length(positions, target_length):
-    """Scale the points to achieve a specific total length"""
-    current_length = calculate_total_length(positions)
-    scale_factor = target_length / current_length
-    
-    # Scale points around their centroid
-    centroid = np.mean(positions, axis=0)
-    scaled_positions = centroid + (positions - centroid) * scale_factor
-    
-    return scaled_positions
-
-def calculate_yaw_from_tangent(tangent):
-    """Calculate yaw angle from tangent vector, handling edge cases"""
-    return np.arctan2(tangent[1], tangent[0])
-
-def line_segment_distance(p1, p2, p3, p4):
-    """
-    Calculate the minimum distance between two line segments.
-    p1, p2 define the first line segment
-    p3, p4 define the second line segment
-    """
-    def dot(v1, v2):
-        return v1[0] * v2[0] + v1[1] * v2[1]
-    
-    def distance_point_to_segment(p, s1, s2):
-        segment = s2 - s1
-        length_sq = dot(segment, segment)
-        if length_sq == 0:
-            return np.linalg.norm(p - s1)
-        t = max(0, min(1, dot(p - s1, segment) / length_sq))
-        projection = s1 + t * segment
-        return np.linalg.norm(p - projection)
-    
-    # Convert to numpy arrays for easier calculation
-    p1 = np.array(p1[:2])  # Use only x,y coordinates
-    p2 = np.array(p2[:2])
-    p3 = np.array(p3[:2])
-    p4 = np.array(p4[:2])
-    
-    # Calculate distances from each endpoint to the other segment
-    d1 = distance_point_to_segment(p1, p3, p4)
-    d2 = distance_point_to_segment(p2, p3, p4)
-    d3 = distance_point_to_segment(p3, p1, p2)
-    d4 = distance_point_to_segment(p4, p1, p2)
-    
-    return min(d1, d2, d3, d4)
-
-def check_self_collision(positions, min_distance):
-    """
-    Check if any segments of the rope are too close to each other.
-    Returns True if there is a collision, False otherwise.
-    """
-    n_segments = len(positions)
-    
-    # Check each pair of non-adjacent segments
-    for i in range(n_segments - 2):
-        for j in range(i + 2, n_segments-1):
-            # Skip adjacent segments
-            if abs(i - j) <= 1:
-                continue
-            
-            # Calculate distance between segments
-            dist = line_segment_distance(
-                positions[i], positions[i+1],
-                positions[j], positions[j+1]
-            )
-            
-            # Check if distance is less than minimum allowed
-            if dist < min_distance:
-                return True
-    return False
-
-def compute_relative_quaternions(positions):
-    """
-    Compute relative quaternions between adjacent segments based on the direction to next point.
-    Returns quaternions that represent the relative rotation from segment i to segment i+1.
-    """
-    num_segments = len(positions)
-    relative_quaternions = np.zeros((num_segments, 4))  # (w, x, y, z) format
-    
-    # First find all direction vectors between consecutive points
-    # Ensure positions is a numpy array
-    positions = np.array(positions)
-    
-    # tangents = np.zeros((num_segments, 2))
-    # tangents[1:] = positions_2d[1:] - positions_2d[:-1]
-    # tangents[0] = tangents[1]  # Use the first valid tangent for the initial point
-    # norms = np.linalg.norm(tangents, axis=1)
-    # tangents = tangents / norms[:, np.newaxis]
-
-    # Calculate directions only for x,y components
-    directions = np.zeros((num_segments, 2))
-    directions[1:] = positions[1:, :2] - positions[:-1, :2]  # Only use x,y coordinates
-    directions[0] = directions[1]  # Last direction same as second-to-last
-    
-    # Normalize directions
-    norms = np.linalg.norm(directions, axis=1)
-    norms[norms == 0] = 1  # Avoid division by zero
-    directions = directions / norms[:, np.newaxis]
-    
-    # Calculate yaw angles from directions
-    absolute_yaws = np.arctan2(directions[:, 1], directions[:, 0])
-    
-    # First quaternion represents rotation from world frame to first direction
-    first_rotation = R.from_euler('z', absolute_yaws[0])
-    quat = first_rotation.as_quat()  # (x, y, z, w) format
-    relative_quaternions[0] = np.array([quat[3], quat[0], quat[1], quat[2]])  # Convert to (w, x, y, z)
-    
-    # For remaining points, calculate relative rotation from previous direction to current
-    for i in range(1, num_segments):
-        # Calculate relative yaw (difference between consecutive absolute yaws)
-        # delta_yaw = normalize_angle(absolute_yaws[i] - absolute_yaws[i-1])
-        delta_yaw = absolute_yaws[i] - absolute_yaws[i-1]
-        
-        # Convert to quaternion (rotation around Z axis)
-        rotation = R.from_euler('z', delta_yaw)
-        quat = rotation.as_quat()  # (x, y, z, w) format
-        relative_quaternions[i] = np.array([quat[3], quat[0], quat[1], quat[2]])  # Convert to (w, x, y, z)
-    
-    return relative_quaternions
-
-def generate_2d_rope_configuration(
-    num_segments=28,
-    workspace_bounds=np.array([[-0.5, 0.5], [-0.5, 0.5]]),
-    num_control_points=5,
-    z_height=0.1,
-    noise_scale=0.02,
-    max_delta_yaw=np.pi/4,
-    min_segment_distance=0.05,
-    max_attempts=100,
-    curve_resolution=200,
-    total_length=0.3
-):
-    """Generate random rope configuration with corrected orientations."""
-    
-    def smooth_angles(angles, max_delta):
-        """Apply iterative smoothing to ensure max angle delta is respected"""
-        smoothed = angles.copy()
-        while True:
-            original = smoothed.copy()
-            
-            # Forward pass
-            for i in range(1, len(smoothed)):
-                # Calculate delta in a way that respects angle wrapping
-                delta = normalize_angle(smoothed[i] - smoothed[i-1])
-                if abs(delta) > max_delta:
-                    smoothed[i] = normalize_angle(smoothed[i-1] + np.sign(delta) * max_delta)
-            
-            # Backward pass
-            for i in range(len(smoothed)-2, -1, -1):
-                delta = normalize_angle(smoothed[i] - smoothed[i+1])
-                if abs(delta) > max_delta:
-                    smoothed[i] = normalize_angle(smoothed[i+1] + np.sign(delta) * max_delta)
-            
-            if np.allclose(original, smoothed, atol=1e-6):
-                break
-                
-        return smoothed
-
-    for attempt in range(max_attempts):
-        # Generate random control points with increasing spread
-        control_points = np.zeros((num_control_points, 2))
-        spread_scale = np.linspace(0.3, 1.0, num_control_points)
-        
-        for i in range(2):
-            bounds_range = workspace_bounds[i, 1] - workspace_bounds[i, 0]
-            control_points[:, i] = workspace_bounds[i, 0] + bounds_range * (
-                0.5 + spread_scale * np.random.uniform(-0.5, 0.5, num_control_points)
-            )
-        
-        # Generate initial curve with high resolution
-        t_dense = np.linspace(0, 1, curve_resolution)
-        splines = [
-            CubicSpline(np.linspace(0, 1, num_control_points), control_points[:, i])
-            for i in range(2)
-        ]
-        
-        # Sample dense points along the curve
-        dense_points = np.zeros((curve_resolution, 2))
-        for i in range(2):
-            dense_points[:, i] = splines[i](t_dense)
-            
-        dense_points = scale_to_length(dense_points, total_length)
-        
-        # Resample to get equidistant points
-        positions_2d = resample_equidistant_points(dense_points, num_segments)
-        
-        # Add Z coordinate
-        positions = np.zeros((num_segments, 3))
-        positions[:, :2] = positions_2d
-        positions[:, 2] = z_height
-        
-        # # Calculate tangent vectors using finite differences
-        # tangents = np.zeros((num_segments, 2))
-        # tangents[:-1] = np.diff(positions_2d, axis=0)
-        # tangents[-1] = tangents[-2]  # Use last valid tangent for final point
-        
-        # # Normalize tangents
-        # norms = np.sqrt(np.sum(tangents * tangents, axis=1))
-        # tangents = tangents / norms[:, np.newaxis]
-        
-        # # Calculate yaw angles from tangents with proper normalization
-        # yaw_angles = np.array([calculate_yaw_from_tangent(t) for t in tangents])
-        # yaw_angles = normalize_angles(yaw_angles)
-        
-        # # Smooth the angles to satisfy max_delta constraint
-        # smoothed_yaws = smooth_angles(yaw_angles, max_delta_yaw)
-        
-        # Check constraints
-        if not check_self_collision(positions, min_segment_distance):
-            # Compute relative quaternions based on positions
-            relative_quaternions = compute_relative_quaternions(positions)
-            
-            # # Verify the relative rotations
-            # relative_yaws = np.array([
-            #     2 * np.arccos(np.clip(quat[0], -1, 1)) for quat in relative_quaternions
-            # ])
-            
-            # if np.all(abs(relative_yaws) <= max_delta_yaw + 1e-6):
-            #     # segment_distances = np.sqrt(np.sum(np.diff(positions, axis=0)**2, axis=1))
-            #     # total_length_achieved = np.sum(segment_distances)
-                
-            #     # # Compute cumulative yaw for verification
-            #     # cumulative_yaw = np.zeros(num_segments)
-            #     # for i in range(1, num_segments):
-            #     #     w, x, y, z = relative_quaternions[i]
-            #     #     relative_yaw = 2 * np.arctan2(z, w)
-            #     #     cumulative_yaw[i] = cumulative_yaw[i-1] + relative_yaw
-                
-            return positions, relative_quaternions
-            
-    raise ValueError(f"Failed to generate valid configuration after {max_attempts} attempts")

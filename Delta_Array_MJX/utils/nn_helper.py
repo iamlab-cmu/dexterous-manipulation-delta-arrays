@@ -183,89 +183,36 @@ class NNHelper:
     #             idxs.add((idx//8, idx%8))
         
     #     return idxs, neg_idxs
-
-
-    def get_balanced_nn_robots_world(self, boundary_pts):
-        """
-        Returns the indices of the robots that are closest to the boundary points,
-        ensuring a balanced selection around the object's center.
-        """
-        hull = ConvexHull(boundary_pts)
-        hull = self.expand_hull(hull, world=True)
-        A, b = hull.equations[:, :-1], hull.equations[:, -1:]
-
-        center = np.mean(boundary_pts, axis=0)
-        eps = np.finfo(np.float32).eps
-        kdtree = KDTree(self.kdtree_positions_world)
-
-        # Perform batch query to find nearest neighbors for all boundary points
-        distances, indices = kdtree.query(boundary_pts)
-        unique_indices = np.unique(indices)
-
-        # Initialize quadrants
-        quadrants = [set() for _ in range(4)]
-
-        for idx in unique_indices:
-            pos = self.rb_pos_world[idx // 8, idx % 8]
-            
-            # Check if the robot is inside or outside the hull
-            if not np.all(pos @ A.T + b.T < eps):
-                # Determine quadrant
-                relative_pos = pos - center
-                quadrant = (int(relative_pos[0] >= 0) + 2 * int(relative_pos[1] >= 0)) % 4
-                quadrants[quadrant].add((idx // 8, idx % 8))
-            else:
-                # For robots inside the hull, find the nearest outside
-                kdt_pos_copy = self.kdtree_positions_world.copy()
-                mask = np.all(kdt_pos_copy @ A.T + b.T < eps, axis=1)
-                kdt_pos_copy = kdt_pos_copy[~mask]
-                if len(kdt_pos_copy) == 0:
-                    continue
-                new_kdtree = KDTree(kdt_pos_copy)
-                new_idx = new_kdtree.query(pos)[1]
-                new_pos = kdt_pos_copy[new_idx]
-                new_idx = np.where((self.kdtree_positions_world == new_pos).all(axis=1))[0][0]
-                
-                # Determine quadrant for the new position
-                relative_pos = new_pos - center
-                quadrant = (int(relative_pos[0] >= 0) + 2 * int(relative_pos[1] >= 0)) % 4
-                quadrants[quadrant].add((new_idx // 8, new_idx % 8))
-
-        # Ensure balanced selection
-        min_robots = max(1, min(len(q) for q in quadrants))
-        balanced_selection = set()
-        for q in quadrants:
-            balanced_selection.update(list(q)[:min_robots])
-
-        return balanced_selection, set()
-
+    
     def get_nn_robots_world(self, boundary_pts):
-        """
-        Returns the indices of the robots that are closest to the boundary points
-        """
+        """Original implementation modified to return nearest neighbors"""
         hull = ConvexHull(boundary_pts)
         hull = self.expand_hull(hull, world=True)
         A, b = hull.equations[:, :-1], hull.equations[:, -1:]
 
         idxs = set()
-        neg_idxs = set()
+        nearest_neighbors = []
         eps = np.finfo(np.float32).eps
-        # eps = 1e-10
         kdtree = KDTree(self.kdtree_positions_world)
 
-        # Perform batch query to find nearest neighbors for all boundary points
+        # Find nearest neighbors for boundary points
         distances, indices = kdtree.query(boundary_pts, k=3, distance_upper_bound=0.03, workers=8)
         indices = np.unique(indices[~np.isinf(distances)])
         unique_indices = np.unique(indices)
         pos_world = self.rb_pos_world[unique_indices // 8, unique_indices % 8]
         containment_check = np.all(pos_world @ A.T + b.T < eps, axis=1)
 
-        # Process points that are not within the hull
+        # Create KDTree for boundary points
+        boundary_kdtree = KDTree(boundary_pts)
+
         for idx, is_inside in zip(unique_indices, containment_check):
             if not is_inside:
                 idxs.add((idx // 8, idx % 8))
+                # Find nearest boundary point
+                robot_pos = self.kdtree_positions_world[idx]
+                _, nearest_idx = boundary_kdtree.query(robot_pos.reshape(1, -1), k=1)
+                nearest_neighbors.append(boundary_pts[nearest_idx[0]])
             else:
-                # For points inside the hull, find nearest outside the hull
                 current_pos = self.kdtree_positions_world[idx]
                 kdt_pos_copy = self.kdtree_positions_world.copy()
                 mask = np.all(kdt_pos_copy @ A.T + b.T < eps, axis=1)
@@ -273,11 +220,15 @@ class NNHelper:
                 if len(kdt_pos_copy) == 0:
                     continue
                 new_kdtree = KDTree(kdt_pos_copy)
-                new_idx = new_kdtree.query(current_pos)[1]
+                new_idx = new_kdtree.query(current_pos.reshape(1, -1))[1][0]
                 new_pos = kdt_pos_copy[new_idx]
                 new_idx = np.where((self.kdtree_positions_world == new_pos).all(axis=1))[0][0]
                 idxs.add((new_idx // 8, new_idx % 8))
-        return idxs, neg_idxs
+                # Find nearest boundary point for the outside point
+                _, nearest_idx = boundary_kdtree.query(new_pos.reshape(1, -1), k=1)
+                nearest_neighbors.append(boundary_pts[nearest_idx[0]])
+
+        return idxs, np.array(nearest_neighbors)
 
     def expand_hull(self, hull, world=True):
         """
