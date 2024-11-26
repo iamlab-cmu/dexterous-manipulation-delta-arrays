@@ -52,15 +52,19 @@ def icp(a, b, icp_radius = 200):
                             o3d.pipelines.registration.TransformationEstimationPointToPoint())
     return reg_p2p.transformation
 
+# Method 2: Angle-Based Ordering
 def sample_boundary_points(boundary_points: np.ndarray, n_samples: int) -> np.ndarray:
-    diffs = np.diff(boundary_points, axis=0)
+    centroid = np.mean(boundary_points, axis=0)
+    angles = np.arctan2(boundary_points[:,1] - centroid[1], boundary_points[:,0] - centroid[0])
+    sorted_indices = np.argsort(angles)
+    ordered_points = boundary_points[sorted_indices]
+    ordered_points = np.vstack([ordered_points, ordered_points[0]])
+    diffs = np.diff(ordered_points, axis=0)
     segment_lengths = np.sqrt(np.sum(diffs**2, axis=1))
     cumulative_dist = np.concatenate(([0], np.cumsum(segment_lengths)))
-    cumulative_dist = cumulative_dist / cumulative_dist[-1]
-    
-    fx = interp1d(cumulative_dist, boundary_points[:, 0], kind='cubic')
-    fy = interp1d(cumulative_dist, boundary_points[:, 1], kind='cubic')
-    
+    cumulative_dist /= cumulative_dist[-1]
+    fx = interp1d(cumulative_dist, ordered_points[:, 0], kind='linear')
+    fy = interp1d(cumulative_dist, ordered_points[:, 1], kind='linear')
     t = np.linspace(0, 1, n_samples)
     return np.column_stack([fx(t), fy(t)])
 

@@ -142,9 +142,15 @@ class SAC:
             torch.save(self.ac.state_dict(), f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
 
     def get_actions(self, o, deterministic=False):
-        obs = torch.tensor(o, dtype=torch.float32).to(self.device)
-        obs = torch.reshape(obs, (-1,))
-        return self.ac.act(torch.as_tensor(obs, dtype=torch.float32), deterministic)
+        obses = torch.tensor(o, dtype=torch.float32).to(self.device)
+        acts = np.zeros((obses.shape[0], self.act_dim))
+        for i in range(obses.shape[0]):
+            acts[i] = self.ac.act(obses[i], deterministic)
+        return acts.tolist()
+        # print(torch.tensor(o).shape)
+        # obs = torch.tensor(o, dtype=torch.float32).to(self.device)
+        # obs = torch.reshape(obs, (-1,))
+        # return self.ac.act(torch.as_tensor(obs, dtype=torch.float32), deterministic)
 
     def load_saved_policy(self, path):
         self.ac.load_state_dict(torch.load(path, map_location=self.device, weights_only=True))

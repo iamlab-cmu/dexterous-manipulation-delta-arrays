@@ -195,7 +195,7 @@ class FinalLayer(nn.Module):
 
 
 class GPT_AdaLN(nn.Module):
-    def __init__(self, state_dim, obj_name_enc_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False, masked=True):
+    def __init__(self, state_dim, obj_name_enc_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False, masked=True, gauss=False):
         super(GPT_AdaLN, self).__init__()
         self.state_enc = nn.Linear(state_dim, model_dim)
         self.obj_name_enc = nn.Embedding(obj_name_enc_dim, model_dim)
@@ -205,10 +205,15 @@ class GPT_AdaLN(nn.Module):
 
         self.decoder_layers = nn.ModuleList([AdaLNLayer(model_dim, num_heads, max_agents, dim_ff, dropout, masked) for _ in range(n_layers)])
         self.critic = critic
+        self.gauss = gauss
         if self.critic:
             self.final_layer = FinalLayer(model_dim, 1)
         else:
-            self.final_layer = FinalLayer(model_dim, action_dim)
+            if self.gauss:
+                self.mu = FinalLayer(model_dim, action_dim)
+                self.log_std = FinalLayer(model_dim, action_dim)
+            else:
+                self.final_layer = FinalLayer(model_dim, action_dim)
             # self.actor_std_layer = wt_init_(nn.Linear(model_dim, action_dim))
         self.activation = nn.GELU()
 
@@ -227,7 +232,15 @@ class GPT_AdaLN(nn.Module):
         act_enc = self.activation(self.action_embedding(actions))
         for layer in self.decoder_layers:
             act_enc = layer(act_enc, conditional_enc)
-        act_mean = self.final_layer(act_enc, conditional_enc)
+            
+        if self.gauss:
+            act_mean = self.mu(act_enc, conditional_enc)
+            act_std = self.log_std(act_enc, conditional_enc)
+            act_std = torch.clamp(act_std, LOG_STD_MIN, LOG_STD_MAX)
+            std = torch.exp(act_std)
+            return act_mean, std
+        else:
+            act_mean = self.final_layer(act_enc, conditional_enc)
         return act_mean
 
 
@@ -254,9 +267,10 @@ class Transformer(nn.Module):
             param.requires_grad = False
         log_std = -0.5 * torch.ones(self.action_dim)
         self.log_std = torch.nn.Parameter(log_std)
+        self.gauss = hp_dict['gauss']
 
         if hp_dict["adaln"]:
-            self.decoder_actor = GPT_AdaLN(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['actor'], masked=hp_dict['masked'])
+            self.decoder_actor = GPT_AdaLN(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['actor'], masked=hp_dict['masked'], gauss=hp_dict['gauss'])
             self.decoder_critic1 = GPT_AdaLN(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'], critic=True, masked=hp_dict['masked'])
             self.decoder_critic2 = GPT_AdaLN(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'], critic=True, masked=hp_dict['masked'])
         else:
@@ -264,82 +278,43 @@ class Transformer(nn.Module):
             self.decoder_critic1 = GPT(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'], critic=True, masked=hp_dict['masked'])
             self.decoder_critic2 = GPT(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'], critic=True, masked=hp_dict['masked'])
 
-    def forward(self, state, actions, obj_name_encs, pos, idx=None):
-        return self.act_limit * torch.tanh(self.decoder_actor(state, actions, obj_name_encs, pos, idx))
+    def forward(self, state, obj_name_encs, pos):
+        bs, n_agents, _ = state.size()
+        actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
+        if self.gauss:
+            mu, std = self.decoder_actor(state, actions, obj_name_encs, pos)
+            
+            gauss_dist = torch.distributions.Normal(mu, std)
+            actions = gauss_dist.rsample()  # for reparameterization trick (mean + std * N(0,1))
+            logp_pi = gauss_dist.log_prob(actions).sum(axis=-1) - (2*(np.log(2) - actions - F.softplus(-2*actions))).sum(axis=-1)
+            actions = torch.tanh(actions) * self.act_limit
+            return actions, logp_pi, mu, std
+        else:
+            return self.act_limit * torch.tanh(self.decoder_actor(state, actions, obj_name_encs, pos))
 
     @torch.no_grad()
-    def get_actions(self, states,  obj_name_encs, pos, deterministic=False):
-        """ Returns actor actions """
-        bs, n_agents, _ = states.size()
+    def get_actions(self, state,  obj_name_encs, pos, deterministic=False):
+        bs, n_agents, _ = state.size()
         actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
-        for i in range(n_agents):
-            updated_actions = self.decoder_actor(states, actions, obj_name_encs, pos, i)
-            actions[:, i, :] = self.act_limit * torch.tanh(updated_actions[:, i, :])
-        return actions
-
-    # def get_actions(self, states, pos, deterministic=False):
-    #     """ Returns actor actions, and their log probs. If deterministic=True, set action as the output of decoder. Else, sample from mean=dec output, std=exp(log_std) """
-    #     bs, n_agents, _ = states.size()
-    #     shifted_actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
-    #     output_actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
-    #     output_action_log_probs = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
-
-    #     for i in range(n_agents):            
-    #         act_mean, std = self.decoder_actor(states, shifted_actions, pos, i)
-    #         # std = torch.sigmoid(self.log_std)*0.5
-
-    #         if deterministic:
-    #             output_action = self.act_limit * torch.tanh(act_mean)
-    #             output_action_log_prob = 0
-    #         else:
-    #             dist = torch.distributions.Normal(act_mean, std)
-    #             output_action = dist.rsample()
-
-    #             output_action_log_prob = dist.log_prob(output_action).sum(axis=-1)
-    #             output_action_log_prob = output_action_log_prob - (2*(np.log(2) - output_action - F.softplus(-2*output_action))).sum(axis=1)
-                
-    #             output_action = self.act_limit * torch.tanh(output_action)
-
+        if self.gauss:
+            mu, std = self.decoder_actor(state, actions, obj_name_encs, pos)
+            if deterministic:
+                return torch.tanh(mu) * self.act_limit
             
-    #         output_actions = output_actions.clone()
-    #         output_actions[:, i, :] = output_action
-    #         output_action_log_probs = output_action_log_probs.clone()
-    #         output_action_log_probs[:, i, :] = output_action_log_prob
+            gauss_dist = torch.distributions.Normal(mu, std)
+            actions = gauss_dist.rsample()
+            return torch.tanh(actions) * self.act_limit
+        else:
+            return self.act_limit * torch.tanh(self.decoder_actor(state, actions, obj_name_encs, pos))
+    
+    # def forward(self, state, obj_name_encs, pos):
+    #     bs, n_agents, _ = state.size()
+    #     actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
+    #     return self.act_limit * torch.tanh(self.decoder_actor(state, actions, obj_name_encs, pos))
 
-    #         if (i+1) < n_agents:
-    #             shifted_actions = shifted_actions.clone()
-    #             shifted_actions[:, i+1, :] = output_action
-    #     return output_actions, output_action_log_probs
-
-
-    # def get_action_values(self, states, actions):
-    #     """
-    #     Input: state_enc (bs, n_agents, model_dim)
-    #     Output: actions (bs, n_agents, action_dim)
-    #     """
-    #     state_enc = self.state_enc_critic(states)
-    #     shifted_actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
-    #     shifted_actions[:, 1:, :] = actions[:, :-1, :]  # Input actions go from 0 to A_n-1
-    #     q_vals = self.decoder_critic(state_enc, shifted_actions)
-    #     return q_vals.squeeze().mean()
-
-    def eval_actor_gauss(self, states, actions):
-        """
-        Input: state_enc (bs, n_agents, model_dim)
-        Output: actions (bs, n_agents, action_dim)
-        """
-        state_enc = self.state_enc(states)
-        shifted_actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
-        shifted_actions[:, 1:, :] = actions[:, :-1, :]  # Input actions go from 0 to A_n-1
-        act_mean, act_std = self.decoder_critic(state_enc, shifted_actions)
-        
-        dist = torch.distributions.Normal(act_mean, act_std)
-        entropy = dist.entropy()
-
-        output_actions = dist.rsample()
-        log_probs = dist.log_prob(output_actions).sum(axis=-1)
-        log_probs -= (2*(np.log(2) - output_actions - F.softplus(-2*output_actions))).sum(axis=2)
-        
-        output_actions = torch.tanh(output_actions)
-        output_actions = self.act_limit * output_actions # Output actions go from A_0 to A_n
-        return output_actions, log_probs, entropy
+    # @torch.no_grad()
+    # def get_actions(self, state,  obj_name_encs, pos, deterministic=False):
+    #     bs, n_agents, _ = state.size()
+    #     actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
+    #     return self.act_limit * torch.tanh(self.decoder_actor(state, actions, obj_name_encs, pos))
+ 

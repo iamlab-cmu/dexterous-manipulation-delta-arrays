@@ -119,6 +119,7 @@ class GroundedSAM:
         return masks
         
     def grounded_obj_segmentation(self, image:np.array, labels:List[str], threshold:float=0.5, polygon_refinement=True) -> List[np.array]:
+        print("HAKUNA")
         # TODO: See if this works. If not, add Image.fromarray(image) to the input of the object detector
         results = self.detect_obj_from_labels(Image.fromarray(image), labels, threshold)
         masks = self.segment_obj_from_bb(Image.fromarray(image), results, polygon_refinement)
@@ -132,4 +133,4 @@ class GroundedSAM:
         
         boundary = cv2.Canny(og_mask,100,200)
         boundary_pts = np.array(np.where(boundary==255)).T
-        return masks[0], boundary_pts
+        return boundary_pts.tolist()

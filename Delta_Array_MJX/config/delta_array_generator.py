@@ -31,7 +31,7 @@ class DeltaArrayEnvCreator:
             actuators.append(ET.Element('position', joint=f"{name}_{axis}", ctrllimited="true", ctrlrange="-0.03 0.03", kp="1", kv="0.15"))
         return actuators
 
-    def create_mujoco_model(self, num_rope_bodies=30):
+    def create_mujoco_model(self, obj_name, num_rope_bodies=None):
         mujoco = ET.Element('mujoco', model="delta_array")
         ET.SubElement(mujoco, 'compiler', angle="degree", coordinate="local", inertiafromgeom="true")
         ET.SubElement(mujoco, 'option', timestep="0.01", gravity="0 0 -9.83")
@@ -39,15 +39,18 @@ class DeltaArrayEnvCreator:
         default = ET.SubElement(mujoco, 'default')
         ET.SubElement(default, 'geom', type="capsule", size="0.0075 0.01")
         
+        visual = ET.SubElement(mujoco, 'visual')
+        ET.SubElement(visual, 'global', offwidth="1920", offheight="1080")
+        
         worldbody = ET.SubElement(mujoco, 'worldbody')
         
-        # Add fiducial markers
-        fiducial_positions = [
-            ("fiducial_lt", [-0.06, -0.2035, 1.021]),
-            ("fiducial_rb", [0.3225, 0.485107, 1.021])
-        ]
-        for name, pos in fiducial_positions:
-            worldbody.append(self.create_fiducial_marker(name, pos))
+        # # Add fiducial markers
+        # fiducial_positions = [
+        #     ("fiducial_lt", [-0.06, -0.2035, 1.021]),
+        #     ("fiducial_rb", [0.3225, 0.485107, 1.021])
+        # ]
+        # for name, pos in fiducial_positions:
+        #     worldbody.append(self.create_fiducial_marker(name, pos))
             
         # Create fingertip bodies
         arr = np.zeros((8, 8, 3))
@@ -62,20 +65,22 @@ class DeltaArrayEnvCreator:
         ET.SubElement(table, 'geom', name="collision_geom", type="box", size="1 1 1", contype="1", conaffinity="1", material="collision_material")
         ET.SubElement(table, 'geom', name="visual_geom", type="box", size="0.15 0.15 0.015", contype="0", conaffinity="0", material="visual_material")
         
-        # Add composite body
-        composite_body = ET.SubElement(worldbody, 'body', name="rope", pos="0.13125 0.03 1.021", euler="0 0 90")
-        ET.SubElement(composite_body, 'freejoint')
-        composite = ET.SubElement(composite_body, 'composite', type="cable", curve="s", count=f"{num_rope_bodies} 1 1", size="0.3", initial="none")
-        ET.SubElement(composite, 'joint', kind="main", stiffness="0", damping="0.1")
-        ET.SubElement(composite, 'geom', type="capsule", size=".0075", rgba="0 1 0 1", condim="4", mass="0.02")
-        
-        # # Add block
-        # block = ET.SubElement(worldbody, 'body', name="block", pos="0.13125 0.1407285 1.021")
-        # ET.SubElement(block, 'freejoint')
-        # block_face = ET.SubElement(block, 'body', name="block_face", pos="0 0 -0.01")
-        # ET.SubElement(block_face, 'geom', name="disc_face", size="0.025 0.05 0.0005", type="box", rgba="0 1 0 1")
-        # block_body = ET.SubElement(block, 'body', name="block_body", pos="0 0 0")
-        # ET.SubElement(block_body, 'geom', name="disc_body", size="0.025 0.05 0.0095", type="box", rgba="0 0 1 1")
+        print(obj_name)
+        if obj_name == "rope":
+            # Add composite body
+            composite_body = ET.SubElement(worldbody, 'body', name="rope", pos="0.13125 0.03 1.021", euler="0 0 90")
+            ET.SubElement(composite_body, 'freejoint')
+            composite = ET.SubElement(composite_body, 'composite', type="cable", curve="s", count=f"{num_rope_bodies} 1 1", size="0.3", initial="none")
+            ET.SubElement(composite, 'joint', kind="main", stiffness="0", damping="0.1")
+            ET.SubElement(composite, 'geom', type="capsule", size=".0075", rgba="0 1 0 1", condim="4", mass="0.02")
+        elif obj_name == "block":
+            # Add block
+            obj = ET.SubElement(worldbody, 'body', name=f"{obj_name}", pos="0.13125 0.1407285 1.021")
+            ET.SubElement(obj, 'freejoint')
+            obj_face = ET.SubElement(obj, 'body', name=f"{obj_name}_face", pos="0 0 -0.01")
+            ET.SubElement(obj_face, 'geom', name="disc_face", size="0.025 0.05 0.0005", type="box", rgba="0 1 0 1")
+            obj_body = ET.SubElement(obj, 'body', name=f"{obj_name}_body", pos="0 0 0")
+            ET.SubElement(obj_body, 'geom', name="disc_body", size="0.025 0.05 0.0095", type="box", rgba="0 0 1 1")
         
         # Create actuators
         actuator = ET.SubElement(mujoco, 'actuator')
@@ -86,8 +91,8 @@ class DeltaArrayEnvCreator:
         
         return mujoco
     
-    def create_env(self, num_rope_bodies=30):
-        root = self.create_mujoco_model(num_rope_bodies)
+    def create_env(self, obj_name, num_rope_bodies=None):
+        root = self.create_mujoco_model(obj_name, num_rope_bodies)
         tree = ET.ElementTree(root)
         ET.indent(tree, space="  ", level=0)  # Pretty print the XML
 

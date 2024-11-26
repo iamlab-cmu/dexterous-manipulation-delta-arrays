@@ -42,6 +42,7 @@ import utils.rl_utils as rl_utils
 # import utils.SAC.sac as sac
 # import utils.SAC.reinforce as reinforce
 import utils.geometric_utils as geom_utils
+from delta_array_utils.Prismatic_Delta import Prismatic_Delta
 
 class DeltaArraySim:
     def __init__(self, scene, cfg, objs, table, img_embed_model, transform, agents, hp_dict, num_tips = [8,8], max_agents=64):
@@ -58,6 +59,10 @@ class DeltaArraySim:
         self.object = {}
         self.max_agents = max_agents
         self.hp_dict = hp_dict
+        s_p = 1.5 #side length of the platform
+        s_b = 4.3 #side length of the base
+        l = 4.5 #length of leg attached to platform
+        self.Delta = Prismatic_Delta(s_p, s_b, l)
         
         # Introduce delta robot EE in the env
         for i in range(self.num_tips[0]):
@@ -194,23 +199,13 @@ class DeltaArraySim:
         # self.video_frames = np.zeros((self.hp_dict['inference_length'], (self.time_horizon - 4)*2, 480, 640, 3))
         self.images_to_video = []
 
-        # Traj testing code for GFT debugging
-        # self.og_gft = None
-        # self.new_gft = []
-        # corners = np.array([[0, 0], [0.2625, 0], [0.2625, 0.2414], [0, 0.2414], [0, 0]])
-        # num_steps = 77
-        # steps_per_side = num_steps // 4
-        # self.traj = []
-        # for i in range(4):
-        #     side_points = np.linspace(corners[i], corners[i+1], steps_per_side, endpoint=False)
-        #     self.traj.extend(side_points)
-        # self.traj.append([0, 0])
-        # self.traj = np.array(self.traj[:num_steps])
-
         self.temp_var = {'initial_l2_dist': [],
                        'angle_diff': [],    
                         'reward': [],
                         'z_dist': []}
+        self.reward_vs = []
+        self.reward_rand = []
+        self.reward_matsac_adaln = []
         # self.bd_pts_dict = {}
 
     def set_attractor_handles(self, env_idx):
@@ -669,7 +664,8 @@ class DeltaArraySim:
         #     self.ep_reward[env_idx] -= loss - 0.5
         
         # print(-2*abs(self.yaw_error(final_pose, self.goal_pose[env_idx])), -100*np.linalg.norm(self.goal_pose[env_idx][:2] - final_pose[:2]))
-        self.ep_reward[env_idx] = -2*abs(self.yaw_error(final_pose, self.goal_pose[env_idx])) - 100*np.linalg.norm(self.goal_pose[env_idx][:2] - final_pose[:2])
+        # self.ep_reward[env_idx] = -2*abs(self.yaw_error(final_pose, self.goal_pose[env_idx])) - 100*np.linalg.norm(self.goal_pose[env_idx][:2] - final_pose[:2])
+        self.ep_reward[env_idx] = -10*np.linalg.norm(self.goal_bd_pts[env_idx] - self.bd_pts[env_idx])
         return final_pose
 
     def terminate(self, env_idx, t_step, agent):
@@ -689,7 +685,15 @@ class DeltaArraySim:
                                          np.array((*self.goal_pose[env_idx], *final_pose)))
             if not self.hp_dict['vis_servo']:
                 if (self.agent.ma_replay_buffer.size > self.batch_size) and (self.current_episode%self.scene.n_envs==0):
-                    self.agent.update(self.batch_size, self.current_episode, self.scene.n_envs)
+                    if self.current_episode < self.hp_dict['warmup_epochs']:
+                        n_updates = 50
+                    elif self.current_episode < 3*self.hp_dict['warmup_epochs']:
+                        n_updates = 100
+                    elif self.current_episode < 10*self.hp_dict['warmup_epochs']:
+                        n_updates = 200
+                    else:
+                        n_updates = 300
+                    self.agent.update(self.batch_size, self.current_episode, n_updates)
                     self.log_data(env_idx)
             else:
                 print(f"Reward: {self.ep_reward[env_idx]} @ {self.current_episode}")
@@ -744,9 +748,14 @@ class DeltaArraySim:
                 return
             # print(self.init_state[env_idx, :self.n_idxs[env_idx]])
             # print(self.pos[env_idx, :self.n_idxs[env_idx]], self.obj_name[env_idx])
-            self.actions[env_idx, :self.n_idxs[env_idx]] = agent.get_actions(self.init_state[env_idx, :self.n_idxs[env_idx]], self.pos[env_idx, :self.n_idxs[env_idx]], self.obj_name[env_idx], deterministic=test)
+            if self.hp_dict['algo'] == "MATSAC_OGOG":
+                self.actions[env_idx, :self.n_idxs[env_idx]] = agent.get_actions(self.init_state[env_idx, :self.n_idxs[env_idx]], self.pos[env_idx, :self.n_idxs[env_idx]], deterministic=test)    
+            else:
+                self.actions[env_idx, :self.n_idxs[env_idx]] = agent.get_actions(self.init_state[env_idx, :self.n_idxs[env_idx]], self.pos[env_idx, :self.n_idxs[env_idx]], self.obj_name[env_idx], deterministic=test)
             # print(self.actions[env_idx, :self.n_idxs[env_idx]])
-            self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(self.actions[env_idx, :self.n_idxs[env_idx]], -0.03, 0.03)
+            
+            # self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(self.actions[env_idx, :self.n_idxs[env_idx]], -0.03, 0.03)
+            self.actions[env_idx, :self.n_idxs[env_idx]] = self.Delta.clip_points_to_workspace(self.actions[env_idx, :self.n_idxs[env_idx]])
 
     def set_attractor_target(self, env_idx, actions, all_zeros=False):
         env_ptr = self.scene.env_ptrs[env_idx]
@@ -879,6 +888,40 @@ class DeltaArraySim:
                     self.set_traj_pose(env_idx)
                 else:
                     self.set_block_pose(env_idx) # Reset block to current initial pose
+            elif t_step == 1:
+                self.env_step(env_idx, t_step, self.pretrained_agent) #Store Init Pose
+            elif (t_step == 2) and self.dont_skip_episode[env_idx]:
+                self.set_attractor_target(env_idx, self.actions_grasp)
+            elif (t_step == self.time_horizon-1) and self.dont_skip_episode[env_idx]:
+                self.ep_len[env_idx] = 1
+            elif not self.dont_skip_episode[env_idx]:
+                self.ep_len[env_idx] = 0
+                self.reset(env_idx)
+        else:         
+            if t_step == 0:
+                self.env_step(env_idx, t_step, self.agent, test=True)
+            elif t_step == 1:
+                self.set_attractor_target(env_idx, self.actions)
+            elif t_step == (self.time_horizon-1):
+                
+                final_pose = self.compute_reward(env_idx, t_step)
+                print(f"Reward: {self.ep_reward[env_idx]} @ {self.current_episode}")
+                if (not self.hp_dict["dont_log"]) and (final_pose is not None):
+                    wandb.log({"Inference Reward":self.ep_reward[env_idx]})
+                
+                self.reset(env_idx)
+                self.current_episode += 1
+
+    def compare_policies(self, scene, env_idx, t_step, _):
+        t_step = t_step % self.time_horizon
+        env_ptr = self.scene.env_ptrs[env_idx]
+        
+        if self.ep_len[env_idx]==0:
+            if t_step == 0:
+                if self.hp_dict['test_traj']:
+                    self.set_traj_pose(env_idx)
+                else:
+                    self.set_block_pose(env_idx) # Reset block to current initial pose
                 # self.set_all_fingers_pose(env_idx, pos_high=True) # Set all fingers to high pose
                 # self.set_attractor_target(env_idx, None, all_zeros=True) # Set all fingers to high pose
             elif t_step == 1:
@@ -892,26 +935,35 @@ class DeltaArraySim:
                 self.reset(env_idx)
         else:         
             if t_step == 0:
-                self.env_step(env_idx, t_step, self.agent, test=True) # Only Store Actions from MARL Policy
+                if self.current_episode < 500: 
+                    self.env_step(env_idx, t_step, self.agent, test=True) # Only Store Actions from MARL Policy
+                elif self.current_episode < 1000:
+                    self.vs_step(env_idx, t_step)
+                elif self.current_episode < 1500:
+                    self.actions[env_idx, :self.n_idxs[env_idx]] = np.random.uniform(-0.03, 0.03, size=(self.n_idxs[env_idx], 2))
+                else:
+                    # pickle and save the lists
+                    with open(f"./data/comparison/rew_comparison_gauss.pkl", "wb") as f:
+                        pkl.dump({"MATSAC_ADALN":self.reward_matsac_adaln, "VS":self.reward_vs, "RAND":self.reward_rand}, f)
+                        
+                    sys.exit(1)
             elif t_step == 1:
-                print(self.actions[env_idx, :self.n_idxs[env_idx]])
+                # print(self.actions[env_idx, :self.n_idxs[env_idx]])
                 self.set_attractor_target(env_idx, self.actions)
             elif t_step == (self.time_horizon-1):
-                final_pose = self.compute_reward(env_idx, t_step)
                 
+                final_pose = self.compute_reward(env_idx, t_step)
+                if self.current_episode < 500: 
+                    self.reward_matsac_adaln.append(self.ep_reward[env_idx])
+                elif self.current_episode < 1000:
+                    self.reward_vs.append(self.ep_reward[env_idx])
+                elif self.current_episode < 1500:
+                    self.reward_rand.append(self.ep_reward[env_idx])
+                
+                print(f"Reward: {self.ep_reward[env_idx]} @ {self.current_episode}")
                 if (not self.hp_dict["dont_log"]) and (final_pose is not None):
                     wandb.log({"Inference Reward":self.ep_reward[env_idx]})
                 
-                # TODO: Keep this function up to date
-                # if self.hp_dict["print_summary"]:
-                #     com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
-                #     self.temp_var['z_dist'].append(np.linalg.norm(self.init_pose[env_idx][3] - com.p.z))
-                #     self.temp_var['initial_l2_dist'].append(np.linalg.norm(self.goal_pose[env_idx][:2] - self.init_pose[env_idx][:2]))
-                #     self.temp_var['angle_diff'].append(self.angle_difference(final_pose[2], self.goal_pose[env_idx, 2]))
-                #     self.temp_var['reward'].append(self.ep_reward[env_idx])
-                #     if self.current_episode%100 == 0:
-                #         with open(f"./init_vs_reward_diff_policy.pkl", "wb") as f:
-                #             pkl.dump(self.temp_var, f)
                 self.reset(env_idx)
                 self.current_episode += 1
 
@@ -1023,7 +1075,9 @@ class DeltaArraySim:
                 displacement_vectors = tfed_nn_bd_pts - self.nn_bd_pts[env_idx]
                 
                 actions = self.actions_grasp[env_idx, :self.n_idxs[env_idx]] + displacement_vectors
-                self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(actions, -0.03, 0.03)
+                
+                self.actions[env_idx, :self.n_idxs[env_idx]] = self.Delta.clip_points_to_workspace(actions)
+                # self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(actions, -0.03, 0.03)
                 # self.actions[env_idx, :self.n_idxs[env_idx]] = np.random.uniform(-0.03, 0.03, size=(self.n_idxs[env_idx], 2))   
 
     def visual_servoing(self, scene, env_idx, t_step, _):

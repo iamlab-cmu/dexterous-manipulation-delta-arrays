@@ -62,7 +62,7 @@ class MATSAC:
         
         self.q_loss = None
         self.internal_updates_counter = 0
-        with open('./utils/MADP/normalizer_bc.pkl', 'rb') as f:
+        with open('./utils/MABC/normalizer_bc.pkl', 'rb') as f:
             normalizer = pkl.load(f)
         self.obj_name_encoder = normalizer['obj_name_encoder']
 

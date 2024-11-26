@@ -28,7 +28,9 @@ import src.delta_array_rope as delta_array_rope
 import utils.SAC.sac as sac
 # import utils.DDPG.ddpg as ddpg
 # import utils.MASAC.masac as masac
-import utils.MATSAC.matsac as matsac
+# import utils.MATSAC.matsac as matsac
+import utils.MAT.mat as matsacOGOG
+import utils.MATSAC.matsac_no_autoreg as matsac
 import utils.MATDQN.matdqn as matdqn
 import utils.MADP.madptest as madp0
 import utils.MADP.mabc_test as mabc
@@ -142,16 +144,17 @@ class DeltaArraySimEnvironment():
                 "model_dim"         : 256,
                 "num_heads"         : 8,
                 "dim_ff"            : 128,
-                "n_layers_dict"     : {'actor': 12, 'critic': 12},
+                "n_layers_dict"     : {'encoder':5, 'actor': 10, 'critic': 10},
                 "dropout"           : 0,
                 "max_grad_norm"     : self.args.gradnorm,
                 "adaln"             : self.args.adaln,
                 "delta_array_size"  : [8,8],
                 "add_vs_data"       : self.args.add_vs_data,
-                "vs_ratio"             : self.args.vs_data,
+                "vs_ratio"          : self.args.vs_data,
                 'print_summary'     : self.args.print_summary,
                 'masked'            : not self.args.unmasked,
-                'cmu_ri'             : self.args.cmuri,
+                'cmu_ri'            : self.args.cmuri,
+                'gauss'             : self.args.gauss,
             }
         
         logger_kwargs = {}
@@ -171,6 +174,8 @@ class DeltaArraySimEnvironment():
         if self.args.algo=="MATSAC":
             # self.pushing_agent = masac.MASAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
             self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
+        elif self.args.algo=="MATSAC_OGOG":
+            self.pushing_agent = matsacOGOG.MATSAC_OGOG(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
         elif self.args.algo=="MATDQN":
             self.pushing_agent = matdqn.MATDQN(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
         elif self.args.algo=="SAC":
@@ -269,7 +274,8 @@ class DeltaArraySimEnvironment():
             elif self.args.behavior_cloning:
                 self.scene.run(policy=self.fingers.test_diffusion_policy)
             else:
-                self.scene.run(policy=self.fingers.test_learned_policy)
+                # self.scene.run(policy=self.fingers.test_learned_policy)
+                self.scene.run(policy=self.fingers.compare_policies)
 
 class DeltaArrayRealEnvironment():
     def __init__(self, train_or_test="test"):
@@ -334,6 +340,7 @@ if __name__ == "__main__":
     parser.add_argument("-test_traj", "--test_traj", action="store_true", help="Test on trajectories")
     parser.add_argument("-cmuri", "--cmuri", action="store_true", help="Set to use CMU RI trajectory")
     parser.add_argument("-unmasked", "--unmasked", action="store_true", help="Unmasked Attention Layers")
+    parser.add_argument("-gauss", "--gauss", action="store_true", help="Use Gaussian Final Layers")
     parser.add_argument("-rope", "--rope", action="store_true", help="To rope or not to rope")
     parser.add_argument("-optim", "--optim", type=str, default="adam", help="Optimizer to use adam vs sgd")
     args = parser.parse_args()

@@ -91,14 +91,14 @@ class FF_MLP(nn.Module):
 
 class EncoderLayer(nn.Module):
     def __init__(self, model_dim, num_heads, max_agents, dim_ff, dropout):
-        super(GPTLayer, self).__init__()
-        self.self_attention = MultiHeadAttention(model_dim, num_heads, max_agents)
+        super(EncoderLayer, self).__init__()
+        self.self_attention = MultiHeadAttention(model_dim, num_heads, max_agents, masked=False)
         self.feed_forward = FF_MLP(model_dim, dim_ff)
         self.dropout = nn.Dropout(dropout)
         self.layer_norm1 = nn.LayerNorm(model_dim)
         self.layer_norm2 = nn.LayerNorm(model_dim)
 
-    def forward(self, x, encoder_output):
+    def forward(self, x):
         x = self.layer_norm1(x)
         attn = self.self_attention(x, x, x)
         x = self.layer_norm2(x + self.dropout(attn))
@@ -106,38 +106,19 @@ class EncoderLayer(nn.Module):
         x = x + self.dropout(ff_embed)
         return x
     
-class GPT(nn.Module):
-    def __init__(self, state_dim, obj_name_enc_dim, model_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False, masked=True):
-        super(GPT, self).__init__()
+class Encoder(nn.Module):
+    def __init__(self, state_dim, model_dim, num_heads, max_agents, dim_ff, dropout, n_layers):
+        super(Encoder, self).__init__()
         self.state_enc = nn.Linear(state_dim, model_dim)
-        self.obj_name_enc = nn.Embedding(obj_name_enc_dim, model_dim)
-        self.pos_embedding = pos_embedding
-        self.dropout = nn.Dropout(dropout)
-
-        self.decoder_layers = nn.ModuleList([GPTLayer(model_dim, num_heads, max_agents, dim_ff, dropout, masked) for _ in range(n_layers)])
-        self.critic = critic
-        self.actor_mu_layer = wt_init_(nn.Linear(model_dim, 1))
-            # self.actor_std_layer = wt_init_(nn.Linear(model_dim, action_dim))
+        self.encoder_layers = nn.ModuleList([EncoderLayer(model_dim, num_heads, max_agents, dim_ff, dropout) for _ in range(n_layers)])
+        self.final_layer = wt_init_(nn.Linear(model_dim, model_dim))
         self.activation = nn.GELU()
 
-    def forward(self, state, actions, obj_name_encs, pos, idx=None):
-        """
-        Input: state (bs, n_agents, state_dim)
-               actions (bs, n_agents, action_dim)
-        Output: decoder_output (bs, n_agents, model_dim)
-        """
-        # act_enc = self.dropout(self.positional_encoding(F.ReLU(self.action_embedding(actions))))
-        state_enc = self.state_enc(state)
-        obj_name_enc = self.obj_name_enc(obj_name_encs)
-        pos_embed = self.pos_embedding(pos)
-        
-        conditional_enc = pos_embed.squeeze(2) + state_enc + obj_name_enc.unsqueeze(1)
-        act_enc = self.activation(self.action_embedding(actions))
-        for layer in self.decoder_layers:
-            act_enc = layer(act_enc, conditional_enc)
-        act_mean = self.actor_mu_layer(act_enc)
-        
-        return act_mean
+    def forward(self, state):
+        state_enc = self.activation(self.state_enc(state))
+        for layer in self.encoder_layers:
+            state_enc = layer(state_enc)
+        return self.final_layer(state_enc)
 
 class GPTLayer(nn.Module):
     def __init__(self, model_dim, num_heads, max_agents, dim_ff, dropout, masked):
@@ -154,132 +135,141 @@ class GPTLayer(nn.Module):
         x = self.layer_norm1(x)
         attn = self.self_attention(x, x, x)
         x = self.layer_norm2(x + self.dropout(attn))
-        attn = self.cross_attention(x, encoder_output, encoder_output)
+        attn = self.cross_attention(encoder_output, x, x)
         x = self.layer_norm3(x + self.dropout(attn))
         ff_embed = self.feed_forward(x)
         x = x + self.dropout(ff_embed)
         return x
 
 class GPT(nn.Module):
-    def __init__(self, state_dim, obj_name_enc_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False, masked=True):
+    def __init__(self, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False, masked=True):
         super(GPT, self).__init__()
-        self.state_enc = nn.Linear(state_dim, model_dim)
-        self.obj_name_enc = nn.Embedding(obj_name_enc_dim, model_dim)
-        self.action_embedding = wt_init_(nn.Linear(action_dim, model_dim))
         self.pos_embedding = pos_embedding
         self.dropout = nn.Dropout(dropout)
-
         self.decoder_layers = nn.ModuleList([GPTLayer(model_dim, num_heads, max_agents, dim_ff, dropout, masked) for _ in range(n_layers)])
+        
         self.critic = critic
-        if self.critic:
-            self.actor_mu_layer = wt_init_(nn.Linear(model_dim, 1))
+        if critic:
+            self.action_embedding = wt_init_(nn.Linear(action_dim, model_dim))
+            self.final_layer = wt_init_(nn.Linear(model_dim, 1))
         else:
-            self.actor_mu_layer = wt_init_(nn.Linear(model_dim, action_dim))
-            # self.actor_std_layer = wt_init_(nn.Linear(model_dim, action_dim))
+            self.action_embedding = wt_init_(nn.Linear(action_dim, model_dim))
+            self.final_layer_mu = wt_init_(nn.Linear(model_dim, action_dim))
+            # self.final_layer_std = wt_init_(nn.Linear(model_dim, action_dim))
         self.activation = nn.GELU()
 
-    def forward(self, state, actions, obj_name_encs, pos, idx=None):
-        """
-        Input: state (bs, n_agents, state_dim)
-               actions (bs, n_agents, action_dim)
-        Output: decoder_output (bs, n_agents, model_dim)
-        """
-        # act_enc = self.dropout(self.positional_encoding(F.ReLU(self.action_embedding(actions))))
-        state_enc = self.state_enc(state)
-        obj_name_enc = self.obj_name_enc(obj_name_encs)
+    def forward(self, state_enc, actions, pos, idx=None):
         pos_embed = self.pos_embedding(pos)
-        
-        conditional_enc = pos_embed.squeeze(2) + state_enc + obj_name_enc.unsqueeze(1)
+        conditional_enc = pos_embed.squeeze(2) + state_enc
         act_enc = self.activation(self.action_embedding(actions))
         for layer in self.decoder_layers:
             act_enc = layer(act_enc, conditional_enc)
-        act_mean = self.actor_mu_layer(act_enc)
         
-        return act_mean
-        # act_mean = self.actor_mu_layer(act_enc)
-        # act_std = self.actor_std_layer(act_enc)
-        # act_std = torch.clamp(act_std, LOG_STD_MIN, LOG_STD_MAX)
-        # std = torch.exp(act_std)
-        # return act_mean, std
-
-class AdaLNLayer(nn.Module):
-    """
-    A DiT block with adaptive layer norm zero (adaLN-Zero) conditioning.
-    """
-    def __init__(self, model_dim, num_heads, max_agents, dim_ff, dropout, masked):
-        super().__init__()
-        self.attn = MultiHeadAttention(model_dim, num_heads, max_agents, masked=masked)
-        self.mlp = FF_MLP(model_dim, dim_ff)
-        self.adaLN_modulation = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(model_dim, 6 * model_dim, bias=True)
-        )
-        self.layer_norm1 = nn.LayerNorm(model_dim, elementwise_affine=False, eps=1e-6)
-        self.layer_norm2 = nn.LayerNorm(model_dim, elementwise_affine=False, eps=1e-6)
-
-    def forward(self, x, cond):
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(cond).chunk(6, dim=2)
-        moduln = modulate(self.layer_norm1(x), shift_msa, scale_msa)
-        x = x + gate_msa * self.attn(moduln, moduln, moduln)
-        x = x + gate_mlp * self.mlp(modulate(self.layer_norm2(x), shift_mlp, scale_mlp))
-        return x
-
-class FinalLayer(nn.Module):
-    """
-    The final layer of DiT.
-    """
-    def __init__(self, model_dim, action_dim):
-        super().__init__()
-        self.norm_final = nn.LayerNorm(model_dim, elementwise_affine=False, eps=1e-6)
-        self.linear = wt_init_(nn.Linear(model_dim, action_dim, bias=True))
-        self.adaLN_modulation = nn.Sequential(
-            nn.SiLU(),
-            wt_init_(nn.Linear(model_dim, 2 * model_dim, bias=True))
-        )
-
-    def forward(self, x, c):
-        shift, scale = self.adaLN_modulation(c).chunk(2, dim=2)
-        x = modulate(self.norm_final(x), shift, scale)
-        x = self.linear(x)
-        return x
-
-
-class GPT_AdaLN(nn.Module):
-    def __init__(self, state_dim, obj_name_enc_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False, masked=True):
-        super(GPT_AdaLN, self).__init__()
-        self.state_enc = nn.Linear(state_dim, model_dim)
-        self.obj_name_enc = nn.Embedding(obj_name_enc_dim, model_dim)
-        self.action_embedding = wt_init_(nn.Linear(action_dim, model_dim))
-        self.pos_embedding = pos_embedding
-        self.dropout = nn.Dropout(dropout)
-
-        self.decoder_layers = nn.ModuleList([AdaLNLayer(model_dim, num_heads, max_agents, dim_ff, dropout, masked) for _ in range(n_layers)])
-        self.critic = critic
         if self.critic:
-            self.final_layer = FinalLayer(model_dim, 1)
+            q_val = self.final_layer(act_enc)
+            return q_val
         else:
-            self.final_layer = FinalLayer(model_dim, action_dim)
-            # self.actor_std_layer = wt_init_(nn.Linear(model_dim, action_dim))
-        self.activation = nn.GELU()
+            mu = self.final_layer_mu(act_enc)
+            # log_std = self.final_layer_std(act_enc)
+            # log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
+            # return mu, log_std
+            return mu
 
-    def forward(self, state, actions, obj_name_encs, pos, idx=None):
-        """
-        Input: state (bs, n_agents, state_dim)
-               actions (bs, n_agents, action_dim)
-        Output: decoder_output (bs, n_agents, model_dim)
-        """
-        # act_enc = self.dropout(self.positional_encoding(F.ReLU(self.action_embedding(actions))))
-        state_enc = self.state_enc(state)
-        pos_embed = self.pos_embedding(pos)
-        obj_name_enc = self.obj_name_enc(obj_name_encs)
+# class RewardPositionVAE(nn.Module):
+#     def __init__(self, n_agents, model_dim, latent_dim=32, hidden_dim=64):
+#         """
+#         VAE that learns to encode position and reward information.
         
-        conditional_enc = pos_embed.squeeze(2) + obj_name_enc.unsqueeze(1) + state_enc
-        act_enc = self.activation(self.action_embedding(actions))
-        for layer in self.decoder_layers:
-            act_enc = layer(act_enc, conditional_enc)
-        act_mean = self.final_layer(act_enc, conditional_enc)
-        return act_mean
-
+#         Args:
+#             n_agents (int): Number of agents
+#             model_dim (int): Dimension to match transformer output
+#             latent_dim (int): Size of the latent space
+#             hidden_dim (int): Size of hidden layers
+#         """
+#         super().__init__()
+#         self.n_agents = n_agents
+#         self.model_dim = model_dim
+#         self.latent_dim = latent_dim
+        
+#         # Encoder
+#         self.encoder = nn.Sequential(
+#             nn.Linear(n_agents + 1, hidden_dim),  # +1 for reward
+#             nn.ReLU(),
+#             nn.Linear(hidden_dim, hidden_dim),
+#             nn.ReLU(),
+#         )
+        
+#         # Mean and log variance projections
+#         self.fc_mu = nn.Linear(hidden_dim, latent_dim)
+#         self.fc_logvar = nn.Linear(hidden_dim, latent_dim)
+        
+#         # Decoder
+#         self.decoder = nn.Sequential(
+#             nn.Linear(latent_dim, hidden_dim),
+#             nn.ReLU(),
+#             nn.Linear(hidden_dim, hidden_dim),
+#             nn.ReLU(),
+#             nn.Linear(hidden_dim, n_agents + 1)  # Reconstruct positions and reward
+#         )
+        
+#         # Project latent vector to model dimension for each agent
+#         self.reward_embedding = nn.Sequential(
+#             nn.Linear(latent_dim, model_dim),
+#             nn.LayerNorm(model_dim)
+#         )
+        
+#     def encode(self, positions, reward):
+#         """
+#         Encode positions and reward into latent space.
+        
+#         Args:
+#             positions (torch.Tensor): Shape (batch_size, n_agents, 1)
+#             reward (torch.Tensor): Shape (batch_size, 1)
+#         """
+#         batch_size = positions.shape[0]
+#         pos_flat = positions.view(batch_size, self.n_agents)
+#         x = torch.cat([pos_flat, reward], dim=1)  # (batch_size, n_agents + 1)
+        
+#         x = self.encoder(x)
+#         mu = self.fc_mu(x)
+#         logvar = self.fc_logvar(x)
+        
+#         return mu, logvar
+    
+#     def decode(self, z):
+#         """Decode latent vector to positions and reward."""
+#         return self.decoder(z)
+    
+#     def reparameterize(self, mu, logvar):
+#         """Reparameterization trick."""
+#         std = torch.exp(0.5 * logvar)
+#         eps = torch.randn_like(std)
+#         return mu + eps * std
+    
+#     def get_reward_aware_embedding(self, positions, reward):
+#         """
+#         Get reward-aware embeddings for each agent position.
+        
+#         Returns:
+#             torch.Tensor: Shape (batch_size, n_agents, model_dim)
+#         """
+#         mu, logvar = self.encode(positions, reward)
+#         z = self.reparameterize(mu, logvar)
+        
+#         # Project to model dimension and expand for each agent
+#         reward_emb = self.reward_embedding(z).unsqueeze(1)  # (batch_size, 1, model_dim)
+#         reward_emb = reward_emb.expand(-1, self.n_agents, -1)  # (batch_size, n_agents, model_dim)
+        
+#         return reward_emb, mu, logvar
+    
+#     def forward(self, positions, reward):
+#         """Forward pass through VAE."""
+#         mu, logvar = self.encode(positions, reward)
+#         z = self.reparameterize(mu, logvar)
+#         reconstruction = self.decode(z)
+#         reward_aware_emb, mu, logvar = self.get_reward_aware_embedding(positions, reward)
+        
+#         return reconstruction, mu, logvar, reward_aware_emb
 
 class Transformer(nn.Module):
     def __init__(self, hp_dict, delta_array_size = (8, 8)):
@@ -302,30 +292,77 @@ class Transformer(nn.Module):
         self.pos_embedding.load_state_dict(torch.load("./utils/MATSAC/idx_embedding_new.pth", map_location=self.device, weights_only=True))
         for param in self.pos_embedding.parameters():
             param.requires_grad = False
-        log_std = -0.5 * torch.ones(self.action_dim)
-        self.log_std = torch.nn.Parameter(log_std)
+        
+        self.encoder = Encoder(hp_dict['state_dim'], hp_dict['model_dim'], hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], hp_dict['dropout'], hp_dict['n_layers_dict']['encoder'])
+        self.decoder_actor = GPT(hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['actor'], masked=hp_dict['masked'])
+        self.decoder_critic1 = GPT(hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'], critic=True, masked=hp_dict['masked'])
+        self.decoder_critic2 = GPT(hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'], critic=True, masked=hp_dict['masked'])
 
-        if hp_dict["adaln"]:
-            self.decoder_actor = GPT_AdaLN(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['actor'], masked=hp_dict['masked'])
-            self.decoder_critic1 = GPT_AdaLN(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'], critic=True, masked=hp_dict['masked'])
-            self.decoder_critic2 = GPT_AdaLN(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'], critic=True, masked=hp_dict['masked'])
-        else:
-            self.decoder_actor = GPT(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['actor'], masked=hp_dict['masked'])
-            self.decoder_critic1 = GPT(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'], critic=True, masked=hp_dict['masked'])
-            self.decoder_critic2 = GPT(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'], critic=True, masked=hp_dict['masked'])
+    # def forward(self, state, pos, idx=None):
+    #     bs, n_agents, _ = state.size()
+    #     mus, log_stds = torch.zeros((bs, n_agents, self.action_dim)).to(self.device), torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
+    #     mu, log_std = self.decoder_actor(self.encoder(state), torch.cat((mus, log_stds), dim=-1), pos, idx)
+        
+    #     std = log_std.exp()
+    #     gauss_dist = torch.distributions.Normal(mu, std)
+    #     actions = gauss_dist.rsample()  # for reparameterization trick (mean + std * N(0,1))
+    #     logp_pi = gauss_dist.log_prob(actions).sum(axis=-1) - (2*(np.log(2) - actions - F.softplus(-2*actions))).sum(axis=-1)
+    #     actions = torch.tanh(actions) * self.act_limit
+    #     return actions, logp_pi, mu, std
+    
+        # y_t = torch.tanh(x_t)
+        
+        # action = y_t * self.act_limit
+        # log_prob = normal.log_prob(x_t)
+        # log_prob -= torch.log(self.act_limit * (1 - y_t.pow(2)) + 1e-6)
+        # log_prob = log_prob.sum(1, keepdim=True)
+        # return action, log_prob
+    
+    def forward(self, state, pos, idx=None):
+        bs, n_agents, _ = state.size()
+        actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
+        return self.act_limit * torch.tanh(self.decoder_actor(self.encoder(state), actions, pos, idx))
 
-    def get_actions(self, states,  obj_name_encs, pos, deterministic=False):
+    @torch.no_grad()
+    def get_actions(self, states,  pos, deterministic=False):
         """ Returns actor actions """
         bs, n_agents, _ = states.size()
         actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
         for i in range(n_agents):
-            updated_actions = self.decoder_actor(states, actions, obj_name_encs, pos, i)
-
-            # TODO: Ablate here with all actions cloned so that even previous actions are updated with new info. 
-            # TODO: Does it cause instability? How to know if it does?
-            actions = actions.clone()
+            updated_actions = self.decoder_actor(self.encoder(states), actions, pos, i)
             actions[:, i, :] = self.act_limit * torch.tanh(updated_actions[:, i, :])
         return actions
+    
+    # @torch.no_grad()
+    # def get_actions(self, state, pos, deterministic=False):
+    #     """ Returns actor actions """
+    #     bs, n_agents, _ = state.size()
+    #     mus, log_stds = torch.zeros((bs, n_agents, self.action_dim)).to(self.device), torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
+    #     for i in range(n_agents):
+    #         mu, log_std = self.decoder_actor(self.encoder(state), torch.cat((mus, log_stds), dim=-1), pos, i)
+    #         mus[:, i, :], log_stds[:, i, :] = mu[:, i, :], log_std[:, i, :]
+            
+    #     if deterministic:
+    #         actions = torch.tanh(mus) * self.act_limit
+    #     else:
+    #         std = log_std.exp()
+    #         normal = torch.distributions.Normal(mu, std)
+    #         x_t = normal.rsample()  # for reparameterization trick (mean + std * N(0,1))
+    #         actions = torch.tanh(x_t) * self.act_limit
+    #     return actions
+
+    # def get_actions(self, states,  obj_name_encs, pos, deterministic=False):
+    #     """ Returns actor actions """
+    #     bs, n_agents, _ = states.size()
+    #     actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
+    #     for i in range(n_agents):
+    #         updated_actions = self.decoder_actor(states, actions, obj_name_encs, pos, i)
+
+    #         # TODO: Ablate here with all actions cloned so that even previous actions are updated with new info. 
+    #         # TODO: Does it cause instability? How to know if it does?
+    #         actions = actions.clone()
+    #         actions[:, i, :] = self.act_limit * torch.tanh(updated_actions[:, i, :])
+    #     return actions
 
     # def get_actions(self, states, pos, deterministic=False):
     #     """ Returns actor actions, and their log probs. If deterministic=True, set action as the output of decoder. Else, sample from mean=dec output, std=exp(log_std) """

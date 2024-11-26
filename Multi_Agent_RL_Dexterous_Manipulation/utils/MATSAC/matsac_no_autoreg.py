@@ -13,7 +13,7 @@ import torch.utils.data as data
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
-import utils.MATSAC.gpt_core as core
+import utils.MATSAC.gpt_core_no_autoreg as core
 # from utils.openai_utils.logx import EpochLogger
 import utils.multi_agent_replay_buffer as MARB
 
@@ -26,6 +26,7 @@ class MATSAC:
         self.act_dim = self.env_dict['action_space']['dim']
         self.act_limit = self.env_dict['action_space']['high']
         self.device = self.hp_dict['dev_rl']
+        self.gauss = hp_dict['gauss']
 
         if self.hp_dict['data_type'] == "image":
             self.ma_replay_buffer = MARB.MultiAgentImageReplayBuffer(act_dim=self.act_dim, size=hp_dict['replay_size'], max_agents=self.tf.max_agents)
@@ -66,6 +67,12 @@ class MATSAC:
             normalizer = pkl.load(f)
         self.obj_name_encoder = normalizer['obj_name_encoder']
 
+        if self.gauss:
+            self.log_alpha = torch.tensor([-1.6094], requires_grad=True, device=self.device)
+            self.alpha = self.log_alpha.exp()
+            self.alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=hp_dict['pi_lr'])
+
+
     def compute_q_loss(self, s1, a, s2, r, d, obj_name_encs, pos):
         q1 = self.tf.decoder_critic1(s1, a, obj_name_encs, pos).mean(dim=1)
         q2 = self.tf.decoder_critic2(s1, a, obj_name_encs, pos).mean(dim=1)
@@ -86,29 +93,46 @@ class MATSAC:
         torch.nn.utils.clip_grad_norm_(self.tf.decoder_critic1.parameters(), self.hp_dict['max_grad_norm'])
         torch.nn.utils.clip_grad_norm_(self.tf.decoder_critic2.parameters(), self.hp_dict['max_grad_norm'])
         self.optimizer_critic.step()
-
+        
         if not self.hp_dict["dont_log"]:
-            self.q_loss = q_loss1.cpu().detach().numpy() + q_loss2.cpu().detach().numpy()
+            self.q_loss = q_loss1.item() + q_loss2.item()
             wandb.log({"Q loss":self.q_loss})
 
     def compute_pi_loss(self, s1, obj_name_encs, pos):
         for p in self.critic_params:
             p.requires_grad = False
 
-        actions = self.tf(s1, obj_name_encs, pos)
+        if self.gauss:
+            actions, log_probs, mu, std = self.tf(s1, obj_name_encs, pos)
+        else:
+            actions = self.tf(s1, obj_name_encs, pos)
         # actions = self.tf.get_actions(s1, pos)
         
         q1_pi = self.tf.decoder_critic1(s1, actions, obj_name_encs, pos)
         q2_pi = self.tf.decoder_critic2(s1, actions, obj_name_encs, pos)
         q_pi = torch.min(q1_pi, q2_pi)
-        pi_loss = -q_pi.mean() #self.hp_dict['alpha'] * logp_pi 
+        
+        if self.gauss:
+            pi_loss = (self.alpha * log_probs - q_pi.squeeze()).mean() 
+        else:
+            pi_loss = -q_pi.mean()
 
         pi_loss.backward()
         torch.nn.utils.clip_grad_norm_(self.tf.decoder_actor.parameters(), self.hp_dict['max_grad_norm'])
         self.optimizer_actor.step()
+        
+        # Update alpha
+        self.alpha_optimizer.zero_grad()
+        alpha_loss = -(self.log_alpha * (log_probs - self.act_dim).detach()).mean() # Target entropy is -act_dim
+        alpha_loss.backward()
+        self.alpha_optimizer.step()
+        self.alpha = self.log_alpha.exp()
 
         if not self.hp_dict["dont_log"]:
-            wandb.log({"Pi loss":pi_loss.cpu().detach().numpy()})
+            if self.gauss:
+                wandb.log({"Pi loss":pi_loss.item(), 'alpha':self.alpha.item(), "mu":mu.mean().item(), "std":std.mean().item()})
+            else:
+                wandb.log({"Pi loss":pi_loss.item()})
         
         for p in self.critic_params:
             p.requires_grad = True
@@ -165,5 +189,6 @@ class MATSAC:
         return actions.detach().cpu().numpy()
         
     def load_saved_policy(self, path='./data/rl_data/backup/matsac_expt_grasp/pyt_save/model.pt'):
-        self.tf.load_state_dict(torch.load(path, map_location=self.hp_dict['dev_rl'], weights_only=True))
+        print(path)
+        self.tf.load_state_dict(torch.load(path, map_location=self.hp_dict['dev_rl']))
         # self.tf_target = deepcopy(self.tf)
