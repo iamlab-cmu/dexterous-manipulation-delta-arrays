@@ -665,7 +665,10 @@ class DeltaArraySim:
         
         # print(-2*abs(self.yaw_error(final_pose, self.goal_pose[env_idx])), -100*np.linalg.norm(self.goal_pose[env_idx][:2] - final_pose[:2]))
         # self.ep_reward[env_idx] = -2*abs(self.yaw_error(final_pose, self.goal_pose[env_idx])) - 100*np.linalg.norm(self.goal_pose[env_idx][:2] - final_pose[:2])
-        self.ep_reward[env_idx] = -10*np.linalg.norm(self.goal_bd_pts[env_idx] - self.bd_pts[env_idx])
+        
+        
+        # self.ep_reward[env_idx] = -10*np.linalg.norm(self.goal_bd_pts[env_idx] - self.bd_pts[env_idx])
+        self.ep_reward[env_idx] = -np.sum(np.linalg.norm(self.goal_bd_pts[env_idx] - self.bd_pts[env_idx], axis=1))
         return final_pose
 
     def terminate(self, env_idx, t_step, agent):
