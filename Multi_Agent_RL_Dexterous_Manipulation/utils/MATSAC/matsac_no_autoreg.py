@@ -74,18 +74,19 @@ class MATSAC:
 
 
     def compute_q_loss(self, s1, a, s2, r, d, obj_name_encs, pos):
-        q1 = self.tf.decoder_critic1(s1, a, obj_name_encs, pos).mean(dim=1)
-        q2 = self.tf.decoder_critic2(s1, a, obj_name_encs, pos).mean(dim=1)
+        q1 = self.tf.decoder_critic1(s1, a, obj_name_encs, pos).squeeze().mean(dim=1)
+        q2 = self.tf.decoder_critic2(s1, a, obj_name_encs, pos).squeeze().mean(dim=1)
         
         with torch.no_grad():
-            # next_state_enc = self.tf.encoder(s2)
-            # next_actions, next_log_pi = self.tf.get_actions(next_state_enc)
-            """ For now our problem is a single-step problem, so we don't need to compute the next_q values. 
-            TODO: Investigate if we can improve something here later. e.g. take inspiration from PPO MAT code and see if I can include entropy and shiiz to add to the q_loss"""
-            # next_q1 = self.tf_target.decoder_critic1(next_state_enc, next_actions)
-            # next_q2 = self.tf_target.decoder_critic2(next_state_enc, next_actions)
-            # q_next = r + self.hp_dict['gamma'] * (1 - d) * (torch.min(next_q1, next_q2) - self.hp_dict['alpha'] * next_log_pi)
-            q_next = r.unsqueeze(1)
+            if self.gauss:
+                next_actions, log_probs, _, _= self.tf(s2, obj_name_encs, pos)
+            else:
+                next_actions = self.tf(s2, obj_name_encs, pos)
+            
+            next_q1 = self.tf.decoder_critic1(s2, next_actions, obj_name_encs, pos).squeeze()
+            next_q2 = self.tf.decoder_critic2(s2, next_actions, obj_name_encs, pos).squeeze()
+            q_next = (r.unsqueeze(1) + self.hp_dict['gamma'] * (1 - d.unsqueeze(1)) * (torch.min(next_q1, next_q2) - self.alpha * log_probs)).mean(dim=1)
+            # q_next = r.unsqueeze(1)
         q_loss1 = F.mse_loss(q1, q_next)
         q_loss1.backward()
         q_loss2 = F.mse_loss(q2, q_next)

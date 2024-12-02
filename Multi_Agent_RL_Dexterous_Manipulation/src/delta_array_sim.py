@@ -591,7 +591,7 @@ class DeltaArraySim:
 
                 # This is done in env_step function
                 # self.init_state[env_idx, :self.n_idxs[env_idx], 4:6] += self.actions_grasp[env_idx, :self.n_idxs[env_idx]] 
-                self.final_state[env_idx, :self.n_idxs[env_idx], 4:6] += self.actions[env_idx, :self.n_idxs[env_idx]]
+                self.final_state[env_idx, :self.n_idxs[env_idx], 4:6] = self.actions[env_idx, :self.n_idxs[env_idx]]
                 
 ################################################################################################################################################################################
                 
@@ -682,7 +682,7 @@ class DeltaArraySim:
                                          self.pos[env_idx], 
                                          self.ep_reward[env_idx], 
                                          self.final_state[env_idx], 
-                                         True, 
+                                         True if (self.ep_reward[env_idx] > -1.5) else False, 
                                          self.n_idxs[env_idx], 
                                          self.obj_name_encoder.transform(np.array(self.obj_name[env_idx]).ravel()), 
                                          np.array((*self.goal_pose[env_idx], *final_pose)))
