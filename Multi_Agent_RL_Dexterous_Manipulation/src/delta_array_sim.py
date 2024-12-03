@@ -206,6 +206,8 @@ class DeltaArraySim:
         self.reward_vs = []
         self.reward_rand = []
         self.reward_matsac_adaln = []
+        
+        self.ep_thresh = -0.2 if not self.hp_dict['ca'] else -0.4
         # self.bd_pts_dict = {}
 
     def set_attractor_handles(self, env_idx):
@@ -684,7 +686,7 @@ class DeltaArraySim:
                                          self.pos[env_idx], 
                                          self.ep_reward[env_idx], 
                                          self.final_state[env_idx], 
-                                         True if (self.ep_reward[env_idx] > -0.2) else False, 
+                                         True if (self.ep_reward[env_idx] > self.ep_thresh) else False, 
                                          self.n_idxs[env_idx], 
                                          self.obj_name_encoder.transform(np.array(self.obj_name[env_idx]).ravel()), 
                                          np.array((*self.goal_pose[env_idx], *final_pose)))
