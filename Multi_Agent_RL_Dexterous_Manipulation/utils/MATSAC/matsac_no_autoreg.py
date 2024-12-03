@@ -142,16 +142,18 @@ class MATSAC:
     def update(self, batch_size, current_episode, n_envs):
         for _ in range(n_envs):
             self.internal_updates_counter += 1
-            if self.internal_updates_counter == 1:
-                for param_group in self.optimizer_critic.param_groups:
-                    param_group['lr'] = 1e-6
-                for param_group in self.optimizer_actor.param_groups:
-                    param_group['lr'] = 1e-6
-            elif self.internal_updates_counter == self.hp_dict['warmup_epochs']:
-                for param_group in self.optimizer_critic.param_groups:
-                    param_group['lr'] = self.hp_dict['q_lr']
-                for param_group in self.optimizer_actor.param_groups:
-                    param_group['lr'] = self.hp_dict['pi_lr']
+            # if self.internal_updates_counter == 1:
+            #     for param_group in self.optimizer_critic.param_groups:
+            #         param_group['lr'] = 1e-6
+            #     for param_group in self.optimizer_actor.param_groups:
+            #         param_group['lr'] = 1e-6
+            # elif self.internal_updates_counter == self.hp_dict['warmup_epochs']:
+            #     for param_group in self.optimizer_critic.param_groups:
+            #         param_group['lr'] = self.hp_dict['q_lr']
+            #     for param_group in self.optimizer_actor.param_groups:
+            #         param_group['lr'] = self.hp_dict['pi_lr']
+            self.scheduler_actor.step()
+            self.scheduler_critic.step()
 
             data = self.ma_replay_buffer.sample_batch(batch_size)
             n_agents = int(torch.max(data['num_agents']))
