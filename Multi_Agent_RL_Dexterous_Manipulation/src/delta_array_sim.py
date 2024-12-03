@@ -670,8 +670,7 @@ class DeltaArraySim:
         # self.ep_reward[env_idx] = -10*np.linalg.norm(self.goal_bd_pts[env_idx] - self.bd_pts[env_idx])
         self.ep_reward[env_idx] = -100*np.mean(np.linalg.norm(self.goal_bd_pts[env_idx] - self.bd_pts[env_idx], axis=1))
         if self.hp_dict['ca']:
-            print(self.ep_reward[env_idx], np.mean(abs(self.actions[env_idx, :self.n_idxs[env_idx]] - self.actions_grasp[env_idx, :self.n_idxs[env_idx]])))
-            self.ep_reward[env_idx] -= np.mean(abs(self.actions[env_idx, :self.n_idxs[env_idx]] - self.actions_grasp[env_idx, :self.n_idxs[env_idx]]))
+            self.ep_reward[env_idx] -= 10*np.mean(abs(self.actions[env_idx, :self.n_idxs[env_idx]] - self.actions_grasp[env_idx, :self.n_idxs[env_idx]]))
         return final_pose
 
     def terminate(self, env_idx, t_step, agent):
