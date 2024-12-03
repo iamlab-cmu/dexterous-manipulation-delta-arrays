@@ -155,6 +155,7 @@ class DeltaArraySimEnvironment():
                 'masked'            : not self.args.unmasked,
                 'cmu_ri'            : self.args.cmuri,
                 'gauss'             : self.args.gauss,
+                'ca'                : self.args.ca,
             }
         
         logger_kwargs = {}
@@ -343,6 +344,7 @@ if __name__ == "__main__":
     parser.add_argument("-gauss", "--gauss", action="store_true", help="Use Gaussian Final Layers")
     parser.add_argument("-rope", "--rope", action="store_true", help="To rope or not to rope")
     parser.add_argument("-optim", "--optim", type=str, default="adam", help="Optimizer to use adam vs sgd")
+    parser.add_argument("-ca", "--ca", action="store_true", help="compensate for Actions in reward function")
     args = parser.parse_args()
 
     if args.vis_servo and not args.test:

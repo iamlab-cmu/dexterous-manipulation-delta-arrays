@@ -85,7 +85,8 @@ class MATSAC:
             
             next_q1 = self.tf.decoder_critic1(s2, next_actions, obj_name_encs, pos).squeeze()
             next_q2 = self.tf.decoder_critic2(s2, next_actions, obj_name_encs, pos).squeeze()
-            q_next = (r.unsqueeze(1) + self.hp_dict['gamma'] * (1 - d.unsqueeze(1)) * (torch.min(next_q1, next_q2) - self.alpha * log_probs)).mean(dim=1)
+            # print(((1 - d.unsqueeze(1)) * (torch.min(next_q1, next_q2) - self.alpha * log_probs)).mean(dim=1).shape)
+            q_next = r + self.hp_dict['gamma'] * ((1 - d.unsqueeze(1)) * (torch.min(next_q1, next_q2) - self.alpha * log_probs)).mean(dim=1)
             # q_next = r.unsqueeze(1)
         q_loss1 = F.mse_loss(q1, q_next)
         q_loss1.backward()
@@ -109,12 +110,12 @@ class MATSAC:
             actions = self.tf(s1, obj_name_encs, pos)
         # actions = self.tf.get_actions(s1, pos)
         
-        q1_pi = self.tf.decoder_critic1(s1, actions, obj_name_encs, pos)
-        q2_pi = self.tf.decoder_critic2(s1, actions, obj_name_encs, pos)
-        q_pi = torch.min(q1_pi, q2_pi)
+        q1_pi = self.tf.decoder_critic1(s1, actions, obj_name_encs, pos).squeeze()
+        q2_pi = self.tf.decoder_critic2(s1, actions, obj_name_encs, pos).squeeze()
+        q_pi = torch.minimum(q1_pi, q2_pi)
         
         if self.gauss:
-            pi_loss = (self.alpha * log_probs - q_pi.squeeze()).mean() 
+            pi_loss = (self.alpha * log_probs - q_pi).mean() 
         else:
             pi_loss = -q_pi.mean()
 
