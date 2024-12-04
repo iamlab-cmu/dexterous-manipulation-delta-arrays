@@ -97,14 +97,13 @@ class FF_MLP(nn.Module):
     def forward(self, x):
         return self.fc2(self.activation(self.fc1(x)))
 
-
-class GPT_AdaLn_Block(nn.Module):
+class AdaLNLayer(nn.Module):
     """
-    A GPT_AdaLn_ block with adaptive layer norm zero (adaLN-Zero) conditioning.
+    A DiT block with adaptive layer norm zero (adaLN-Zero) conditioning.
     """
-    def __init__(self, model_dim, num_heads, max_agents, dim_ff, dropout):
+    def __init__(self, model_dim, num_heads, max_agents, dim_ff, dropout, masked):
         super().__init__()
-        self.attn = MultiHeadAttention(model_dim, num_heads, max_agents, masked=False)
+        self.attn = MultiHeadAttention(model_dim, num_heads, max_agents, masked=masked)
         self.mlp = FF_MLP(model_dim, dim_ff)
         self.adaLN_modulation = nn.Sequential(
             nn.SiLU(),
@@ -139,74 +138,55 @@ class FinalLayer(nn.Module):
         x = self.linear(x)
         return x
 
-class GPT_AdaLn_Actor(nn.Module):
-    def __init__(self, state_dim, obj_name_enc_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers):
-        super(GPT_AdaLn_Actor, self).__init__()
-        self.state_enc = wt_init_(nn.Linear(state_dim, model_dim))
-        self.obj_name_enc = nn.Embedding(obj_name_enc_dim, model_dim)
+class GPT_AdaLN(nn.Module):
+    def __init__(self, state_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False, masked=True, gauss=False):
+        super(GPT_AdaLN, self).__init__()
+        self.state_enc = nn.Linear(state_dim, model_dim)
         self.action_embedding = wt_init_(nn.Linear(action_dim, model_dim))
         self.pos_embedding = pos_embedding
         self.dropout = nn.Dropout(dropout)
 
-        # self.decoder_layers = nn.ModuleList([GPTLayer(model_dim, num_heads, max_agents, dim_ff, dropout) for _ in range(n_layers)])
-        self.decoder_layers = nn.ModuleList([GPT_AdaLn_Block(model_dim, num_heads, max_agents, dim_ff, dropout) for _ in range(n_layers)])
-        # self.final_layer = wt_init_(nn.Linear(model_dim, action_dim))
-        self.final_layer = FinalLayer(model_dim, action_dim)
-        # self.actor_std_layer = wt_init_(nn.Linear(model_dim, action_dim))
+        self.decoder_layers = nn.ModuleList([AdaLNLayer(model_dim, num_heads, max_agents, dim_ff, dropout, masked) for _ in range(n_layers)])
+        self.critic = critic
+        self.gauss = gauss
+        if self.critic:
+            self.final_layer = FinalLayer(model_dim, 1)
+        else:
+            if self.gauss:
+                self.mu = FinalLayer(model_dim, action_dim)
+                self.log_std = FinalLayer(model_dim, action_dim)
+            else:
+                self.final_layer = FinalLayer(model_dim, action_dim)
+            # self.actor_std_layer = wt_init_(nn.Linear(model_dim, action_dim))
         self.activation = nn.GELU()
 
-    def forward(self, state, actions, obj_name_encs, pos):
+    def forward(self, state, actions, pos, idx=None):
+        """
+        Input: state (bs, n_agents, state_dim)
+               actions (bs, n_agents, action_dim)
+        Output: decoder_output (bs, n_agents, model_dim)
+        """
+        # act_enc = self.dropout(self.positional_encoding(F.ReLU(self.action_embedding(actions))))
         state_enc = self.state_enc(state)
-        obj_name_enc = self.obj_name_enc(obj_name_encs)
-        pos_embed = self.pos_embedding(pos)
-
-        conditional_enc = pos_embed.squeeze(2) + state_enc + obj_name_enc.unsqueeze(1)
+        pos_embed = self.pos_embedding(pos)  
+        conditional_enc = pos_embed.squeeze(2) + state_enc
         act_enc = self.activation(self.action_embedding(actions))
         for layer in self.decoder_layers:
             act_enc = layer(act_enc, conditional_enc)
-        output = self.final_layer(act_enc, conditional_enc)
-        return output
-
-class GPT_AdaLn_Critic(nn.Module):
-    def __init__(self, state_dim, obj_name_enc_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False):
-        super(GPT_AdaLn_Critic, self).__init__()
-        self.state_action_enc = wt_init_(nn.Linear(state_dim + action_dim, model_dim))
-        self.obj_name_enc = nn.Embedding(obj_name_enc_dim, model_dim)
-        # self.action_enc = wt_init_(nn.Linear(action_dim, model_dim))
-        self.pos_embedding = pos_embedding
-        self.dropout = nn.Dropout(dropout)
-
-        # self.decoder_layers = nn.ModuleList([GPTLayer(model_dim, num_heads, max_agents, dim_ff, dropout) for _ in range(n_layers)])
-        self.decoder_layers = nn.ModuleList([GPT_AdaLn_Block(model_dim, num_heads, max_agents, dim_ff, dropout) for _ in range(n_layers)])
-        # self.final_layer = wt_init_(nn.Linear(model_dim, action_dim))
-        self.final_layer = FinalLayer(model_dim, 1)
-        # self.actor_std_layer = wt_init_(nn.Linear(model_dim, action_dim))
-        self.activation = nn.GELU()
-
-    def forward(self, state, actions, obj_name_encs, pos):
-        # state_enc = self.state_enc(state)
-        obj_name_enc = self.obj_name_enc(obj_name_encs)
-        pos_embed = self.pos_embedding(pos)
-
-        conditional_enc = pos_embed.squeeze(2) + obj_name_enc.unsqueeze(1)
-        sa_enc = self.activation(self.state_action_enc(torch.cat([state, actions], dim=-1)))
-        for layer in self.decoder_layers:
-            sa_enc = layer(sa_enc, conditional_enc)
-        output = self.final_layer(sa_enc, conditional_enc)
-        return output
+            
+        if self.gauss:
+            act_mean = self.mu(act_enc, conditional_enc)
+            act_std = self.log_std(act_enc, conditional_enc)
+            act_std = torch.clamp(act_std, LOG_STD_MIN, LOG_STD_MAX)
+            std = torch.exp(act_std)
+            return act_mean, std
+        else:
+            act_mean = self.final_layer(act_enc, conditional_enc)
+        return act_mean
 
 class Transformer(nn.Module):
     def __init__(self, hp_dict, delta_array_size = (8,8)):
         super(Transformer, self).__init__()
-        """
-        For 2D planar manipulation:
-            state_dim = 6: state, goal, pos of robot
-            action_dim = 2: action of robot
-        max_agents = delta_array_size[0] * delta_array_size[1]: Maximum number of agents in the environment
-        model_dim: size of attn layers (model_dim % num_heads = 0)
-        dim_ff: size of MLPs
-        num_layers: number of layers in encoder and decoder
-        """
         self.hp_dict = hp_dict
         self.device = hp_dict['device']
         self.max_agents = delta_array_size[0] * delta_array_size[1]
@@ -216,57 +196,63 @@ class Transformer(nn.Module):
         self.pos_embedding.load_state_dict(torch.load(hp_dict['idx_embed_loc'], map_location=self.device, weights_only=True))
         for param in self.pos_embedding.parameters():
             param.requires_grad = False
-        # log_std = -0.5 * torch.ones(self.action_dim)
-        # self.log_std = torch.nn.Parameter(log_std)
+        self.gauss = hp_dict['gauss']
 
-        self.decoder_actor = GPT_AdaLn_Actor(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['decoder'])
-        self.decoder_critic = GPT_AdaLn_Critic(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['decoder'])
-        # self.decoder_critic2 = GPT_AdaLn_Critic(hp_dict['state_dim'], hp_dict['obj_name_enc_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['decoder'])
-        
-    def forward(self, states, obj_name_encs, pos, deterministic=False):
-        """ Returns actor actions """
-        bs, n_agents, _ = states.size()
+        self.decoder_actor = GPT_AdaLN(hp_dict['state_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['actor'], masked=hp_dict['masked'], gauss=hp_dict['gauss'])
+        self.decoder_critic = GPT_AdaLN(hp_dict['state_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'], critic=True, masked=hp_dict['masked'])
+        self.alpha = 0.2
+    
+    def forward(self, state, pos):
+        bs, n_agents, _ = state.size()
         actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
-
-        for i in range(n_agents):
-            updated_actions = self.decoder_actor(states, actions, obj_name_encs, pos)
-
-            # TODO: Ablate here with all actions cloned so that even previous actions are updated with new info. 
-            # TODO: Does it cause instability? How to know if it does?
-            actions = actions.clone()
-            actions[:, i, :] = self.act_limit * torch.tanh(updated_actions[:, i, :])
-            # actions[:, i, :] = updated_actions[:, i, :]
+        if self.gauss:
+            mu, std = self.decoder_actor(state, actions, pos)
             
-        # mus = actions[:, :, ::2]
-        # if deterministic:
-        #     action = mus
-        #     log_prob = None
-        # else:
-        #     log_stds = actions[:, :, 1::2]
-        #     log_stds = torch.clamp(log_stds, LOG_STD_MIN, LOG_STD_MAX)
-        #     stds = torch.exp(log_stds)
-        #     dist = torch.distributions.Normal(mus, stds)
-        #     action = dist.rsample()
-        #     log_prob = dist.log_prob(action).sum(axis=-1)
-        #     log_prob -= (2 * (np.log(2) - action - F.softplus(-2 * action))).sum(axis=-1)
-        # actions = self.act_limit * torch.tanh(action)
-        return actions
+            gauss_dist = torch.distributions.Normal(mu, std)
+            actions = gauss_dist.rsample()  # for reparameterization trick (mean + std * N(0,1))
+            logp_pi = gauss_dist.log_prob(actions).sum(axis=-1) - (2*(np.log(2) - actions - F.softplus(-2*actions))).sum(axis=-1)
+            actions = torch.tanh(actions) * self.act_limit
+            return actions, logp_pi, mu, std
+        else:
+            return self.act_limit * torch.tanh(self.decoder_actor(state, actions, pos))
 
-    def compute_actor_loss(self, actions, states, obj_name_encs, pos):
-        pred_actions, _ = self.forward(states, obj_name_encs, pos)
+    def compute_actor_loss(self, actions, states, pos):
+        if self.gauss:
+            pred_actions, _, _, _ = self.forward(states, pos)
+        else:
+            pred_actions = self.forward(states, pos)
         loss = F.mse_loss(actions, pred_actions)
         return loss
     
-    def compute_critic_loss(self, actions, states, obj_name_encs, pos, rewards):
-        # q1 = self.tf.decoder_critic1(states, actions, obj_name_encs, pos).mean(dim=1)
-        q = self.decoder_critic(states, actions, obj_name_encs, pos).mean(dim=1)
-        loss = F.mse_loss(q, rewards.unsqueeze(1))
+    def compute_critic_loss(self, s1, a, s2, pos, rewards, d):
+        q = self.decoder_critic(s1, a, pos).squeeze().mean(dim=1)
+        
+        with torch.no_grad():
+            if self.gauss:
+                next_actions, log_probs, _, _= self.forward(s2, pos)
+            else:
+                next_actions = self.forward(s2, pos)
+            
+            next_q = self.decoder_critic(s2, next_actions, pos).squeeze()
+            q_next = rewards + self.hp_dict['gamma'] * ((1 - d.unsqueeze(1)) * (next_q - self.alpha * log_probs)).mean(dim=1)
+
+        loss = F.mse_loss(q, q_next)
         return loss
     
     @torch.no_grad()
-    def get_actions(self, states, obj_name_encs, pos, deterministic=False):
-        actions, _ = self.forward(states, obj_name_encs, pos, deterministic=deterministic)
-        return actions.detach().cpu().numpy()
+    def get_actions(self, state,  pos, deterministic=False):
+        bs, n_agents, _ = state.size()
+        actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
+        if self.gauss:
+            mu, std = self.decoder_actor(state, actions, pos)
+            if deterministic:
+                return torch.tanh(mu) * self.act_limit
+            
+            gauss_dist = torch.distributions.Normal(mu, std)
+            actions = gauss_dist.rsample()
+            return torch.tanh(actions) * self.act_limit
+        else:
+            return self.act_limit * torch.tanh(self.decoder_actor(state, actions, pos))
 
 class EMA:
     def __init__(self, ema_model, update_after_step, inv_gamma, power, min_value, max_value):

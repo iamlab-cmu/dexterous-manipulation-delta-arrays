@@ -55,7 +55,7 @@ class BaseMJEnv:
         return self.renderer.render()
 
     def update_sim(self):
-        mujoco.mj_step(self.model, self.data, nstep=self.args['skip'])
+        mujoco.mj_step(self.model, self.data)
         if self.gui:
             self.viewer.sync()
             # img = self.get_image()

@@ -8,7 +8,7 @@ class MultiAgentReplayBuffer:
         self.obs_buf = np.zeros((size, max_agents, obs_dim), dtype=np.float32)
         self.obs2_buf = np.zeros((size, max_agents, obs_dim), dtype=np.float32)
         self.act_buf = np.zeros((size, max_agents, act_dim), dtype=np.float32)
-        self.pos_buf = np.zeros((size, max_agents, 1), dtype=np.int32)
+        self.pos_buf = np.zeros((size, max_agents), dtype=np.int32)
         self.rew_buf = np.zeros(size, dtype=np.float32)
         self.done_buf = np.zeros(size, dtype=np.float32)
         self.num_agents_buf = np.zeros(size, dtype=np.int32)
@@ -16,10 +16,10 @@ class MultiAgentReplayBuffer:
         self.ptr, self.size, self.max_size = 0, 0, size
 
     def store(self, obs, act, pos, rew, next_obs, done, n_agents, obj_name_enc=-1):
-        self.obs_buf[self.ptr] = obs
-        self.obs2_buf[self.ptr] = next_obs
-        self.act_buf[self.ptr] = act
-        self.pos_buf[self.ptr] = pos
+        self.obs_buf[self.ptr, :n_agents] = obs
+        self.obs2_buf[self.ptr, :n_agents] = next_obs
+        self.act_buf[self.ptr, :n_agents] = act
+        self.pos_buf[self.ptr, :n_agents] = pos
         self.rew_buf[self.ptr] = rew
         self.done_buf[self.ptr] = done
         self.num_agents_buf[self.ptr] = n_agents
@@ -49,7 +49,7 @@ class MultiAgentReplayBuffer:
                 "done":self.done_buf,
                 "num_agents":self.num_agents_buf,
                 'obj_name_encs':self.obj_name_encs}
-        pkl.dump(dic, open("./data/new_replay_buffer.pkl", "wb"))
+        pkl.dump(dic, open("./data/replay_buffer_rope.pkl", "wb"))
 
 class MultiAgentImageReplayBuffer:
     def __init__(self, act_dim, size, max_agents):

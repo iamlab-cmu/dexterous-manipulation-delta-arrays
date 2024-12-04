@@ -7,6 +7,7 @@ from scipy.spatial import ConvexHull, KDTree
 from scipy.interpolate import interp1d
 import networkx as nx
 from collections import OrderedDict
+from sklearn.neighbors import NearestNeighbors
 
 class NNHelper:
     def __init__(self, plane_size, real_or_sim="real"):
@@ -231,55 +232,130 @@ class NNHelper:
 
         return idxs, np.array(nearest_neighbors)
 
-    def get_nn_robots_mj(self, boundary_pts):
-        """Original implementation modified to return nearest neighbors"""
-        hull = ConvexHull(boundary_pts)
-        hull = self.expand_hull(hull, world=True)
-        A, b = hull.equations[:, :-1], hull.equations[:, -1:]
-        
-        nearest_neighbors = {}
-        eps = np.finfo(np.float32).eps
-        kdtree = KDTree(self.kdtree_positions_world)
-
-        # Find nearest neighbors for boundary points
-        distances, indices = kdtree.query(boundary_pts, k=3, distance_upper_bound=0.03, workers=8)
-        indices = np.unique(indices[~np.isinf(distances)])
-        unique_indices = np.unique(indices)
-        pos_world = self.rb_pos_world[unique_indices // 8, unique_indices % 8]
-        containment_check = np.all(pos_world @ A.T + b.T < eps, axis=1)
-
-        # Create KDTree for boundary points
+    def get_nn_robots_mj(self, boundary_pts, search_radius=0.03):
+        """
+        Optimized function to find nearest neighbor robots around a deformable boundary.
+        """
+        # Create KDTrees
+        robot_kdtree = KDTree(self.kdtree_positions_world)
         boundary_kdtree = KDTree(boundary_pts)
 
-        for idx, is_inside in zip(unique_indices, containment_check):
-            if not is_inside:
-                # Find nearest boundary point
-                robot_pos = self.kdtree_positions_world[idx]
-                _, nearest_idx = boundary_kdtree.query(robot_pos.reshape(1, -1), k=1)
-                nearest_neighbors[idx] = boundary_pts[nearest_idx[0]]
-            else:
-                current_pos = self.kdtree_positions_world[idx]
-                kdt_pos_copy = self.kdtree_positions_world.copy()
-                mask = np.all(kdt_pos_copy @ A.T + b.T < eps, axis=1)
-                kdt_pos_copy = kdt_pos_copy[~mask]
-                if len(kdt_pos_copy) == 0:
-                    continue
-                new_kdtree = KDTree(kdt_pos_copy)
-                new_idx = new_kdtree.query(current_pos.reshape(1, -1))[1][0]
-                new_pos = kdt_pos_copy[new_idx]
-                new_idx = np.where((self.kdtree_positions_world == new_pos).all(axis=1))[0][0]
-                # Find nearest boundary point for the outside point
-                _, nearest_idx = boundary_kdtree.query(new_pos.reshape(1, -1), k=1)
-                nearest_neighbors[new_idx] = boundary_pts[nearest_idx[0]]
+        # Initialize result containers
+        nearest_neighbors = {}
+        processed_robots = set()
 
-        return nearest_neighbors.keys(), np.array(list(nearest_neighbors.values()))
+        # Step 1: Find robots within search_radius of boundary points
+        indices_list = robot_kdtree.query_ball_point(boundary_pts, r=search_radius, workers=8)
+
+        for b_idx, r_indices in enumerate(indices_list):
+            for r_idx in r_indices:
+                if r_idx not in processed_robots:
+                    nearest_neighbors[r_idx] = b_idx
+                    processed_robots.add(r_idx)
+
+        # Step 2: Vectorized local region analysis for unprocessed robots
+        unprocessed_robot_indices = np.setdiff1d(np.arange(len(self.kdtree_positions_world)), list(processed_robots))
+        if unprocessed_robot_indices.size > 0:
+            unprocessed_robot_positions = self.kdtree_positions_world[unprocessed_robot_indices]
+
+            # Boundary segments and their centers
+            segment_starts = boundary_pts
+            segment_ends = np.roll(boundary_pts, -1, axis=0)
+            segment_vecs = segment_ends - segment_starts
+            segment_centers = (segment_starts + segment_ends) / 2
+
+            # Create KDTree for segment centers
+            segment_nn = NearestNeighbors(n_neighbors=1, algorithm='kd_tree')
+            segment_nn.fit(segment_centers)
+
+            # Find nearest segments
+            distances, segment_indices = segment_nn.kneighbors(unprocessed_robot_positions)
+            valid_mask = distances.flatten() <= search_radius
+
+            # Filter valid robots
+            valid_robot_indices = unprocessed_robot_indices[valid_mask]
+            valid_segment_indices = segment_indices[valid_mask].flatten()
+            valid_robot_positions = unprocessed_robot_positions[valid_mask]
+
+            # Compute projections onto segments
+            segment_starts = segment_starts[valid_segment_indices]
+            segment_vecs = segment_vecs[valid_segment_indices]
+            robot_vecs = valid_robot_positions - segment_starts
+
+            t = np.clip(
+                np.einsum('ij,ij->i', robot_vecs, segment_vecs) / np.einsum('ij,ij->i', segment_vecs, segment_vecs),
+                0, 1
+            )
+            projections = segment_starts + (segment_vecs.T * t).T
+
+            # Find nearest boundary points to projections
+            _, nearest_indices = boundary_kdtree.query(projections)
+
+            # Update nearest_neighbors
+            for r_idx, b_idx in zip(valid_robot_indices, nearest_indices):
+                nearest_neighbors[r_idx] = b_idx
+
+        # Prepare return values
+        robot_indices = np.array(list(nearest_neighbors.keys()))
+        boundary_indices = np.array(list(nearest_neighbors.values()))
+        matched_boundary_points = boundary_pts[boundary_indices]
+
+        return robot_indices, matched_boundary_points, boundary_indices
+
+    # def get_nn_robots_mj(self, boundary_pts, rope=False):
+    #     """Original implementation modified to return nearest neighbors"""
+    #     hull = ConvexHull(boundary_pts)
+    #     hull = self.expand_hull(hull, world=True, rope=rope)
+    #     A, b = hull.equations[:, :-1], hull.equations[:, -1:]
+        
+    #     nearest_neighbors = {}
+    #     eps = np.finfo(np.float32).eps
+    #     kdtree = KDTree(self.kdtree_positions_world)
+
+    #     # Find nearest neighbors for boundary points
+    #     distances, indices = kdtree.query(boundary_pts, k=3, distance_upper_bound=0.03, workers=8)
+    #     indices = np.unique(indices[~np.isinf(distances)])
+    #     unique_indices = np.unique(indices)
+    #     pos_world = self.rb_pos_world[unique_indices // 8, unique_indices % 8]
+    #     containment_check = np.all(pos_world @ A.T + b.T < eps, axis=1)
+
+    #     # Create KDTree for boundary points
+    #     boundary_kdtree = KDTree(boundary_pts)
+
+    #     for idx, is_inside in zip(unique_indices, containment_check):
+    #         if not is_inside:
+    #             # Find nearest boundary point
+    #             robot_pos = self.kdtree_positions_world[idx]
+    #             _, nearest_idx = boundary_kdtree.query(robot_pos.reshape(1, -1), k=1)
+    #             nearest_neighbors[idx] = nearest_idx[0]
+    #         else:
+    #             current_pos = self.kdtree_positions_world[idx]
+    #             kdt_pos_copy = self.kdtree_positions_world.copy()
+    #             mask = np.all(kdt_pos_copy @ A.T + b.T < eps, axis=1)
+    #             kdt_pos_copy = kdt_pos_copy[~mask]
+    #             if len(kdt_pos_copy) == 0:
+    #                 continue
+    #             new_kdtree = KDTree(kdt_pos_copy)
+    #             new_idx = new_kdtree.query(current_pos.reshape(1, -1))[1][0]
+    #             new_pos = kdt_pos_copy[new_idx]
+    #             new_idx = np.where((self.kdtree_positions_world == new_pos).all(axis=1))[0][0]
+    #             # Find nearest boundary point for the outside point
+    #             _, nearest_idx = boundary_kdtree.query(new_pos.reshape(1, -1), k=1)
+    #             nearest_neighbors[new_idx] = nearest_idx[0]
+
+    #     nearest_bdpts = list(nearest_neighbors.values())
+    #     bd_pts = boundary_pts[nearest_bdpts]
+    #     return list(nearest_neighbors.keys()), np.array(bd_pts), nearest_bdpts
     
-    def expand_hull(self, hull, world=True):
+    def expand_hull(self, hull, world=True, rope=False):
         """
         Expands the convex hull by the radius of the robot
         """
         if world:
-            robot_radius = 0.009
+            if rope:
+                robot_radius = 0.015
+            else:
+                robot_radius = 0.009
         else:
             robot_radius = 30
         expanded_hull_vertices = []

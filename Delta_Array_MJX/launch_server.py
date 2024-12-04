@@ -122,13 +122,13 @@ class SAResponse(BaseModel):
     actions: Any
     
 class MARBRequest(BaseModel):
-    init_state: Any
-    actions: Any
-    pos: Any
-    ep_reward: Any
-    final_state: Any
-    done: Any
-    n_idxs: Any
+    s0: Any
+    a: Any
+    p: Any
+    r: Any
+    s1: Any
+    d: Any
+    N: Any
     
 class MAInferenceRequest(BaseModel):
     states: Any
@@ -171,8 +171,12 @@ def ma_endpoint(request: MATrainRequest):
 
 @app.post("/marb/store")
 def marb_store(request: MARBRequest):
-    server.pushing_agent.ma_replay_buffer.store(request.init_state, request.actions, request.pos, request.ep_reward, request.final_state, True, request.n_idxs)
+    server.pushing_agent.ma_replay_buffer.store(request.s0, request.a, request.p, request.r, request.s1, request.d, request.N)
     return {"status": "success"}
+
+@app.post("/marb/save")
+def marb_store():
+    server.pushing_agent.ma_replay_buffer.save_RB()
 
 @app.post("/marl/save_model")
 def ma_endpoint(request):

@@ -28,7 +28,7 @@ class DeltaArrayEnvCreator:
     def create_actuator(self, name):
         actuators = []
         for axis in ['x', 'y']:
-            actuators.append(ET.Element('position', joint=f"{name}_{axis}", ctrllimited="true", ctrlrange="-0.03 0.03", kp="1", kv="0.15"))
+            actuators.append(ET.Element('position', joint=f"{name}_{axis}", ctrllimited="true", ctrlrange="-0.03 0.03", kp="20", kv="10"))
         return actuators
 
     def create_mujoco_model(self, obj_name, num_rope_bodies=None):
@@ -37,7 +37,7 @@ class DeltaArrayEnvCreator:
         ET.SubElement(mujoco, 'option', timestep="0.01", gravity="0 0 -9.83")
         
         default = ET.SubElement(mujoco, 'default')
-        ET.SubElement(default, 'geom', type="capsule", size="0.0075 0.01")
+        ET.SubElement(default, 'geom', type="capsule", size="0.0075 0.01", mass="0.4", condim="4")
         
         visual = ET.SubElement(mujoco, 'visual')
         ET.SubElement(visual, 'global', offwidth="1920", offheight="1080")
@@ -62,7 +62,7 @@ class DeltaArrayEnvCreator:
         
         # Add transparent table
         table = ET.SubElement(worldbody, 'body', name="transparent_table", pos="0 0 0")
-        ET.SubElement(table, 'geom', name="collision_geom", type="box", size="1 1 1", contype="1", conaffinity="1", material="collision_material")
+        ET.SubElement(table, 'geom', name="collision_geom", type="box", size="1 1 1", contype="1", conaffinity="1", condim="6", material="collision_material")
         ET.SubElement(table, 'geom', name="visual_geom", type="box", size="0.15 0.15 0.015", contype="0", conaffinity="0", material="visual_material")
         
         print(obj_name)
@@ -72,15 +72,18 @@ class DeltaArrayEnvCreator:
             ET.SubElement(composite_body, 'freejoint')
             composite = ET.SubElement(composite_body, 'composite', type="cable", curve="s", count=f"{num_rope_bodies} 1 1", size="0.3", initial="none")
             ET.SubElement(composite, 'joint', kind="main", stiffness="0", damping="0.1")
-            ET.SubElement(composite, 'geom', type="capsule", size=".0075", rgba="0 1 0 1", condim="4", mass="0.02")
+            ET.SubElement(composite, 'geom', type="capsule", size=".0075", rgba="0 1 0 1", condim="4", mass="0.005")
         elif obj_name == "block":
             # Add block
             obj = ET.SubElement(worldbody, 'body', name=f"{obj_name}", pos="0.13125 0.1407285 1.021")
             ET.SubElement(obj, 'freejoint')
-            obj_face = ET.SubElement(obj, 'body', name=f"{obj_name}_face", pos="0 0 -0.01")
-            ET.SubElement(obj_face, 'geom', name="disc_face", size="0.025 0.05 0.0005", type="box", rgba="0 1 0 1")
-            obj_body = ET.SubElement(obj, 'body', name=f"{obj_name}_body", pos="0 0 0")
-            ET.SubElement(obj_body, 'geom', name="disc_body", size="0.025 0.05 0.0095", type="box", rgba="0 0 1 1")
+            # obj_face = ET.SubElement(obj, 'body', name=f"{obj_name}_face", pos="0 0 -0.01")
+            # ET.SubElement(obj_face, 'geom', name="disc_face", size="0.025 0.05 0.0005", type="box", mass="0.02", rgba="0 1 0 1")
+            # obj_body = ET.SubElement(obj, 'body', name=f"{obj_name}_body", pos="0 0 0")
+            # ET.SubElement(obj_body, 'geom', name="disc_body", size="0.025 0.05 0.0095", type="box", mass="0.1", rgba="0 0 1 1")
+            # obj_face = ET.SubElement(obj, 'body', name=f"{obj_name}", pos="0 0 -0.01")
+            ET.SubElement(obj, 'geom', pos="0 0 -0.01", name="disc_face", size="0.025 0.05 0.0005", type="box", mass="0.002", condim="6", rgba="0 1 0 1")
+            ET.SubElement(obj, 'geom', name="disc_body", size="0.025 0.05 0.0095", type="box", mass="0.02", rgba="0 0 1 1")
         
         # Create actuators
         actuator = ET.SubElement(mujoco, 'actuator')
