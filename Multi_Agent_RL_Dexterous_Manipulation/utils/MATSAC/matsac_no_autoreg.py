@@ -83,8 +83,8 @@ class MATSAC:
             else:
                 next_actions = self.tf(s2, obj_name_encs, pos)
             
-            next_q1 = self.tf.decoder_critic1(s2, next_actions, obj_name_encs, pos).squeeze()
-            next_q2 = self.tf.decoder_critic2(s2, next_actions, obj_name_encs, pos).squeeze()
+            next_q1 = self.tf_target.decoder_critic1(s2, next_actions, obj_name_encs, pos).squeeze()
+            next_q2 = self.tf_target.decoder_critic2(s2, next_actions, obj_name_encs, pos).squeeze()
             # print(((1 - d.unsqueeze(1)) * (torch.min(next_q1, next_q2) - self.alpha * log_probs)).mean(dim=1).shape)
             q_next = r + self.hp_dict['gamma'] * ((1 - d.unsqueeze(1)) * (torch.min(next_q1, next_q2) - self.alpha * log_probs)).mean(dim=1)
             # q_next = r.unsqueeze(1)
@@ -103,7 +103,8 @@ class MATSAC:
     def compute_pi_loss(self, s1, obj_name_encs, pos):
         for p in self.critic_params:
             p.requires_grad = False
-
+        
+        _, n_agents, _ = s1.size()
         if self.gauss:
             actions, log_probs, mu, std = self.tf(s1, obj_name_encs, pos)
         else:
@@ -125,7 +126,7 @@ class MATSAC:
         
         # Update alpha
         self.alpha_optimizer.zero_grad()
-        alpha_loss = -(self.log_alpha * (log_probs - self.act_dim).detach()).mean() # Target entropy is -act_dim
+        alpha_loss = -(self.log_alpha * (log_probs - self.act_dim*n_agents).detach()).mean() # Target entropy is -act_dim
         alpha_loss.backward()
         self.alpha_optimizer.step()
         self.alpha = self.log_alpha.exp()
@@ -175,10 +176,10 @@ class MATSAC:
             self.compute_pi_loss(states, obj_name_encs, pos)
 
             # Target Update
-            # with torch.no_grad():
-            #     for p, p_target in zip(self.tf.parameters(), self.tf_target.parameters()):
-            #         p_target.data.mul_(self.hp_dict['tau'])
-            #         p_target.data.add_((1 - self.hp_dict['tau']) * p.data)
+            with torch.no_grad():
+                for p, p_target in zip(self.tf.parameters(), self.tf_target.parameters()):
+                    p_target.data.mul_(self.hp_dict['tau'])
+                    p_target.data.add_((1 - self.hp_dict['tau']) * p.data)
 
         if (self.train_or_test == "train") and (current_episode % 5000) == 0:
             torch.save(self.tf.state_dict(), f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
@@ -195,4 +196,4 @@ class MATSAC:
     def load_saved_policy(self, path='./data/rl_data/backup/matsac_expt_grasp/pyt_save/model.pt'):
         print(path)
         self.tf.load_state_dict(torch.load(path, map_location=self.hp_dict['dev_rl']))
-        # self.tf_target = deepcopy(self.tf)
+        self.tf_target = deepcopy(self.tf)

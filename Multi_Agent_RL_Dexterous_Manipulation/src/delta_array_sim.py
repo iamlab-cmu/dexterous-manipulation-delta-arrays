@@ -207,7 +207,7 @@ class DeltaArraySim:
         self.reward_rand = []
         self.reward_matsac_adaln = []
         
-        self.ep_thresh = -0.2 if not self.hp_dict['ca'] else -0.4
+        self.ep_thresh = -1 if not self.hp_dict['ca'] else -2
         # self.bd_pts_dict = {}
 
     def set_attractor_handles(self, env_idx):
@@ -670,9 +670,9 @@ class DeltaArraySim:
         
         
         # self.ep_reward[env_idx] = -10*np.linalg.norm(self.goal_bd_pts[env_idx] - self.bd_pts[env_idx])
-        self.ep_reward[env_idx] = -100*np.mean(np.linalg.norm(self.goal_bd_pts[env_idx] - self.bd_pts[env_idx], axis=1))
+        self.ep_reward[env_idx] = -500*np.mean(np.linalg.norm(self.goal_bd_pts[env_idx] - self.bd_pts[env_idx], axis=1))
         if self.hp_dict['ca']:
-            self.ep_reward[env_idx] -= 10*np.mean(abs(self.actions[env_idx, :self.n_idxs[env_idx]] - self.actions_grasp[env_idx, :self.n_idxs[env_idx]]))
+            self.ep_reward[env_idx] -= 50*np.mean(abs(self.actions[env_idx, :self.n_idxs[env_idx]] - self.actions_grasp[env_idx, :self.n_idxs[env_idx]]))
         return final_pose
 
     def terminate(self, env_idx, t_step, agent):
