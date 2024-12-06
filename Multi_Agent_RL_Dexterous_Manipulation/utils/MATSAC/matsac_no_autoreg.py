@@ -68,9 +68,12 @@ class MATSAC:
         self.obj_name_encoder = normalizer['obj_name_encoder']
 
         if self.gauss:
-            self.log_alpha = torch.tensor([-1.6094], requires_grad=True, device=self.device)
-            self.alpha = self.log_alpha.exp()
-            self.alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=hp_dict['pi_lr'])
+            if self.hp_dict['learned_alpha']:
+                self.log_alpha = torch.tensor([-1.6094], requires_grad=True, device=self.device)
+                self.alpha = self.log_alpha.exp()
+                self.alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=hp_dict['pi_lr'])
+            else:
+                self.alpha = torch.tensor([0.2], requires_grad=False, device=self.device)
 
 
     def compute_q_loss(self, s1, a, s2, r, d, obj_name_encs, pos):
@@ -125,11 +128,12 @@ class MATSAC:
         self.optimizer_actor.step()
         
         # Update alpha
-        self.alpha_optimizer.zero_grad()
-        alpha_loss = -(self.log_alpha * (log_probs - self.act_dim*n_agents).detach()).mean() # Target entropy is -act_dim
-        alpha_loss.backward()
-        self.alpha_optimizer.step()
-        self.alpha = self.log_alpha.exp()
+        if self.hp_dict['learned_alpha']:
+            self.alpha_optimizer.zero_grad()
+            alpha_loss = -(self.log_alpha * (log_probs - self.act_dim*n_agents).detach()).mean() # Target entropy is -act_dim
+            alpha_loss.backward()
+            self.alpha_optimizer.step()
+            self.alpha = self.log_alpha.exp()
 
         if not self.hp_dict["dont_log"]:
             if self.gauss:
