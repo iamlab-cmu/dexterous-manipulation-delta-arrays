@@ -151,6 +151,9 @@ class DeltaArraySim:
         # self.ep_rewards = []
         self.ep_reward = np.zeros(self.scene.n_envs)
         self.ep_len = np.zeros(self.scene.n_envs)
+        self.epsilon = 1e-6
+        self.scaling_factor = 0.1
+        self.max_reward = 10000.0
 
         self.start_time = time.time()
 
@@ -163,16 +166,6 @@ class DeltaArraySim:
         self.vis_servo_data = {}
         for env_idx in range(self.scene.n_envs):
             self.vis_servo_data[env_idx] = {'state': [], 'action': [], 'next_state':[], 'reward': [], 'obj_name': []}
-        
-        # names = ['block', 'disc', 'hexagon', 'parallelogram', 'semicircle', 'shuriken', 'star', 'trapezium', 'triangle']
-        # encoder = LabelEncoder()
-        # self.obj_name_encoder = encoder.fit_transform(np.array(self.obj_names).ravel())
-
-        with open('./utils/MADP/normalizer_bc.pkl', 'rb') as f:
-            normalizer = pkl.load(f)
-        # self.state_scaler = normalizer['state_scaler']
-        # self.action_scaler = normalizer['action_scaler']
-        self.obj_name_encoder = normalizer['obj_name_encoder']
 
         """ Test Traj Utils """
         self.test_trajs = {}
@@ -207,7 +200,8 @@ class DeltaArraySim:
         self.reward_rand = []
         self.reward_matsac_adaln = []
         
-        self.ep_thresh = -0.4 if not self.hp_dict['ca'] else -0.8
+        self.ep_thresh = -1 if not self.hp_dict['ca'] else -1.2
+        self.logged_rew = np.zeros(self.scene.n_envs)
         # self.bd_pts_dict = {}
 
     def set_attractor_handles(self, env_idx):
@@ -653,24 +647,10 @@ class DeltaArraySim:
             self.ep_reward[env_idx] = -10
             return final_pose
         
-        # if self.obj_name[env_idx]=="disc":
-        #     self.ep_reward[env_idx] = 0
-        # else:
-        #     # self.ep_reward[env_idx] = -2*self.angle_difference(final_pose[2], self.goal_pose[env_idx, 2])
-        #     self.ep_reward[env_idx] = -2*abs(self.yaw_error(final_pose, self.goal_pose[env_idx]))
-        
-        # loss = 100*np.linalg.norm(self.goal_pose[env_idx][:2] - final_pose[:2])
-        # if loss < 1:
-        #     self.ep_reward[env_idx] -= 0.5  * loss**2
-        # else:
-        #     self.ep_reward[env_idx] -= loss - 0.5
-        
-        # print(-2*abs(self.yaw_error(final_pose, self.goal_pose[env_idx])), -100*np.linalg.norm(self.goal_pose[env_idx][:2] - final_pose[:2]))
-        # self.ep_reward[env_idx] = -2*abs(self.yaw_error(final_pose, self.goal_pose[env_idx])) - 100*np.linalg.norm(self.goal_pose[env_idx][:2] - final_pose[:2])
-        
-        
         # self.ep_reward[env_idx] = -10*np.linalg.norm(self.goal_bd_pts[env_idx] - self.bd_pts[env_idx])
-        self.ep_reward[env_idx] = -50*np.mean(np.linalg.norm(self.goal_bd_pts[env_idx] - self.bd_pts[env_idx], axis=1))
+        dist = np.mean(np.linalg.norm(self.goal_bd_pts[env_idx] - self.bd_pts[env_idx], axis=1))
+        self.ep_reward[env_idx] = np.clip(self.scaling_factor / (dist**2 + self.epsilon), 0, self.max_reward)
+        
         if self.hp_dict['ca']:
             self.ep_reward[env_idx] -= 5*np.mean(abs(self.actions[env_idx, :self.n_idxs[env_idx]] - self.actions_grasp[env_idx, :self.n_idxs[env_idx]]))
         return final_pose
@@ -687,21 +667,12 @@ class DeltaArraySim:
                                          self.ep_reward[env_idx], 
                                          self.final_state[env_idx], 
                                          True if (self.ep_reward[env_idx] > self.ep_thresh) else False, 
-                                         self.n_idxs[env_idx], 
-                                         self.obj_name_encoder.transform(np.array(self.obj_name[env_idx]).ravel()), 
-                                         np.array((*self.goal_pose[env_idx], *final_pose)))
+                                         self.n_idxs[env_idx],)
             if not self.hp_dict['vis_servo']:
+                self.logged_rew[env_idx] = self.ep_reward[env_idx]
                 if (self.agent.ma_replay_buffer.size > self.batch_size) and (self.current_episode%self.scene.n_envs==0):
-                    if self.current_episode < self.hp_dict['warmup_epochs']:
-                        n_updates = 50
-                    elif self.current_episode < 3*self.hp_dict['warmup_epochs']:
-                        n_updates = 100
-                    elif self.current_episode < 10*self.hp_dict['warmup_epochs']:
-                        n_updates = 200
-                    else:
-                        n_updates = 300
-                    self.agent.update(self.batch_size, self.current_episode, n_updates)
-                    self.log_data(env_idx)
+                    self.agent.update(self.batch_size, self.current_episode, self.scene.n_envs, self.logged_rew)                    
+                    # self.log_data(env_idx)
             else:
                 print(f"Reward: {self.ep_reward[env_idx]} @ {self.current_episode}")
                 # if (self.current_episode%5000)==0:
@@ -754,16 +725,10 @@ class DeltaArraySim:
         else:
             if self.check_obj_pose(env_idx):
                 return
-            # print(self.init_state[env_idx, :self.n_idxs[env_idx]])
-            # print(self.pos[env_idx, :self.n_idxs[env_idx]], self.obj_name[env_idx])
-            if self.hp_dict['algo'] == "MATSAC_OGOG":
-                self.actions[env_idx, :self.n_idxs[env_idx]] = agent.get_actions(self.init_state[env_idx, :self.n_idxs[env_idx]], self.pos[env_idx, :self.n_idxs[env_idx]], deterministic=test)    
-            else:
-                self.actions[env_idx, :self.n_idxs[env_idx]] = agent.get_actions(self.init_state[env_idx, :self.n_idxs[env_idx]], self.pos[env_idx, :self.n_idxs[env_idx]], self.obj_name[env_idx], deterministic=test)
-            # print(self.actions[env_idx, :self.n_idxs[env_idx]])
-            
-            # self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(self.actions[env_idx, :self.n_idxs[env_idx]], -0.03, 0.03)
+                
+            self.actions[env_idx, :self.n_idxs[env_idx]] = agent.get_actions(self.init_state[env_idx, :self.n_idxs[env_idx]], self.pos[env_idx, :self.n_idxs[env_idx]], deterministic=test)
             self.actions[env_idx, :self.n_idxs[env_idx]] = self.Delta.clip_points_to_workspace(self.actions[env_idx, :self.n_idxs[env_idx]])
+            # self.actions[env_idx, :self.n_idxs[env_idx]] = np.clip(self.actions[env_idx, :self.n_idxs[env_idx]], -0.03, 0.03)
 
     def set_attractor_target(self, env_idx, actions, all_zeros=False):
         env_ptr = self.scene.env_ptrs[env_idx]
@@ -777,10 +742,10 @@ class DeltaArraySim:
             
     def log_data(self, env_idx, final_pose=None):
         """ Store data about training progress in systematic data structures """
-        if (not self.hp_dict["dont_log"]):
-            # wandb.log({"Delta Goal": np.linalg.norm(self.goal_pose[env_idx][:2] - self.init_pose[env_idx][:2])})
-            wandb.log({"Reward":self.ep_reward[env_idx]})
-            # wandb.log({"Q loss":np.clip(self.agent.q_loss, 0, 100)})
+        # if (not self.hp_dict["dont_log"]):
+        #     # wandb.log({"Delta Goal": np.linalg.norm(self.goal_pose[env_idx][:2] - self.init_pose[env_idx][:2])})
+        #     wandb.log({"Reward":self.ep_reward[env_idx]})
+            
         if self.hp_dict["print_summary"]:
             com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
             self.temp_var['z_dist'].append(np.linalg.norm(self.init_pose[env_idx][3] - com.p.z))
@@ -981,17 +946,15 @@ class DeltaArraySim:
         # states = self.state_scaler.transform(np.tile(self.init_state[env_idx][None,...], (bs, 1, 1)))[:, :self.n_idxs[env_idx]]
         states = np.tile(self.init_state[env_idx][None,...], (bs, 1, 1))[:, :self.n_idxs[env_idx]]
         states = torch.tensor(states, dtype=torch.float32)
-        obj_names = np.repeat(np.array(self.obj_name[env_idx]), bs)
-        obj_name_enc = torch.as_tensor(self.obj_name_encoder.transform(obj_names), dtype=torch.int32)
         pos = torch.as_tensor(np.tile(self.pos[env_idx][None,...], (bs, 1, 1)))[:, :self.n_idxs[env_idx]]
         # print(states.shape, obj_names.shape, pos.shape)
         noise = torch.randn((bs, self.n_idxs[env_idx], 2))
         
         if self.hp_dict['algo']=="MADP":
-            denoised_actions = agent.actions_from_denoising_diffusion(noise, states, obj_name_enc, pos).detach().cpu().numpy()
+            denoised_actions = agent.actions_from_denoising_diffusion(noise, states, pos).detach().cpu().numpy()
             actions = np.mean(denoised_actions, axis=0)
         elif self.hp_dict['algo']=="MABC":
-            actions = self.agent.get_actions_batch(states, pos, obj_name_enc, deterministic=True)
+            actions = self.agent.get_actions_batch(states, pos, deterministic=True)
 
         np.set_printoptions(precision=6)
         # print(actions[env_idx, :self.n_idxs[env_idx]])

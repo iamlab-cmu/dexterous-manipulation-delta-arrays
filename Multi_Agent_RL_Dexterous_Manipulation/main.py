@@ -156,7 +156,7 @@ class DeltaArraySimEnvironment():
                 'cmu_ri'            : self.args.cmuri,
                 'gauss'             : self.args.gauss,
                 'ca'                : self.args.ca,
-                'learned_alpha'     : self.args.ca,
+                'learned_alpha'     : self.args.la,
             }
         
         logger_kwargs = {}
@@ -189,11 +189,11 @@ class DeltaArraySimEnvironment():
         elif self.args.algo=="MABC_Finetune":
             self.pushing_agent = mabc_finetune.MABC_Finetune(self.hp_dict)
 
-        if (self.train_or_test=="test") and (not self.args.behavior_cloning):
-            # self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/{args.name}_s69420/pyt_save/model.pt')
-            self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/pyt_save/model.pt')
-        elif self.args.behavior_cloning:
-            self.pushing_agent.load_saved_policy(f'./utils/MADP/{args.name}.pth')
+        # if (self.train_or_test=="test") and (not self.args.behavior_cloning):
+        #     # self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/{args.name}_s69420/pyt_save/model.pt')
+        #     self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/pyt_save/model.pt')
+        # elif self.args.behavior_cloning:
+        #     self.pushing_agent.load_saved_policy(f'./utils/MADP/{args.name}.pth')
         
         if self.args.data_type=="finger4":
             self.fingers = delta_array_simplified.DeltaArraySim(self.scene, self.cfg, self.objects, self.table, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])

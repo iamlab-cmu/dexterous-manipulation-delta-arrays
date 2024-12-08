@@ -12,11 +12,9 @@ class MultiAgentReplayBuffer:
         self.rew_buf = np.zeros(size, dtype=np.float32)
         self.done_buf = np.zeros(size, dtype=np.float32)
         self.num_agents_buf = np.zeros(size, dtype=np.int32)
-        self.obj_name_encs = np.zeros(size, dtype=np.int32)
-        self.goal_final_pose_buf = np.zeros((size, 14), dtype=np.float32) # <x1, y1, yaw1, x2, y2, yaw2>
         self.ptr, self.size, self.max_size = 0, 0, size
 
-    def store(self, obs, act, pos, rew, next_obs, done, n_agents, obj_name_enc, goal_final_pose=None):
+    def store(self, obs, act, pos, rew, next_obs, done, n_agents):
         self.obs_buf[self.ptr] = obs
         self.obs2_buf[self.ptr] = next_obs
         self.act_buf[self.ptr] = act
@@ -24,9 +22,6 @@ class MultiAgentReplayBuffer:
         self.rew_buf[self.ptr] = rew
         self.done_buf[self.ptr] = done
         self.num_agents_buf[self.ptr] = n_agents
-        self.obj_name_encs[self.ptr] = obj_name_enc
-        if goal_final_pose is not None:
-            self.goal_final_pose_buf[self.ptr] = goal_final_pose
         self.ptr = (self.ptr+1) % self.max_size
         self.size = min(self.size+1, self.max_size)
 
@@ -38,8 +33,7 @@ class MultiAgentReplayBuffer:
                      pos=self.pos_buf[idxs],
                      rew=self.rew_buf[idxs],
                      done=self.done_buf[idxs],
-                     num_agents=self.num_agents_buf[idxs],
-                     obj_name_encs=self.obj_name_encs[idxs],)
+                     num_agents=self.num_agents_buf[idxs],)
         
         return {k: torch.as_tensor(v) for k,v in batch.items()}
 
@@ -50,9 +44,7 @@ class MultiAgentReplayBuffer:
                 "pos":self.pos_buf,
                 "rew":self.rew_buf,
                 "done":self.done_buf,
-                "num_agents":self.num_agents_buf,
-                'obj_name_encs':self.obj_name_encs,
-                'goal_final_pose':self.goal_final_pose_buf}
+                "num_agents":self.num_agents_buf,}
         pkl.dump(dic, open("./data/new_replay_buffer.pkl", "wb"))
 
 class MultiAgentImageReplayBuffer:
