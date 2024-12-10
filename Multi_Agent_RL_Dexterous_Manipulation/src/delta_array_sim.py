@@ -168,6 +168,7 @@ class DeltaArraySim:
             self.vis_servo_data[env_idx] = {'state': [], 'action': [], 'next_state':[], 'reward': [], 'obj_name': []}
 
         """ Test Traj Utils """
+        self.final_pose_none = False
         self.test_trajs = {}
         self.current_traj = []
         self.current_traj_id = 0
@@ -177,16 +178,37 @@ class DeltaArraySim:
         self.test_traj_reward = 0
         self.n_tries = 0
         
-        if self.hp_dict['cmu_ri']:
-            self.MegaTestingLoop = [pkl.load(open('./data/cmu_ri.pkl', 'rb')) for _ in range(len(self.obj_names))]
-        else:
-            self.MegaTestingLoop = [pkl.load(open('./data/test_trajs.pkl', 'rb')) for _ in range(len(self.obj_names))]
+        if self.hp_dict['test_trajs']:
+            if self.hp_dict['cmu_ri']:
+                self.MegaTestingLoop = [pkl.load(open('./data/cmu_ri.pkl', 'rb')) for _ in range(len(self.obj_names))]
+                self.traj_names = ("C", "M", "U", "R", "I")
+            else:
+                self.MegaTestingLoop = [pkl.load(open('./data/test_trajs.pkl', 'rb')) for _ in range(len(self.obj_names))]
+                self.traj_names = ("loop", "heart", "snek", "U", "C", "cross")
+            
+        self.num_runs = 5
+        self.combinations = [(algo, traj, obj, run) 
+                           for algo in self.hp_dict['test_algos'] 
+                           for traj in self.traj_names 
+                           for obj in self.obj_names
+                           for run in range(5)]
         
-        self.final_pose_none = False
-
-        self.tracked_trajs = {}
-        for name in self.obj_names:
-            self.tracked_trajs[name] = {'traj': [], 'error': []}
+        self.results_df = pd.DataFrame({
+            'algo_name': [c[0] for c in self.combinations],
+            'traj_name': [c[1] for c in self.combinations],
+            'obj_name': [c[2] for c in self.combinations],
+            'run_num': [c[3] for c in self.combinations],
+            'tracking_data': [[] for _ in self.combinations],
+            'mean_boundary_error': np.nan,
+            'max_boundary_error': np.nan,
+            'state_transitions': 0,
+            'execution_time': np.nan,
+            'success_rate': np.nan,
+            'stability_score': np.nan,
+            'cumulative_error': np.nan
+        })
+        
+        self.results_df.set_index(['algo_name', 'traj_name', 'obj_name', 'run_num'], inplace=True)
 
         """ Debugging and Visualization Vars """
         # self.video_frames = np.zeros((self.hp_dict['inference_length'], (self.time_horizon - 4)*2, 480, 640, 3))

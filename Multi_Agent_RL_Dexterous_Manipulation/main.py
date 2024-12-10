@@ -157,6 +157,9 @@ class DeltaArraySimEnvironment():
                 'gauss'             : self.args.gauss,
                 'ca'                : self.args.ca,
                 'learned_alpha'     : self.args.la,
+                
+                # Test Traj Params
+                'test_algos'        : ['Random', 'Vis Servo', 'MATSAC', 'MABC', 'MABC Finetuned'],
             }
         
         logger_kwargs = {}
@@ -173,36 +176,49 @@ class DeltaArraySimEnvironment():
         self.grasping_agent = sac.SAC(single_agent_env_dict, self.hp_dict, logger_kwargs, ma=False, train_or_test="test")
         self.grasping_agent.load_saved_policy('./models/trained_models/SAC_1_agent_stochastic/pyt_save/model.pt')
 
-        if self.args.algo=="MATSAC":
-            # self.pushing_agent = masac.MASAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
-            self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
-        elif self.args.algo=="MATSAC_OGOG":
-            self.pushing_agent = matsacOGOG.MATSAC_OGOG(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
-        elif self.args.algo=="MATDQN":
-            self.pushing_agent = matdqn.MATDQN(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
-        elif self.args.algo=="SAC":
-            self.pushing_agent = sac.SAC(simplified_ma_env_dict, self.hp_dict, logger_kwargs, ma=True, train_or_test="train")
-        elif self.args.algo=="MADP":
-            self.pushing_agent = madp0.MADP()
-        elif self.args.algo=="MABC":
-            self.pushing_agent = mabc.MABC()
-        elif self.args.algo=="MABC_Finetune":
-            self.pushing_agent = mabc_finetune.MABC_Finetune(self.hp_dict)
 
-        # if (self.train_or_test=="test") and (not self.args.behavior_cloning):
-        #     # self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/{args.name}_s69420/pyt_save/model.pt')
-        #     self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/pyt_save/model.pt')
-        # elif self.args.behavior_cloning:
-        #     self.pushing_agent.load_saved_policy(f'./utils/MADP/{args.name}.pth')
-        
-        if self.args.data_type=="finger4":
-            self.fingers = delta_array_simplified.DeltaArraySim(self.scene, self.cfg, self.objects, self.table, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
-        elif self.args.data_type=="images":
-            self.fingers = delta_array_sim_image.DeltaArraySim(self.scene, self.cfg, self.objects, self.table, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
-        elif self.args.rope:
-            self.fingers = delta_array_rope.DeltaArraySim(self.scene, self.cfg, self.objects, self.table, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
+        if self.args.test_traj:
+            self.pushing_agent = {
+                "Random" : None,
+                "Vis Servo" : None,
+                "MATSAC" : matsac.MATSAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="test"),
+                "MABC" : mabc.MABC(),
+                "MABC Finetuned" : mabc_finetune.MABC_Finetune(self.hp_dict),
+            }
+            self.pushing_agent["MATSAC"].load_saved_policy('./models/trained_models/MATSAC_1_agent_stochastic/pyt_save/model.pt')
+            self.pushing_agent["MABC"].load_saved_policy('./utils/MADP/mabc_final.pth')
+            self.pushing_agent["MABC Finetuned"].load_saved_policy('./utils/MADP/MABC_Finetuned.pth')
         else:
-            self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.objects, self.table, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
+            if self.args.algo=="MATSAC":
+                # self.pushing_agent = masac.MASAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
+                self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
+            elif self.args.algo=="MATSAC_OGOG":
+                self.pushing_agent = matsacOGOG.MATSAC_OGOG(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
+            elif self.args.algo=="MATDQN":
+                self.pushing_agent = matdqn.MATDQN(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
+            elif self.args.algo=="SAC":
+                self.pushing_agent = sac.SAC(simplified_ma_env_dict, self.hp_dict, logger_kwargs, ma=True, train_or_test="train")
+            elif self.args.algo=="MADP":
+                self.pushing_agent = madp0.MADP()
+            elif self.args.algo=="MABC":
+                self.pushing_agent = mabc.MABC()
+            elif self.args.algo=="MABC_Finetune":
+                self.pushing_agent = mabc_finetune.MABC_Finetune(self.hp_dict)
+
+            if (self.train_or_test=="test") and (not self.args.behavior_cloning):
+                # self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/{args.name}_s69420/pyt_save/model.pt')
+                self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/pyt_save/model.pt')
+            elif self.args.behavior_cloning:
+                self.pushing_agent.load_saved_policy(f'./utils/MADP/{args.name}.pth')
+        
+        # if self.args.data_type=="finger4":
+        #     self.fingers = delta_array_simplified.DeltaArraySim(self.scene, self.cfg, self.objects, self.table, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
+        # elif self.args.data_type=="images":
+        #     self.fingers = delta_array_sim_image.DeltaArraySim(self.scene, self.cfg, self.objects, self.table, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
+        # elif self.args.rope:
+        #     self.fingers = delta_array_rope.DeltaArraySim(self.scene, self.cfg, self.objects, self.table, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
+        # else:
+        self.fingers = delta_array_sim.DeltaArraySim(self.scene, self.cfg, self.objects, self.table, None, None, [self.grasping_agent, self.pushing_agent], self.hp_dict, num_tips = [8,8], max_agents=ma_env_dict['max_agents'])
         
         
         self.cam = GymCamera(self.scene, cam_props = self.cfg['camera'])
