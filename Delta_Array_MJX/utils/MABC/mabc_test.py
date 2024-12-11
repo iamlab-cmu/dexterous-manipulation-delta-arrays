@@ -14,7 +14,7 @@ import torch.nn.functional as F
 # from utils.MADP.dit_core import DiffusionTransformer, EMA
 from utils.MABC.gpt_adaln_core import Transformer, EMA
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
 class MABC:
     def __init__(self):
@@ -27,20 +27,22 @@ class MABC:
             "q_eta_min"         : 1e-6,
             "pi_eta_min"        : 1e-6,
             'ckpt_dir'          : './matil_expt_1.pth',
-            'idx_embed_loc'     : './utils/MADP/idx_embedding_128.pth',
+            'idx_embed_loc'     : './utils/MABC/idx_embedding_128.pth',
 
             # DiT Params:
             'state_dim'         : 6,
             'obj_name_enc_dim'  : 9,
             'action_dim'        : 2,
             'act_limit'         : 0.03,
-            "device"            : torch.device(f"cuda:0"),
+            "device"            : torch.device(f"cuda:1"),
             "model_dim"         : 128,
             "num_heads"         : 8,
             "dim_ff"            : 512,
-            "n_layers_dict"     : {'decoder': 12},
+            "n_layers_dict"     : {'encoder':5, 'actor': 10, 'critic': 10},
             "dropout"           : 0,
             "max_grad_norm"     : 1,
+            'gauss'             : True,
+            'masked'            : True,
 
             "EMA Params":{
                 'update_after_step' : 0,
@@ -53,23 +55,13 @@ class MABC:
         self.device = self.hp_dict['device']
         self.model = Transformer(self.hp_dict)
         self.model.to(self.device)
-        
-        with open('./utils/MADP/normalizer_bc.pkl', 'rb') as f:
-            normalizer = pkl.load(f)
-        self.obj_name_encoder = normalizer['obj_name_encoder']
 
     @torch.no_grad()
-    def get_actions(self, obs, pos, obj_name, deterministic=False):
+    def get_actions(self, obs, pos, deterministic=False):
         obs = torch.as_tensor(obs, dtype=torch.float32).unsqueeze(0).to(self.device)
         pos = torch.as_tensor(pos, dtype=torch.int32).unsqueeze(0).to(self.device)
-        # print(np.array(obj_name).ravel().shape)
-        print(obj_name, dict(zip(self.obj_name_encoder.classes_, self.obj_name_encoder.transform(self.obj_name_encoder.classes_))))
-        obj_name_enc = torch.as_tensor(self.obj_name_encoder.transform(np.array(obj_name).ravel()), dtype=torch.int32).to(self.device)
-            
-        # print(obs.size(), pos.size(), obj_name_enc.size())
-        # print(obs.dtype, pos.dtype, obj_name_enc.dtype)
-        actions, logprob = self.model(obs, obj_name_enc, pos, deterministic=deterministic)
-        return actions.detach().cpu().numpy()
+        output_actions = self.model.get_actions(obs, pos, deterministic=True)
+        return output_actions.detach().cpu().numpy().tolist()
     
     @torch.no_grad()
     def get_actions_batch(self, obs, pos, obj_name_enc, deterministic=False):

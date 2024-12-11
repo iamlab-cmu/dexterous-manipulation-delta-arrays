@@ -295,7 +295,7 @@ class Transformer(nn.Module):
         else:
             pred_actions = self.forward(states, pos)
             log_prob_loss = 0
-        loss = F.mse_loss(actions, pred_actions) + log_prob_loss
+        loss = F.mse_loss(actions, pred_actions)# + log_prob_loss
         return loss
     
     def compute_critic_loss(self, s1, a, s2, pos, rewards, d):

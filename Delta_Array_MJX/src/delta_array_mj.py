@@ -244,10 +244,10 @@ class DeltaArrayMJ(BaseMJEnv):
         self.actions[:self.n_idxs] = self.Delta.clip_points_to_workspace(actions)
         # self.visualize_image(self.actions[:self.n_idxs], self.data.qpos[self.obj_id:self.obj_id+3], self.init_bd_pts_smol, self.goal_bd_pts_smol)
         
-        body_ids = self.robot_ids[self.active_idxs]
-        self.set_z_positions(body_ids, low=True)
-        ctrl_indices = np.array([(2*(id-1), 2*(id-1)+1) for id in body_ids]).flatten()
-        self.data.ctrl[ctrl_indices] = self.actions[:self.n_idxs].reshape(-1)
+        # body_ids = self.robot_ids[self.active_idxs]
+        # self.set_z_positions(body_ids, low=True)
+        # ctrl_indices = np.array([(2*(id-1), 2*(id-1)+1) for id in body_ids]).flatten()
+        # self.data.ctrl[ctrl_indices] = self.actions[:self.n_idxs].reshape(-1)
             
     def apply_action(self, acts):
         body_ids = self.robot_ids[self.active_idxs]

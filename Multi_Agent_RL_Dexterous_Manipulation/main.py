@@ -159,7 +159,7 @@ class DeltaArraySimEnvironment():
                 'learned_alpha'     : self.args.la,
                 
                 # Test Traj Params
-                'test_algos'        : ['Random', 'Vis Servo', 'MATSAC', 'MABC'], #, 'MABC Finetuned'
+                'test_algos'        : ['MABC', 'Vis Servo', 'Random', 'MATSAC'], #, 'MABC Finetuned'
             }
         
         logger_kwargs = {}
@@ -182,7 +182,7 @@ class DeltaArraySimEnvironment():
                 "Random" : None,
                 "Vis Servo" : None,
                 "MATSAC" : matsac.MATSAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="test"),
-                "MABC" : mabc.MABC(),
+                "MABC" : mabc.MABC(self.hp_dict),
                 # "MABC Finetuned" : mabc_finetune.MABC_Finetune(self.hp_dict),
             }
             self.pushing_agent["MATSAC"].load_saved_policy('./data/rl_data/matsac_FINAL/pyt_save/model.pt')
@@ -269,8 +269,8 @@ class DeltaArraySimEnvironment():
             
             if self.hp_dict['test_traj']:
                 exit_bool, pos = self.fingers.set_traj_pose(env_idx, goal=True)
-                self.fingers.tracked_trajs[self.fingers.obj_name[env_idx]]['traj'].append(pos)
-                self.fingers.tracked_trajs[self.fingers.obj_name[env_idx]]['error'].append((np.linalg.norm(self.fingers.goal_pose[env_idx][:2] - pos[:2]), self.fingers.angle_difference(pos[2], self.fingers.goal_pose[env_idx, 2])))
+                # self.fingers.tracked_trajs[self.fingers.obj_name[env_idx]]['traj'].append(pos)
+                # self.fingers.tracked_trajs[self.fingers.obj_name[env_idx]]['error'].append((np.linalg.norm(self.fingers.goal_pose[env_idx][:2] - pos[:2]), self.fingers.angle_difference(pos[2], self.fingers.goal_pose[env_idx, 2])))
             else:
                 self.fingers.set_block_pose(env_idx, goal=True)
             self.fingers.set_all_fingers_pose(env_idx)
@@ -293,7 +293,7 @@ class DeltaArraySimEnvironment():
             else:
                 # self.scene.run(policy=self.fingers.test_learned_policy)
                 if self.args.test_traj:
-                    self.scene.run(policy=self.fingers.test_trajs)
+                    self.scene.run(policy=self.fingers.test_trajs_algos)
                 else:
                     self.scene.run(policy=self.fingers.compare_policies)
 

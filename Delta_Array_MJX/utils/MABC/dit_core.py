@@ -232,17 +232,16 @@ class DiT(nn.Module):
         # self.actor_std_layer = wt_init_(nn.Linear(model_dim, action_dim))
         self.activation = nn.GELU()
 
-    def forward(self, actions, state, obj_name_encs, pos):
+    def forward(self, actions, state, pos):
         """
         Input: state (bs, n_agents, state_dim)
                actions (bs, n_agents, action_dim)
         Output: decoder_output (bs, n_agents, model_dim)
         """
         state_enc = self.state_enc(state)
-        obj_name_enc = self.obj_name_enc(obj_name_encs)
         pos_embed = self.pos_embedding(pos)
 
-        conditional_enc = pos_embed.squeeze(2) + state_enc + obj_name_enc.unsqueeze(1)
+        conditional_enc = pos_embed.squeeze(2) + state_enc
         act_enc = self.activation(self.action_embedding(actions))
         for layer in self.decoder_layers:
             act_enc = layer(act_enc, conditional_enc)
@@ -301,7 +300,7 @@ class DiffusionTransformer(nn.Module):
         return (_extract_into_tensor(self.sqrt_alphas_cumprod, t, x_0.shape) * x_0
                 + _extract_into_tensor(self.sqrt_one_minus_alphas_cumprod, t, x_0.shape) * noise)
 
-    def compute_loss(self, actions, states, obj_name_encs, pos):
+    def compute_loss(self, actions, states, pos):
         bs, n_agents, _ = states.size()
         noise = torch.randn(actions.shape, device=self.device)
         t_steps = torch.randint(0, self.denoising_params['num_train_timesteps'], (bs,), device=self.device)
@@ -309,13 +308,13 @@ class DiffusionTransformer(nn.Module):
         # denoising transition mean calculation
         noisy_actions = self.sample_q(actions, t_steps, noise)
 
-        pred_noise = self.denoising_decoder(noisy_actions, states, obj_name_encs, pos)
+        pred_noise = self.denoising_decoder(noisy_actions, states, pos)
         loss = F.mse_loss(noise, pred_noise, reduction='none')
         loss = reduce(loss, 'b ... -> b(...)', 'mean')
         loss = loss.mean()
         return loss
 
-    def actions_from_denoising_diffusion(self, x_T, states, obj_name_encs, pos, gamma=None):
+    def actions_from_denoising_diffusion(self, x_T, states, pos, gamma=None):
         # actions get denoised from x_T --> x_t --> x_0
         actions = x_T
         shape = actions.shape
@@ -324,7 +323,7 @@ class DiffusionTransformer(nn.Module):
             for i in reversed(range(self.denoising_params['num_train_timesteps'])):
                 t = torch.tensor([i]*shape[0], device=self.device)
                 ### p_mean_variance
-                pred_noise = self.denoising_decoder(actions, states, obj_name_encs, pos)
+                pred_noise = self.denoising_decoder(actions, states, pos)
                 score_data.append(pred_noise.detach().cpu().numpy())
 
                 model_variance = _extract_into_tensor(self.posterior_variance, t, shape)
@@ -351,14 +350,14 @@ class DiffusionTransformer(nn.Module):
             updated_actions = self.denoising_decoder(states, actions, pos, i)
         return actions
     
-    def get_actions_mfrl(self, x_T, states, obj_name_encs, pos, deterministic=False):
+    def get_actions_mfrl(self, x_T, states, pos, deterministic=False):
         actions = x_T
         shape = actions.shape
             
         for i in reversed(range(self.denoising_params['num_train_timesteps'])):
             t = torch.tensor([i]*shape[0], device=self.device)
             ### p_mean_variance
-            pred_noise = self.decoder_actor(actions, states, obj_name_encs, pos)
+            pred_noise = self.decoder_actor(actions, states, pos)
 
             model_variance = _extract_into_tensor(self.posterior_variance, t, shape)
             model_log_variance = _extract_into_tensor(self.posterior_log_variance_clipped, t, shape)
@@ -376,7 +375,7 @@ class DiffusionTransformer(nn.Module):
             actions = model_mean + nonzero_mask * model_variance * noise
         return actions
     
-    def compute_q_loss(self, q_value, states, actions, obj_name_encs, pos):
+    def compute_q_loss(self, q_value, states, actions, pos):
         SA = torch.cat((states, actions), dim=-1)
         bs, n_agents, _ = SA.size()
         noise = torch.randn(q_value.shape, device=self.device)
@@ -385,13 +384,13 @@ class DiffusionTransformer(nn.Module):
         # denoising transition mean calculation
         noisy_q = self.sample_q(q_value, t_steps, noise)
 
-        pred_noise = self.decoder_critic(noisy_q, SA, obj_name_encs, pos)
+        pred_noise = self.decoder_critic(noisy_q, SA, pos)
         loss = F.mse_loss(noise, pred_noise, reduction='none')
         loss = reduce(loss, 'b ... -> b(...)', 'mean')
         loss = loss.mean()
         return loss
     
-    def get_q_values(self, x_T, states, actions, obj_name_encs, pos):
+    def get_q_values(self, x_T, states, actions, pos):
         q_values = x_T
         SA = torch.cat((states, actions), dim=-1)
         shape = SA.shape
@@ -399,7 +398,7 @@ class DiffusionTransformer(nn.Module):
         for i in reversed(range(self.denoising_params['num_train_timesteps'])):
             t = torch.tensor([i]*shape[0], device=self.device)
             ### p_mean_variance
-            pred_noise = self.decoder_critic(q_values, SA, obj_name_encs, pos)
+            pred_noise = self.decoder_critic(q_values, SA, pos)
 
             model_variance = _extract_into_tensor(self.posterior_variance, t, shape)
             model_log_variance = _extract_into_tensor(self.posterior_log_variance_clipped, t, shape)

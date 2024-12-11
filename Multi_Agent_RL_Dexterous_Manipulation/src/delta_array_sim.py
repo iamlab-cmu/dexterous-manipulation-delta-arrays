@@ -127,9 +127,9 @@ class DeltaArraySim:
         
         self.model = img_embed_model
         self.transform = transform
-        if isinstance(agents, dict):
+        if isinstance(agents[1], dict):
             self.pretrained_agent = agents[0]
-            self.agent = agents
+            self.pushing_agents = agents[1]
         else:
             if len(agents) == 1:
                 self.agent = agents[0]
@@ -182,7 +182,7 @@ class DeltaArraySim:
         self.test_traj_reward = 0
         self.n_tries = 0
         
-        if self.hp_dict['test_trajs']:
+        if self.hp_dict['test_traj']:
             self.initialize_traj_tracking()
 
         """ Debugging and Visualization Vars """
@@ -214,7 +214,10 @@ class DeltaArraySim:
         # else:
         #     self.trajs = pkl.load(open('./data/test_trajs.pkl', 'rb'))
             
-        self.traj_names = list(self.trajs.keys())
+        if self.hp_dict['cmu_ri']:
+            pass
+        else:
+            self.traj_names = ["loop", 'heart', 'snek', 'U', 'C', 'cross']
         self.num_runs = 5
         self.combinations = [(algo, traj, obj, run) 
                         for algo in self.hp_dict['test_algos'] 
@@ -1014,7 +1017,7 @@ class DeltaArraySim:
                 self.reset(env_idx)
                 self.current_episode += 1
                 
-    def test_trajs(self, scene, env_idx, t_step, _):
+    def test_trajs_algos(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
         env_ptr = self.scene.env_ptrs[env_idx]
         
@@ -1043,7 +1046,7 @@ class DeltaArraySim:
                 elif current_algo == "Vis Servo":
                     self.vs_step(env_idx, t_step)
                 else:
-                    self.env_step(env_idx, t_step, self.pushing_agent[current_algo], test=True)
+                    self.env_step(env_idx, t_step, self.pushing_agents[current_algo], test=True)
             elif t_step == 1:
                 self.set_attractor_target(env_idx, self.actions)
             elif t_step == (self.time_horizon-1):
