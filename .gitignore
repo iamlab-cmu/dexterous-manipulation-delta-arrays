@@ -20,3 +20,6 @@ madp_*
 *.png
 mabc_new*
 Multi_Agent_RL_Dexterous_Manipulation/data/rl_data/matsac_all_4_vs_0.1/pyt_save/
+mabc_rope*
+mabc_final*
+git-filter-repo
