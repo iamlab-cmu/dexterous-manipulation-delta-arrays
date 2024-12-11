@@ -127,11 +127,15 @@ class DeltaArraySim:
         
         self.model = img_embed_model
         self.transform = transform
-        if len(agents) == 1:
-            self.agent = agents[0]
-        else:
+        if isinstance(agents, dict):
             self.pretrained_agent = agents[0]
-            self.agent = agents[1]
+            self.agent = agents
+        else:
+            if len(agents) == 1:
+                self.agent = agents[0]
+            else:
+                self.pretrained_agent = agents[0]
+                self.agent = agents[1]
 
         self.goal_yaw_deg = np.zeros((self.scene.n_envs))
         self.n_idxs = np.zeros((self.scene.n_envs),dtype=np.int8)
@@ -179,19 +183,44 @@ class DeltaArraySim:
         self.n_tries = 0
         
         if self.hp_dict['test_trajs']:
-            if self.hp_dict['cmu_ri']:
-                self.MegaTestingLoop = [pkl.load(open('./data/cmu_ri.pkl', 'rb')) for _ in range(len(self.obj_names))]
-                self.traj_names = ("C", "M", "U", "R", "I")
-            else:
-                self.MegaTestingLoop = [pkl.load(open('./data/test_trajs.pkl', 'rb')) for _ in range(len(self.obj_names))]
-                self.traj_names = ("loop", "heart", "snek", "U", "C", "cross")
+            self.initialize_traj_tracking()
+
+        """ Debugging and Visualization Vars """
+        # self.video_frames = np.zeros((self.hp_dict['inference_length'], (self.time_horizon - 4)*2, 480, 640, 3))
+        self.images_to_video = []
+
+        self.temp_var = {'initial_l2_dist': [],
+                       'angle_diff': [],    
+                        'reward': [],
+                        'z_dist': []}
+        self.reward_vs = []
+        self.reward_rand = []
+        self.reward_matsac_adaln = []
+        
+        self.ep_thresh = -1 if not self.hp_dict['ca'] else -1.2
+        self.logged_rew = np.zeros(self.scene.n_envs)
+        # self.bd_pts_dict = {}
+        
+    def initialize_traj_tracking(self):
+        # Initialize current indices
+        self.current_algo_idx = 0
+        self.current_traj_idx = 0
+        self.current_obj_idx = 0
+        self.current_run = 0
+        self.current_goal_idx = 0
+    
+        # if self.hp_dict['cmu_ri']:
+        #     self.trajs = pkl.load(open('./data/cmu_ri.pkl', 'rb'))
+        # else:
+        #     self.trajs = pkl.load(open('./data/test_trajs.pkl', 'rb'))
             
+        self.traj_names = list(self.trajs.keys())
         self.num_runs = 5
         self.combinations = [(algo, traj, obj, run) 
-                           for algo in self.hp_dict['test_algos'] 
-                           for traj in self.traj_names 
-                           for obj in self.obj_names
-                           for run in range(5)]
+                        for algo in self.hp_dict['test_algos'] 
+                        for traj in self.traj_names 
+                        for obj in self.obj_names
+                        for run in range(5)]
         
         self.results_df = pd.DataFrame({
             'algo_name': [c[0] for c in self.combinations],
@@ -209,22 +238,6 @@ class DeltaArraySim:
         })
         
         self.results_df.set_index(['algo_name', 'traj_name', 'obj_name', 'run_num'], inplace=True)
-
-        """ Debugging and Visualization Vars """
-        # self.video_frames = np.zeros((self.hp_dict['inference_length'], (self.time_horizon - 4)*2, 480, 640, 3))
-        self.images_to_video = []
-
-        self.temp_var = {'initial_l2_dist': [],
-                       'angle_diff': [],    
-                        'reward': [],
-                        'z_dist': []}
-        self.reward_vs = []
-        self.reward_rand = []
-        self.reward_matsac_adaln = []
-        
-        self.ep_thresh = -1 if not self.hp_dict['ca'] else -1.2
-        self.logged_rew = np.zeros(self.scene.n_envs)
-        # self.bd_pts_dict = {}
 
     def set_attractor_handles(self, env_idx):
         """ Creates an attractor handle for each fingertip """
@@ -344,64 +357,84 @@ class DeltaArraySim:
     #         return None
     #     _, _, yaw = R.from_quat([*quat]).as_euler('xyz')
     #     return com.p.x, com.p.y, yaw
-
+        
     def set_traj_pose(self, env_idx, goal=False):
+        """
+        Set trajectory poses with proper handling of full trajectory completion.
+        """
+        current_algo = self.hp_dict['test_algos'][self.current_algo_idx]
+        current_traj = self.traj_names[self.current_traj_idx]
+        current_obj = self.obj_names[self.current_obj_idx]
+        current_run = self.current_run
+        
         return_exit = False
+        
         if goal:
-            if (len(self.obj_names) == 0) and (len(self.test_trajs) == 0) and (len(self.current_traj) == 0):
-                return_exit = True
+            # Check if we've completed all combinations
+            if (self.current_algo_idx >= len(self.hp_dict['test_algos'])):
+                return True, None
 
-            if (len(self.test_trajs) == 0) and (len(self.current_traj) == 0):
-                self.object[env_idx].set_rb_transforms(env_idx, self.obj_name[env_idx], [gymapi.Transform(p=self.obj_dict[self.obj_name[env_idx]][1], r=self.obj_dict[self.obj_name[env_idx]][3])])
-                self.obj_name[env_idx] = self.obj_names.pop(0)
-                self.object[env_idx], object_p, _, object_r = self.obj_dict[self.obj_name[env_idx]]
-                self.test_trajs = self.MegaTestingLoop.pop(0)
-                    
-                print(self.obj_names, len(self.test_trajs))
-                self.current_traj = np.array([])
-
-            if len(self.current_traj) == 0:
-                self.new_traj_bool = True
-                # if len(self.obj_names) == 8:
-                #     for i in range(6):
-                #         print(self.test_trajs.keys())
-                #         traj_key = random.choice(list(self.test_trajs.keys()))
-                #         self.current_traj = self.test_trajs[traj_key].copy()
-                #         self.test_trajs.pop(traj_key)
-                # else:
-                traj_key = random.choice(list(self.test_trajs.keys()))
-                print("Traj Key: ", traj_key)
-                self.current_traj = self.test_trajs[traj_key].copy()
-                self.test_trajs.pop(traj_key)
+            # If we're starting a new trajectory sequence
+            if not hasattr(self, 'current_traj_data'):
+                # Set object to goal pose before switching
+                if hasattr(self, 'obj_name') and hasattr(self, 'object'):
+                    self.object[env_idx].set_rb_transforms(
+                        env_idx, 
+                        self.obj_name[env_idx], 
+                        [gymapi.Transform(
+                            p=self.obj_dict[self.obj_name[env_idx]][1], 
+                            r=self.obj_dict[self.obj_name[env_idx]][3]
+                        )]
+                    )
                 
-                # plt.plot(self.current_traj[:, 0], self.current_traj[:, 1], 'o', label=f'Curve Spline')
-                # plt.quiver(self.current_traj[:, 0], self.current_traj[:, 1], np.cos(self.current_traj[:, 2]), np.sin(self.current_traj[:, 2]))
-                # plt.show(block=False)
-                self.current_traj = self.current_traj.tolist()
-                self.init_traj_pose = self.current_traj.pop(0)
+                # Load new object and its trajectories
+                self.obj_name[env_idx] = current_obj
+                self.object[env_idx], object_p, _, object_r = self.obj_dict[current_obj]
+                
+                # Load trajectories for current object
+                all_trajs = pkl.load(open('./data/test_trajs.pkl', 'rb'))
+                self.current_traj_data = all_trajs[current_traj].copy()
+                self.total_goals = len(self.current_traj_data) - 1  # Subtract 1 for init pose
+                
+                print(f"Testing {current_algo} on {current_obj} with trajectory {current_traj} "
+                    f"(Run {current_run + 1}/5, Goals: {self.total_goals})")
+                
+                # Initialize trajectory points
+                self.new_traj_bool = True
+                self.current_traj_points = self.current_traj_data.copy().tolist()
+                self.init_traj_pose = self.current_traj_points.pop(0)
+                self.current_goal_idx = 0
                 self.n_tries = 0
 
-            if (self.test_traj_reward < -3) and (self.n_tries < 2):
-                self.current_traj.insert(0, self.goal_traj_pose)
+            # Handle retries for low rewards
+            if hasattr(self, 'test_traj_reward') and self.test_traj_reward < -3 and self.n_tries < 2:
+                self.current_traj_points.insert(0, self.goal_traj_pose)
                 self.n_tries += 1
             else:
                 self.n_tries = 0
-            self.goal_traj_pose = self.current_traj.pop(0)
+                self.current_goal_idx += 1
+                
+            self.goal_traj_pose = self.current_traj_points.pop(0)
             
+            # Set goal pose
             yaw = self.goal_traj_pose[2] + np.pi/2
             r = R.from_euler('z', yaw).as_quat()
             object_r = gymapi.Quat(*r)
             T = np.array([*self.goal_traj_pose[:2], 1.002])
             self.goal_pose[env_idx] = np.array([*T, *r])
             
+            # Update boundary points
             tfed_bd_pts, _ = self.get_tfed_bd_pts(env_idx, self.goal_pose[env_idx])
             self.goal_bd_pts[env_idx] = tfed_bd_pts
+            
             return return_exit, self.goal_pose[env_idx]
-
+        
         else:
+            # Handle initial pose setting
             com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
             quat = np.array((com.r.x, com.r.y, com.r.z, com.r.w))
-            if (np.isnan(quat).any()):
+            
+            if np.isnan(quat).any():
                 self.dont_skip_episode[env_idx] = False
                 self.n_idxs[env_idx] = 0
                 return None
@@ -413,11 +446,14 @@ class DeltaArraySim:
                 T = np.array([*self.init_traj_pose[:2], 1.002])
                 
                 self.init_pose[env_idx] = np.array([*T, *r])
-                self.object[env_idx].set_rb_transforms(env_idx, self.obj_name[env_idx], [gymapi.Transform(p=gymapi.Vec3(*T), r=gymapi.Quat(*r))])
+                self.object[env_idx].set_rb_transforms(
+                    env_idx, 
+                    self.obj_name[env_idx], 
+                    [gymapi.Transform(p=gymapi.Vec3(*T), r=gymapi.Quat(*r))]
+                )
             else:
                 self.init_pose[env_idx] = np.array([com.p.x, com.p.y, com.p.z, *quat])
             
-            # self.init_traj_pose = self.goal_traj_pose
             return return_exit, self.init_pose[env_idx]
 
     def get_scene_image(self, env_idx):
@@ -670,12 +706,28 @@ class DeltaArraySim:
             return final_pose
         
         # self.ep_reward[env_idx] = -10*np.linalg.norm(self.goal_bd_pts[env_idx] - self.bd_pts[env_idx])
+        
         dist = np.mean(np.linalg.norm(self.goal_bd_pts[env_idx] - self.bd_pts[env_idx], axis=1))
         self.ep_reward[env_idx] = np.clip(self.scaling_factor / (dist**2 + self.epsilon), 0, self.max_reward)
         
         if self.hp_dict['ca']:
             self.ep_reward[env_idx] -= 5*np.mean(abs(self.actions[env_idx, :self.n_idxs[env_idx]] - self.actions_grasp[env_idx, :self.n_idxs[env_idx]]))
         return final_pose
+    
+    def compute_reward_test_traj(self, env_idx, t_step):
+        init_bd_pts = self.bd_pts[env_idx].copy()
+        final_pose = self.get_nearest_robots_and_state_v2(env_idx, final=True, init_bd_pts=init_bd_pts)
+        
+        if final_pose is None:
+            return final_pose, None, None, None
+        
+        # self.ep_reward[env_idx] = -10*np.linalg.norm(self.goal_bd_pts[env_idx] - self.bd_pts[env_idx])
+        
+        dist = np.mean(np.linalg.norm(self.goal_bd_pts[env_idx] - self.bd_pts[env_idx], axis=1))
+        self.ep_reward[env_idx] = np.clip(self.scaling_factor / (dist**2 + self.epsilon), 0, self.max_reward)
+        
+        ca = np.mean(abs(self.actions[env_idx, :self.n_idxs[env_idx]] - self.actions_grasp[env_idx, :self.n_idxs[env_idx]]))
+        return final_pose, dist, self.ep_reward[env_idx], ca
 
     def terminate(self, env_idx, t_step, agent):
         """ Update the replay buffer and reset the env """
@@ -961,6 +1013,89 @@ class DeltaArraySim:
                 
                 self.reset(env_idx)
                 self.current_episode += 1
+                
+    def test_trajs(self, scene, env_idx, t_step, _):
+        t_step = t_step % self.time_horizon
+        env_ptr = self.scene.env_ptrs[env_idx]
+        
+        # Get current combination being tested
+        current_algo = self.hp_dict['test_algos'][self.current_algo_idx]
+        current_traj = self.traj_names[self.current_traj_idx]
+        current_obj = self.obj_names[self.current_obj_idx]
+        current_run = self.current_run
+        
+        if self.ep_len[env_idx]==0:
+            if t_step == 0:
+                self.set_traj_pose(env_idx)
+            elif t_step == 1:
+                self.env_step(env_idx, t_step, self.pretrained_agent) #Store Init Pose
+            elif (t_step == 2) and self.dont_skip_episode[env_idx]:
+                self.set_attractor_target(env_idx, self.actions_grasp)
+            elif (t_step == self.time_horizon-1) and self.dont_skip_episode[env_idx]:
+                self.ep_len[env_idx] = 1
+            elif not self.dont_skip_episode[env_idx]:
+                self.ep_len[env_idx] = 0
+                self.reset(env_idx)
+        else:         
+            if t_step == 0:
+                if current_algo == "Random":
+                    self.actions[env_idx, :self.n_idxs[env_idx]] = np.random.uniform(-0.03, 0.03, size=(self.n_idxs[env_idx], 2))
+                elif current_algo == "Vis Servo":
+                    self.vs_step(env_idx, t_step)
+                else:
+                    self.env_step(env_idx, t_step, self.pushing_agent[current_algo], test=True)
+            elif t_step == 1:
+                self.set_attractor_target(env_idx, self.actions)
+            elif t_step == (self.time_horizon-1):
+                final_pose, dist, reward, ca = self.compute_reward_test_traj(env_idx, t_step)
+                
+                tracking_tuple = (dist, reward, ca, self.init_pose[env_idx], self.goal_pose[env_idx], final_pose)
+                self.results_df.at[
+                    (current_algo, current_traj, current_obj, current_run), 'tracking_data'
+                ].append(tracking_tuple)
+                
+                print(f"Run {current_run + 1}/5 - {current_algo} on {current_obj} (Traj: {current_traj}) - Reward: {self.ep_reward[env_idx]}")
+                
+                if self.current_goal_idx >= self.total_goals:
+                    # Update metrics for the full trajectory
+                    tracking_data = self.results_df.at[
+                        (current_algo, current_traj, current_obj, current_run),
+                        'tracking_data'
+                    ]
+                    
+                    self.results_df.at[
+                        (current_algo, current_traj, current_obj, current_run),
+                        'mean_boundary_error'
+                    ] = np.mean([d[0] for d in tracking_data])
+                    
+                    print(f"Completed trajectory {current_traj} (Run {current_run + 1}/5)")
+                    
+                    # Move to next run or combination
+                    self.current_run += 1
+                    if self.current_run >= 5:
+                        self.current_run = 0
+                        self.current_obj_idx += 1
+                        
+                        if self.current_obj_idx >= len(self.obj_names):
+                            self.current_obj_idx = 0
+                            self.current_traj_idx += 1
+                            
+                            if self.current_traj_idx >= len(self.traj_names):
+                                self.current_traj_idx = 0
+                                self.current_algo_idx += 1
+                                
+                                if self.current_algo_idx >= len(self.hp_dict['test_algos']):
+                                    print("Completed all combinations!")
+                                    self.results_df.to_pickle("./data/comparison/full_comparison_results.pkl")
+                                    sys.exit(1)
+                    
+                    # Clear trajectory data for next run
+                    if hasattr(self, 'current_traj_data'):
+                        delattr(self, 'current_traj_data')
+                
+                self.reset(env_idx)
+                
+                
 
     def bc_step(self, env_idx, agent):
         # act_gt = self.actions[env_idx, :self.n_idxs[env_idx]].copy()

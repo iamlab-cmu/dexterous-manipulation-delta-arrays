@@ -159,7 +159,7 @@ class DeltaArraySimEnvironment():
                 'learned_alpha'     : self.args.la,
                 
                 # Test Traj Params
-                'test_algos'        : ['Random', 'Vis Servo', 'MATSAC', 'MABC', 'MABC Finetuned'],
+                'test_algos'        : ['Random', 'Vis Servo', 'MATSAC', 'MABC'], #, 'MABC Finetuned'
             }
         
         logger_kwargs = {}
@@ -183,14 +183,13 @@ class DeltaArraySimEnvironment():
                 "Vis Servo" : None,
                 "MATSAC" : matsac.MATSAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="test"),
                 "MABC" : mabc.MABC(),
-                "MABC Finetuned" : mabc_finetune.MABC_Finetune(self.hp_dict),
+                # "MABC Finetuned" : mabc_finetune.MABC_Finetune(self.hp_dict),
             }
-            self.pushing_agent["MATSAC"].load_saved_policy('./models/trained_models/MATSAC_1_agent_stochastic/pyt_save/model.pt')
+            self.pushing_agent["MATSAC"].load_saved_policy('./data/rl_data/matsac_FINAL/pyt_save/model.pt')
             self.pushing_agent["MABC"].load_saved_policy('./utils/MADP/mabc_final.pth')
-            self.pushing_agent["MABC Finetuned"].load_saved_policy('./utils/MADP/MABC_Finetuned.pth')
+            # self.pushing_agent["MABC Finetuned"].load_saved_policy('./utils/MADP/MABC_Finetuned.pth')
         else:
             if self.args.algo=="MATSAC":
-                # self.pushing_agent = masac.MASAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
                 self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
             elif self.args.algo=="MATSAC_OGOG":
                 self.pushing_agent = matsacOGOG.MATSAC_OGOG(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
@@ -293,7 +292,10 @@ class DeltaArraySimEnvironment():
                 self.scene.run(policy=self.fingers.test_diffusion_policy)
             else:
                 # self.scene.run(policy=self.fingers.test_learned_policy)
-                self.scene.run(policy=self.fingers.compare_policies)
+                if self.args.test_traj:
+                    self.scene.run(policy=self.fingers.test_trajs)
+                else:
+                    self.scene.run(policy=self.fingers.compare_policies)
 
 class DeltaArrayRealEnvironment():
     def __init__(self, train_or_test="test"):
