@@ -179,7 +179,7 @@ class DeltaArraySim:
         self.new_traj_bool = False
         self.init_traj_pose = None
         self.goal_traj_pose = None
-        self.test_traj_reward = 0
+        # self.test_traj_reward = 0
         self.n_tries = 0
         
         if self.hp_dict['test_traj']:
@@ -218,12 +218,12 @@ class DeltaArraySim:
             pass
         else:
             self.traj_names = ["loop", 'heart', 'snek', 'U', 'C', 'cross']
-        self.num_runs = 5
+        self.num_runs = 10
         self.combinations = [(algo, traj, obj, run) 
                         for algo in self.hp_dict['test_algos'] 
                         for traj in self.traj_names 
                         for obj in self.obj_names
-                        for run in range(5)]
+                        for run in range(self.num_runs)]
         
         self.results_df = pd.DataFrame({
             'algo_name': [c[0] for c in self.combinations],
@@ -352,15 +352,6 @@ class DeltaArraySim:
         object_r = gymapi.Quat(*rot)
         self.object[env_idx].set_rb_transforms(env_idx, self.obj_name[env_idx], [gymapi.Transform(p=object_p, r=object_r)])
     
-    # def ret_2d_pos(self, env_idx):
-    #     com = self.object[env_idx].get_rb_transforms(env_idx, self.obj_name[env_idx])[0]
-    #     quat = np.array((com.r.x, com.r.y, com.r.z, com.r.w))
-    #     if (np.isnan(quat).any()):
-    #         self.dont_skip_episode[env_idx] = False
-    #         return None
-    #     _, _, yaw = R.from_quat([*quat]).as_euler('xyz')
-    #     return com.p.x, com.p.y, yaw
-        
     def set_traj_pose(self, env_idx, goal=False):
         """
         Set trajectory poses with proper handling of full trajectory completion.
@@ -400,7 +391,7 @@ class DeltaArraySim:
                 self.total_goals = len(self.current_traj_data) - 1  # Subtract 1 for init pose
                 
                 print(f"Testing {current_algo} on {current_obj} with trajectory {current_traj} "
-                    f"(Run {current_run + 1}/5, Goals: {self.total_goals})")
+                    f"(Run {current_run + 1}/{self.num_runs}, Goals: {self.total_goals})")
                 
                 # Initialize trajectory points
                 self.new_traj_bool = True
@@ -409,14 +400,13 @@ class DeltaArraySim:
                 self.current_goal_idx = 0
                 self.n_tries = 0
 
-            # Handle retries for low rewards
-            if hasattr(self, 'test_traj_reward') and self.test_traj_reward < -3 and self.n_tries < 2:
-                self.current_traj_points.insert(0, self.goal_traj_pose)
-                self.n_tries += 1
-            else:
-                self.n_tries = 0
-                self.current_goal_idx += 1
+            # if hasattr(self, 'test_traj_reward') and self.test_traj_reward < 10 and self.n_tries < 1:
+            #     self.current_traj_points.insert(0, self.goal_traj_pose)
+            #     self.n_tries += 1
+            # else:
+            #     self.n_tries = 0
                 
+            self.current_goal_idx += 1
             self.goal_traj_pose = self.current_traj_points.pop(0)
             
             # Set goal pose
@@ -549,31 +539,6 @@ class DeltaArraySim:
                 self.init_state[env_idx, :self.n_idxs[env_idx], 4:6] += self.actions_grasp[env_idx, :self.n_idxs[env_idx]]
                 self.final_state[env_idx, :self.n_idxs[env_idx], 4:6] += self.actions[env_idx, :self.n_idxs[env_idx]]
                 
-################################################################################################################################################################################
-                
-                # if self.current_episode > 0:
-                #     r_poses = self.nn_helper.rb_pos_raw[tuple(zip(*self.active_idxs[env_idx]))]
-                #     init_pts = self.init_state[env_idx, :self.n_idxs[env_idx], :2].copy()
-                #     init_bd_pts = np.array([self.convert_pix_2_world(bdpts) for bdpts in init_bd_pts])
-                #     goal_bd_pts = self.init_state[env_idx, :self.n_idxs[env_idx], 2:4].copy()
-                #     g_bd_pt2 = np.array([self.convert_pix_2_world(bdpts) for bdpts in self.goal_bd_pts[env_idx]])
-                #     final_bd_pts = self.final_state[env_idx, :self.n_idxs[env_idx], :2].copy()
-                #     act_grsp = self.actions_grasp[env_idx, :self.n_idxs[env_idx]].copy()
-                #     acts = self.actions[env_idx, :self.n_idxs[env_idx]].copy()
-                    
-                #     # plt.figure(figsize=(10,17.78))
-                #     plt.scatter(r_poses[:, 0], r_poses[:, 1], c='#880000ff')
-
-                #     plt.scatter(g_bd_pt2[:, 0], g_bd_pt2[:, 1], c='#ffa50066')
-                #     plt.scatter(init_bd_pts[:, 0], init_bd_pts[:, 1], c = '#00ff0066')
-                #     plt.scatter(init_pts[:, 0], init_pts[:, 1], c = '#00ff00ff')
-                #     plt.scatter(goal_bd_pts[:, 0], goal_bd_pts[:, 1], c='red')
-                #     plt.scatter(final_bd_pts[:, 0], final_bd_pts[:, 1], c='blue')
-
-                #     plt.quiver(r_poses[:, 0], r_poses[:, 1], act_grsp[:, 0], act_grsp[:, 1], scale=0.5, scale_units='xy')
-                #     plt.quiver(init_pts[:, 0], init_pts[:, 1], acts[:, 0], acts[:, 1], scale=1, scale_units='xy')
-                #     plt.gca().set_aspect('equal')
-                #     plt.show()
                 #     
     def get_nearest_robots_and_state_v2(self, env_idx, final=False, init_bd_pts=None):
         """ 
@@ -590,12 +555,14 @@ class DeltaArraySim:
         if (np.isnan(quat).any()):
             self.n_idxs[env_idx] = 0
             self.dont_skip_episode[env_idx] = False
+            self.reset(env_idx, bad_apple_flag=True)
             return None
             
         roll, pitch, yaw = R.from_quat([*quat]).as_euler('xyz')
         if (abs(roll) > 0.5)or(abs(pitch) > 0.5):#or(com.p.z > 1.005):
             self.dont_skip_episode[env_idx] = False
             self.n_idxs[env_idx] = 0
+            self.reset(env_idx, bad_apple_flag=True)
             return None
         else:
             final_pose = np.array((com.p.x, com.p.y, com.p.z, *quat))
@@ -610,7 +577,7 @@ class DeltaArraySim:
                 self.n_idxs[env_idx] = len(self.active_idxs[env_idx])
                 
                 if self.n_idxs[env_idx] == 0:
-                    self.reset(env_idx)
+                    self.reset(env_idx, bad_apple_flag=True)
                     return
                 
                 self.pos[env_idx, :self.n_idxs[env_idx], 0] = np.array([i[0]*8+i[1] for i in self.active_idxs[env_idx]])
@@ -681,8 +648,7 @@ class DeltaArraySim:
         roll, pitch, yaw = R.from_quat([*quat]).as_euler('xyz')
         if (abs(roll) > 0.5)or(abs(pitch) > 0.5)or(len(self.active_idxs[env_idx])==0):
             print(f'Bad Apple Created at env: {env_idx}, due to conditions: {abs(roll) > 0.5} or {abs(pitch) > 0.5} or {len(self.active_idxs[env_idx])==0}')
-            self.bad_apple[env_idx] = True
-            self.reset(env_idx)
+            self.reset(env_idx, bad_apple_flag=True)
             return True
     
     def angle_difference(self, theta1, theta2):
@@ -724,8 +690,6 @@ class DeltaArraySim:
         if final_pose is None:
             return final_pose, None, None, None
         
-        # self.ep_reward[env_idx] = -10*np.linalg.norm(self.goal_bd_pts[env_idx] - self.bd_pts[env_idx])
-        
         dist = np.mean(np.linalg.norm(self.goal_bd_pts[env_idx] - self.bd_pts[env_idx], axis=1))
         self.ep_reward[env_idx] = np.clip(self.scaling_factor / (dist**2 + self.epsilon), 0, self.max_reward)
         
@@ -761,9 +725,8 @@ class DeltaArraySim:
                     
             self.reset(env_idx)
 
-    def reset(self, env_idx):
+    def reset(self, env_idx, bad_apple_flag=False):
         self.table.set_rb_transforms(env_idx, 'table', [gymapi.Transform(p=gymapi.Vec3(0,0,0.5))])
-        self.dont_skip_episode[env_idx] = True
         self.active_idxs[env_idx].clear()
         self.set_all_fingers_pose(env_idx, pos_high=True)
         self.set_attractor_target(env_idx, None, all_zeros=True) # Set all fingers to high pose
@@ -776,11 +739,22 @@ class DeltaArraySim:
         self.pos[env_idx] = np.zeros((self.max_agents, 1))
         self.n_idxs[env_idx] = 0
         self.ep_len[env_idx] = 0
-        del self.images_to_video[:]
-        if self.hp_dict['test_traj']:
-            self.set_traj_pose(env_idx, goal=True) 
+        
+        
+        self.dont_skip_episode[env_idx] = True
+        if bad_apple_flag:
+            print("HAKUNA", self.ep_len[env_idx], self.t_step)
+            self.dont_skip_episode[env_idx] = False
+            self.bad_apple[env_idx] = True
+            self.current_traj_points.insert(0, self.goal_traj_pose)
+            self.current_goal_idx -= 1
+            self.goal_traj_pose[:2] += np.random.normal(0, 0.0002, 2)
+            self.object[env_idx].set_rb_transforms(env_idx, self.obj_name[env_idx], [gymapi.Transform(p=gymapi.Vec3(*self.goal_traj_pose[:3]), r=gymapi.Quat(*self.goal_traj_pose[3:]))])
         else:
-            self.set_block_pose(env_idx, goal=True) 
+            if self.hp_dict['test_traj']:
+                self.set_traj_pose(env_idx, goal=True) 
+            else:
+                self.set_block_pose(env_idx, goal=True) 
 
     def env_step(self, env_idx, t_step, agent, test = False):
         if (self.ep_len[env_idx] == 0) and (t_step == 1):
@@ -790,8 +764,7 @@ class DeltaArraySim:
                 self.dont_skip_episode[env_idx] = False
                 
         if not self.dont_skip_episode[env_idx]:
-            self.bad_apple[env_idx] = True
-            self.reset(env_idx)
+            self.reset(env_idx, bad_apple_flag=True)
             return
 
         if self.ep_len[env_idx] == 0:
@@ -858,6 +831,7 @@ class DeltaArraySim:
         # plt.gca().set_aspect('equal')
         # plt.legend()
         # plt.show()
+        return
 
     def convert_images_to_video(self, images, output_filename, fps=60):
         """
@@ -912,7 +886,7 @@ class DeltaArraySim:
                 elif (t_step == self.time_horizon-1) and self.dont_skip_episode[env_idx]:
                     self.ep_len[env_idx] = 1
                 elif not self.dont_skip_episode[env_idx]:
-                    self.reset(env_idx)
+                    self.reset(env_idx, bad_apple_flag=True)
             else:
                 if t_step == 0:
                     if self.hp_dict["add_vs_data"] and (np.random.rand() <= self.hp_dict['vs_ratio']):
@@ -964,7 +938,6 @@ class DeltaArraySim:
 
     def compare_policies(self, scene, env_idx, t_step, _):
         t_step = t_step % self.time_horizon
-        env_ptr = self.scene.env_ptrs[env_idx]
         
         if self.ep_len[env_idx]==0:
             if t_step == 0:
@@ -1018,8 +991,13 @@ class DeltaArraySim:
                 self.current_episode += 1
                 
     def test_trajs_algos(self, scene, env_idx, t_step, _):
-        t_step = t_step % self.time_horizon
-        env_ptr = self.scene.env_ptrs[env_idx]
+        self.t_step = t_step % self.time_horizon
+        if (t_step!=0) and self.bad_apple[env_idx]:
+            return
+        elif (t_step==0) and (self.ep_len[env_idx]==0):
+            if self.bad_apple[env_idx]:
+                print(f'Bad Apple Reset at env: {env_idx}')
+            self.bad_apple[env_idx] = False
         
         # Get current combination being tested
         current_algo = self.hp_dict['test_algos'][self.current_algo_idx]
@@ -1038,7 +1016,7 @@ class DeltaArraySim:
                 self.ep_len[env_idx] = 1
             elif not self.dont_skip_episode[env_idx]:
                 self.ep_len[env_idx] = 0
-                self.reset(env_idx)
+                # self.reset(env_idx, bad_apple_flag=True)
         else:         
             if t_step == 0:
                 if current_algo == "Random":
@@ -1051,13 +1029,15 @@ class DeltaArraySim:
                 self.set_attractor_target(env_idx, self.actions)
             elif t_step == (self.time_horizon-1):
                 final_pose, dist, reward, ca = self.compute_reward_test_traj(env_idx, t_step)
+                if final_pose is None:
+                    self.reset(env_idx, bad_apple_flag=True)
                 
                 tracking_tuple = (dist, reward, ca, self.init_pose[env_idx], self.goal_pose[env_idx], final_pose)
                 self.results_df.at[
                     (current_algo, current_traj, current_obj, current_run), 'tracking_data'
                 ].append(tracking_tuple)
                 
-                print(f"Run {current_run + 1}/5 - {current_algo} on {current_obj} (Traj: {current_traj}) - Reward: {self.ep_reward[env_idx]}")
+                print(f"Run {current_run + 1}/{self.num_runs} - {current_algo} on {current_obj} (Traj: {current_traj} {self.current_goal_idx}/{self.total_goals}) - Reward: {self.ep_reward[env_idx]}")
                 
                 if self.current_goal_idx >= self.total_goals:
                     # Update metrics for the full trajectory
@@ -1069,13 +1049,13 @@ class DeltaArraySim:
                     self.results_df.at[
                         (current_algo, current_traj, current_obj, current_run),
                         'mean_boundary_error'
-                    ] = np.mean([d[0] for d in tracking_data])
+                    ] = np.mean([d[0] for d in tracking_data if d[0] is not None ])
                     
-                    print(f"Completed trajectory {current_traj} (Run {current_run + 1}/5)")
+                    print(f"Completed trajectory {current_traj} (Run {current_run + 1}/{self.num_runs}) Mean Boundary Error: {np.mean([d[0] for d in tracking_data if d[0] is not None ])}")
                     
                     # Move to next run or combination
                     self.current_run += 1
-                    if self.current_run >= 5:
+                    if self.current_run >= self.num_runs:
                         self.current_run = 0
                         self.current_obj_idx += 1
                         
@@ -1193,8 +1173,7 @@ class DeltaArraySim:
         intermediate_pose = (com.p.x, com.p.y, com.p.z, *quat)
         if (abs(roll) > 0.5)or(abs(pitch) > 0.5)or(len(self.active_idxs[env_idx])==0):
             print(f'Bad Apple Created at env: {env_idx}, due to conditions: {abs(roll) > 0.5} or {abs(pitch) > 0.5} or {len(self.active_idxs[env_idx])==0}')
-            self.bad_apple[env_idx] = True
-            self.reset(env_idx)
+            self.reset(env_idx, bad_apple_flag=True)
         else:
             tfed_bd_pts, transformed_normals = self.get_tfed_bd_pts(env_idx, intermediate_pose)
             self.bd_pts[env_idx] = tfed_bd_pts

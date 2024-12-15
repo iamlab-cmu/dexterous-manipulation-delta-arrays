@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <asset>
+    <contributor>
+      <author>Blender User</author>
+      <authoring_tool>Blender 3.1.2 commit date:2022-03-31, commit time:17:40, hash:cc66d1020c3b</authoring_tool>
+    </contributor>
+    <created>2024-05-14T17:15:43</created>
+    <modified>2024-05-14T17:15:43</modified>
+    <unit name="meter" meter="1"/>
+    <up_axis>Z_UP</up_axis>
+  </asset>
+  <library_effects>
+    <effect id="Material_0_019-effect">
+      <profile_COMMON>
+        <technique sid="common">
+          <lambert>
+            <emission>
+              <color sid="emission">0 0 0 1</color>
+            </emission>
+            <diffuse>
+              <color sid="diffuse">1 0 0 1</color>
+            </diffuse>
+            <reflectivity>
+              <float sid="specular">0.5</float>
+            </reflectivity>
+          </lambert>
+        </technique>
+      </profile_COMMON>
+    </effect>
+    <effect id="Material_1_019-effect">
+      <profile_COMMON>
+        <technique sid="common">
+          <lambert>
+            <emission>
+              <color sid="emission">0 0 0 1</color>
+            </emission>
+            <diffuse>
+              <color sid="diffuse">0 1 0 1</color>
+            </diffuse>
+            <reflectivity>
+              <float sid="specular">0.5</float>
+            </reflectivity>
+          </lambert>
+        </technique>
+      </profile_COMMON>
+    </effect>
+  </library_effects>
+  <library_images/>
+  <library_materials>
+    <material id="Material_0_019-material" name="Material_0.019">
+      <instance_effect url="#Material_0_019-effect"/>
+    </material>
+    <material id="Material_1_019-material" name="Material_1.019">
+      <instance_effect url="#Material_1_019-effect"/>
+    </material>
+  </library_materials>
+  <library_geometries>
+    <geometry id="Trapezium-mesh" name="Trapezium">
+      <mesh>
+        <source id="Trapezium-mesh-positions">
+          <float_array id="Trapezium-mesh-positions-array" count="24">-0.03999996 -0.00999999 -0.02823954 0.03999996 -0.00999999 -0.02823954 0.03999996 0.00999999 -0.02823954 -0.03999996 0.00999999 -0.02823954 -0.02999997 -0.00999999 0.03176039 0.02999997 -0.00999999 0.03176039 0.02999997 0.00999999 0.03176039 -0.02999997 0.00999999 0.03176039</float_array>
+          <technique_common>
+            <accessor source="#Trapezium-mesh-positions-array" count="8" stride="3">
+              <param name="X" type="float"/>
+              <param name="Y" type="float"/>
+              <param name="Z" type="float"/>
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="Trapezium-mesh-normals">
+          <float_array id="Trapezium-mesh-normals-array" count="21">0 0 1 0 -1 0 0.9863939 0 0.164399 0 1 0 -0.9863939 0 0.164399 0 -1 0 0 1 0</float_array>
+          <technique_common>
+            <accessor source="#Trapezium-mesh-normals-array" count="7" stride="3">
+              <param name="X" type="float"/>
+              <param name="Y" type="float"/>
+              <param name="Z" type="float"/>
+            </accessor>
+          </technique_common>
+        </source>
+        <vertices id="Trapezium-mesh-vertices">
+          <input semantic="POSITION" source="#Trapezium-mesh-positions"/>
+        </vertices>
+        <triangles material="Material_0_019-material" count="10">
+          <input semantic="VERTEX" source="#Trapezium-mesh-vertices" offset="0"/>
+          <input semantic="NORMAL" source="#Trapezium-mesh-normals" offset="1"/>
+          <p>1 0 3 0 0 0 5 0 7 0 4 0 2 2 5 2 1 2 3 3 6 3 2 3 0 4 7 4 3 4 1 0 2 0 3 0 5 0 6 0 7 0 2 2 6 2 5 2 3 6 7 6 6 6 0 4 4 4 7 4</p>
+        </triangles>
+        <triangles material="Material_1_019-material" count="2">
+          <input semantic="VERTEX" source="#Trapezium-mesh-vertices" offset="0"/>
+          <input semantic="NORMAL" source="#Trapezium-mesh-normals" offset="1"/>
+          <p>1 1 4 1 0 1 1 5 5 5 4 5</p>
+        </triangles>
+      </mesh>
+    </geometry>
+  </library_geometries>
+  <library_visual_scenes>
+    <visual_scene id="Scene" name="Scene">
+      <node id="Trapezium" name="Trapezium" type="NODE">
+        <matrix sid="transform">1 0 0 0 0 -4.37114e-8 -1 0 0 1 -4.37114e-8 0 0 0 0 1</matrix>
+        <instance_geometry url="#Trapezium-mesh" name="Trapezium">
+          <bind_material>
+            <technique_common>
+              <instance_material symbol="Material_0_019-material" target="#Material_0_019-material"/>
+              <instance_material symbol="Material_1_019-material" target="#Material_1_019-material"/>
+            </technique_common>
+          </bind_material>
+        </instance_geometry>
+      </node>
+    </visual_scene>
+  </library_visual_scenes>
+  <scene>
+    <instance_visual_scene url="#Scene"/>
+  </scene>
+</COLLADA>

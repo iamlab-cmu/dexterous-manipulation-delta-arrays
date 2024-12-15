@@ -202,5 +202,5 @@ class MATSAC:
         
     def load_saved_policy(self, path='./data/rl_data/backup/matsac_expt_grasp/pyt_save/model.pt'):
         print(path)
-        self.tf.load_state_dict(torch.load(path, map_location=self.hp_dict['dev_rl']))
+        self.tf.load_state_dict(torch.load(path, map_location=self.hp_dict['dev_rl'], weights_only=True))
         self.tf_target = deepcopy(self.tf)

@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import argparse
 import cv2
 import sys
+import time
 sys.path.append("..")
 from threading import Lock
 import mujoco.viewer
@@ -17,14 +18,14 @@ from config.delta_array_generator import DeltaArrayEnvCreator
 
 
 class BaseMJEnv:
-    def __init__(self, args):
+    def __init__(self, args, obj_name):
         # Create the environment
-        self.obj_name = args['obj_name']
-        self.env_creator = DeltaArrayEnvCreator(self.obj_name)
-        self.env_creator.create_env(args['obj_name'], args['num_rope_bodies'])
+        self.obj_name = obj_name
+        self.env_creator = DeltaArrayEnvCreator()
+        env_xml = self.env_creator.create_env(self.obj_name, args['num_rope_bodies'])
         self.args = args
 
-        self.model = mujoco.MjModel.from_xml_path(args['path'])
+        self.model = mujoco.MjModel.from_xml_string(env_xml)
         self.data = mujoco.MjData(self.model)
         self.gui = args['gui']
         self.setup_gui()
@@ -58,6 +59,7 @@ class BaseMJEnv:
         mujoco.mj_step(self.model, self.data)
         if self.gui:
             self.viewer.sync()
+            # time.sleep(0.0001)
             # img = self.get_image()
             # img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
             # cv2.imshow('Delta Array Window', img)

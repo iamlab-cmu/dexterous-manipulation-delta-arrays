@@ -1,9 +1,12 @@
 <?xml version='1.0' encoding='utf-8'?>
 <mujoco model="delta_array">
-  <compiler angle="degree" coordinate="local" inertiafromgeom="true" />
-  <option timestep="0.01" gravity="0 0 -9.83" />
+  <asset>
+    <texture name="disc" file="assets/texture.png" type="2d" />
+    <material name="disc" texture="disc" specular="0.5" shininess="0.5" />
+    <mesh file="assets/disc.obj" scale="1 1 1" />
+  </asset>
   <default>
-    <geom type="capsule" size="0.0075 0.01" mass="0.4" condim="4" />
+    <geom type="capsule" size="0.0075 0.01" mass="0.4" condim="6" />
   </default>
   <visual>
     <global offwidth="1920" offheight="1080" />
@@ -330,15 +333,12 @@
       <joint name="fingertip_63_y" type="slide" axis="0 1 0" limited="true" range="-0.03 0.03" />
     </body>
     <body name="transparent_table" pos="0 0 0">
-      <geom name="collision_geom" type="box" size="1 1 1" contype="1" conaffinity="1" condim="6" material="collision_material" />
+      <geom name="collision_geom" type="box" size="1 1 1" contype="1" conaffinity="1" condim="4" material="collision_material" />
       <geom name="visual_geom" type="box" size="0.15 0.15 0.015" contype="0" conaffinity="0" material="visual_material" />
     </body>
-    <body name="rope" pos="0.13125 0.03 1.021" euler="0 0 90">
+    <body name="disc" pos="0.13125 0.1407285 1.0201">
       <freejoint />
-      <composite type="cable" curve="s" count="30 1 1" size="0.3" initial="none">
-        <joint kind="main" stiffness="0" damping="0.1" />
-        <geom type="capsule" size=".0075" rgba="0 1 0 1" condim="4" mass="0.005" />
-      </composite>
+      <geom pos="0 0 0" name="object" type="mesh" mesh="disc" material="disc" euler="90 0 0" mass="0.01" condim="4" rgba="0 1 0 1" />
     </body>
   </worldbody>
   <actuator>

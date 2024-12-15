@@ -6,6 +6,7 @@ import wandb
 from pathlib import Path
 import argparse
 from typing import Any
+import os
 
 import utils.SAC.sac as sac
 import utils.MATSAC.matsac_no_autoreg as matsac
@@ -17,6 +18,11 @@ import utils.multi_agent_replay_buffer as MARB
 from utils.vision_utils import GroundedSAM
 from utils.openai_utils.run_utils import setup_logger_kwargs
 
+import logging
+from uvicorn.config import LOGGING_CONFIG
+LOGGING_CONFIG["loggers"]["uvicorn.access"]["level"] = "WARNING"  # Suppress INFO-level logs
+logging.basicConfig(level=logging.WARNING)
+
 class DeltaArrayServer():
     def __init__(self, args, train_or_test="test"):
         self.train_or_test = train_or_test
@@ -24,6 +30,9 @@ class DeltaArrayServer():
                                         segmentation_model=args.segmentation_model,
                                         device=torch.device(f"cuda:{args.vis_device}"))
         
+        if not os.path.exists(f'./data/rl_data/{args.name}/pyt_save'):
+            os.makedirs(f'./data/rl_data/{args.name}/pyt_save')
+            
         single_agent_env_dict = {'action_space': {'low': -0.03, 'high': 0.03, 'dim': 2},
                     'observation_space': {'dim': 4},}
         
@@ -78,6 +87,8 @@ class DeltaArrayServer():
             "delta_array_size"  : [8,8],
             'masked'            : not args.unmasked,
             'gauss'             : args.gauss,
+            'learned_alpha'     : args.la,
+            'test_algos'        : ['MABC', 'Random', 'Vis Servo', 'MATSAC', 'MABC Finetuned']
         }
         logger_kwargs = {}
         if self.train_or_test=="train":
@@ -91,22 +102,34 @@ class DeltaArrayServer():
         self.grasping_agent = sac.SAC(single_agent_env_dict, self.hp_dict, logger_kwargs, ma=False, train_or_test="test")
         self.grasping_agent.load_saved_policy('./models/trained_models/SAC_1_agent_stochastic/pyt_save/model.pt')
 
-        if args.algo=="MATSAC":
-            self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
-        elif args.algo=="SAC":
-            self.pushing_agent = sac.SAC(simplified_ma_env_dict, self.hp_dict, logger_kwargs, ma=True, train_or_test="train")
-        elif args.algo=="MADP":
-            self.pushing_agent = madp_test.MADP()
-        elif args.algo=="MABC":
-            self.pushing_agent = mabc.MABC()
-        elif args.algo=="MABC_Finetune":
-            self.pushing_agent = mabc_finetune.MABC_Finetune(self.hp_dict)
+        if args.test_traj:
+            self.pushing_agent = {
+                "Random" : None,
+                "Vis Servo" : None,
+                "MATSAC" : matsac.MATSAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="test"),
+                "MABC" : mabc.MABC(self.hp_dict),
+                "MABC Finetuned" : mabc_finetune.MABC_Finetune(self.hp_dict),
+            }
+            self.pushing_agent["MATSAC"].load_saved_policy('./data/rl_data/matsac_FINAL/pyt_save/model.pt')
+            self.pushing_agent["MABC"].load_saved_policy('./utils/MADP/mabc_final.pth')
+            self.pushing_agent["MABC Finetuned"].load_saved_policy('./utils/MADP/MABC_Finetuned.pth')
+        else:
+            if args.algo=="MATSAC":
+                self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
+            elif args.algo=="SAC":
+                self.pushing_agent = sac.SAC(simplified_ma_env_dict, self.hp_dict, logger_kwargs, ma=True, train_or_test="train")
+            elif args.algo=="MADP":
+                self.pushing_agent = madp_test.MADP()
+            elif args.algo=="MABC":
+                self.pushing_agent = mabc.MABC()
+            elif args.algo=="MABC_Finetune":
+                self.pushing_agent = mabc_finetune.MABC_Finetune(self.hp_dict)
 
-        if (self.train_or_test=="test") and (args.algo=="MATSAC"):
-            # self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/{args.name}_s69420/pyt_save/model.pt')
-            self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/pyt_save/model.pt')
-        elif (self.train_or_test=="test") and (args.algo in ["MADP", "MABC", "MABC_Finetune"]):
-            self.pushing_agent.load_saved_policy(f'./utils/MABC/{args.name}.pth')
+            if (self.train_or_test=="test") and (args.algo=="MATSAC"):
+                # self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/{args.name}_s69420/pyt_save/model.pt')
+                self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/pyt_save/model.pt')
+            elif (self.train_or_test=="test") and (args.algo in ["MADP", "MABC", "MABC_Finetune"]):
+                self.pushing_agent.load_saved_policy(f'./utils/MABC/{args.name}.pth')
 
 class VisionRequest(BaseModel):
     img: Any
@@ -122,13 +145,14 @@ class SAResponse(BaseModel):
     actions: Any
     
 class MARBRequest(BaseModel):
-    s0: Any
-    a: Any
-    p: Any
-    r: Any
-    s1: Any
-    d: Any
-    N: Any
+    replay_data: Any
+    # s0: Any
+    # a: Any
+    # p: Any
+    # r: Any
+    # s1: Any
+    # d: Any
+    # N: Any
     
 class MAInferenceRequest(BaseModel):
     states: Any
@@ -142,9 +166,10 @@ class MATrainRequest(BaseModel):
     batch_size: int
     current_episode: int
     n_updates: int
+    avg_reward: float
     
-class MATrainResponse(BaseModel):
-    losses: Any
+# class MATrainResponse(BaseModel):
+#     losses: Any
     
 class MATLoadModel(BaseModel):
     path: str
@@ -167,11 +192,12 @@ def ma_endpoint(request: MAInferenceRequest):
 
 @app.post("/marl/update")
 def ma_endpoint(request: MATrainRequest):
-    return MATrainResponse(losses=server.pushing_agent.update(request.batch_size, request.current_episode, request.n_updates))
+    print(f'Episodes Elapsed: {request.current_episode}, Avg Reward: {request.avg_reward}')
+    return server.pushing_agent.update(request.batch_size, request.current_episode, request.n_updates, request.avg_reward)
 
 @app.post("/marb/store")
 def marb_store(request: MARBRequest):
-    server.pushing_agent.ma_replay_buffer.store(request.s0, request.a, request.p, request.r, request.s1, request.d, request.N)
+    server.pushing_agent.ma_replay_buffer.store(request.replay_data)
     return {"status": "success"}
 
 @app.post("/marb/save")
@@ -216,6 +242,9 @@ if __name__ == "__main__":
     parser.add_argument("-odm", "--obj_detection_model", type=str, default="IDEA-Research/grounding-dino-tiny", help="Obj det model from HF")
     parser.add_argument("-sm", "--segmentation_model", type=str, default="facebook/sam-vit-base", help="Seg model from HF")
     parser.add_argument("-gauss", "--gauss", action="store_true", help="Use Gaussian Final Layers")
+    parser.add_argument("-tt", "--test_traj", action="store_true", help="Pure Inference Mode. Load all models")
+    parser.add_argument("-la", "--la", action="store_true", help="Is Alpha Learned?")
+    parser.add_argument("-amp", "--amp", action="store_true", help="Turn on Automatic Mixed Precision")
     args = parser.parse_args()
     
     train_or_test = "test" if args.test else "train"

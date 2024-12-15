@@ -88,7 +88,6 @@ class DeltaArraySimEnvironment():
         
         if not os.path.exists(f'./data/rl_data/{args.name}/pyt_save'):
             os.makedirs(f'./data/rl_data/{args.name}/pyt_save')
-            os.makedirs(f'./data/rl_data/{args.name}/videos')
 
         if not os.path.exists(f'./data/videos/{args.name}'):
             os.makedirs(f'./data/videos/{args.name}')
@@ -159,7 +158,7 @@ class DeltaArraySimEnvironment():
                 'learned_alpha'     : self.args.la,
                 
                 # Test Traj Params
-                'test_algos'        : ['MABC', 'Vis Servo', 'Random', 'MATSAC'], #, 'MABC Finetuned'
+                'test_algos'        : ['MABC', 'Random', 'Vis Servo', 'MATSAC'], #, 'MABC Finetuned'
             }
         
         logger_kwargs = {}
@@ -200,7 +199,7 @@ class DeltaArraySimEnvironment():
             elif self.args.algo=="MADP":
                 self.pushing_agent = madp0.MADP()
             elif self.args.algo=="MABC":
-                self.pushing_agent = mabc.MABC()
+                self.pushing_agent = mabc.MABC(self.hp_dict)
             elif self.args.algo=="MABC_Finetune":
                 self.pushing_agent = mabc_finetune.MABC_Finetune(self.hp_dict)
 
@@ -236,6 +235,11 @@ class DeltaArraySimEnvironment():
 
     def setup_scene(self, scene, _):
         self.fingers.add_asset(scene)
+        for i in self.scene.env_idxs:
+            self.fingers.set_attractor_handles(i)
+            self.fingers.set_all_fingers_pose(i, pos_high=True)
+            self.fingers.set_attractor_target(i, None, all_zeros=True)
+            
         scene.add_asset("table", self.table, gymapi.Transform())
         if self.args.rope:
             self.rope = GymURDFAsset('assets/rope.urdf', scene, 
@@ -254,9 +258,6 @@ class DeltaArraySimEnvironment():
         scene.gym.set_light_parameters(scene.sim, 0, gymapi.Vec3(1, 1, 1),gymapi.Vec3(1, 1, 1),gymapi.Vec3(0, -1, -1))
 
     def setup_objects(self):
-        for i in self.scene.env_idxs:
-            self.fingers.set_attractor_handles(i)
-
         table_transforms = [gymapi.Transform(p=gymapi.Vec3(0,0,0.5)) for _ in range(self.scene.n_envs)]
         # fiducial_rb = [gymapi.Transform(p=gymapi.Vec3(-0.2035, -0.06, 1.0052)) for _ in range(self.scene.n_envs)]
         # fiducial_lt = [gymapi.Transform(p=gymapi.Vec3(0.303107 + 0.182, 0.2625 + 0.06, 1.0052)) for _ in range(self.scene.n_envs)]

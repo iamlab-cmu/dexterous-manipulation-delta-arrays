@@ -15,17 +15,17 @@ class MultiAgentReplayBuffer:
         self.obj_name_encs = np.zeros(size, dtype=np.int32)
         self.ptr, self.size, self.max_size = 0, 0, size
 
-    def store(self, obs, act, pos, rew, next_obs, done, n_agents, obj_name_enc=-1):
-        self.obs_buf[self.ptr, :n_agents] = obs
-        self.obs2_buf[self.ptr, :n_agents] = next_obs
-        self.act_buf[self.ptr, :n_agents] = act
-        self.pos_buf[self.ptr, :n_agents] = pos
-        self.rew_buf[self.ptr] = rew
-        self.done_buf[self.ptr] = done
-        self.num_agents_buf[self.ptr] = n_agents
-        self.obj_name_encs[self.ptr] = obj_name_enc
-        self.ptr = (self.ptr+1) % self.max_size
-        self.size = min(self.size+1, self.max_size)
+    def store(self, replay_data):
+        for (obs, act, pos, rew, next_obs, done, n_agents) in replay_data:
+            self.obs_buf[self.ptr, :n_agents] = obs
+            self.obs2_buf[self.ptr, :n_agents] = next_obs
+            self.act_buf[self.ptr, :n_agents] = act
+            self.pos_buf[self.ptr, :n_agents] = pos
+            self.rew_buf[self.ptr] = rew
+            self.done_buf[self.ptr] = done
+            self.num_agents_buf[self.ptr] = n_agents
+            self.ptr = (self.ptr+1) % self.max_size
+            self.size = min(self.size+1, self.max_size)
 
     def sample_batch(self, batch_size=32):
         idxs = np.random.randint(0, self.size, size=batch_size)
@@ -35,8 +35,7 @@ class MultiAgentReplayBuffer:
                      pos=self.pos_buf[idxs],
                      rew=self.rew_buf[idxs],
                      done=self.done_buf[idxs],
-                     num_agents=self.num_agents_buf[idxs],
-                     obj_name_encs=self.obj_name_encs[idxs],)
+                     num_agents=self.num_agents_buf[idxs],)
         
         return {k: torch.as_tensor(v) for k,v in batch.items()}
 
@@ -47,8 +46,7 @@ class MultiAgentReplayBuffer:
                 "pos":self.pos_buf,
                 "rew":self.rew_buf,
                 "done":self.done_buf,
-                "num_agents":self.num_agents_buf,
-                'obj_name_encs':self.obj_name_encs}
+                "num_agents":self.num_agents_buf,}
         pkl.dump(dic, open("./data/replay_buffer_rope.pkl", "wb"))
 
 class MultiAgentImageReplayBuffer:

@@ -29,6 +29,9 @@ url_dict = {
     SAVE_MODEL: "http://localhost:8000/marl/save_model",
     LOAD_MODEL: "http://localhost:8000/marl/load_model",
 }
+
+OBJ_NAMES = ["block", 'crescent', 'cross', 'diamond', 'hexagon', 'star', 'triangle', 'parallelogram', 'semicircle', "trapezium", 'disc']
+
 def send_request(data, action):
     url = url_dict[action]
     response = requests.post(url, json=data)
@@ -37,16 +40,20 @@ def send_request(data, action):
         return None
     return response.json()
 
-def run_env(env_id, sim_len, return_dict, args, inference=False):
+def run_env(env_id, sim_len, n_runs, return_dict, args, inference=False):
     # Set a unique random seed for this environment
     seed = np.random.randint(0, 2**32 - 1)
     np.random.seed(seed)
+    if args['obj_name'] == "ALL":
+        obj_name = OBJ_NAMES[np.random.randint(0, len(OBJ_NAMES))]
+    else:
+        obj_name = args['obj_name']
 
-    env = delta_array_mj.DeltaArrayMJ(args)
+    env = delta_array_mj.DeltaArrayMJ(args, obj_name)
 
     try:
         run_dict = {}
-        for nrun in range(args['nruns']):
+        for nrun in range(n_runs):
             env.reset()
             grasp_states = { 'states': env.init_grasp_state[:env.n_idxs].tolist() }
 
@@ -65,16 +72,17 @@ def run_env(env_id, sim_len, return_dict, args, inference=False):
 
             for t_step in range(sim_len):
                 if t_step == 1:
-                    if args['vis_servo']:
-                        env.vs_action()
+                    if (args['vis_servo']) or (np.random.rand() <=0.1):
+                        actions = env.vs_action()
+                        env.apply_action(actions)
                     else:
                         response = send_request(push_states, MA_GET_ACTION)
                         if response is None:
                             print("Failed to get actions from server.")
                             return
-                        env.actions[:env.n_idxs] = np.array(response['ma_actions'])
-                        env.final_state[:env.n_idxs, 4:6] = env.actions[:env.n_idxs]
-                        env.apply_action(env.actions[:env.n_idxs])
+                        actions = np.array(response['ma_actions'])
+                        env.final_state[:env.n_idxs, 4:6] = actions
+                        env.apply_action(actions)
                 env.update_sim()
 
             if env.rope:
@@ -102,6 +110,8 @@ def run_env(env_id, sim_len, return_dict, args, inference=False):
         gc.collect()
 
 if __name__ == "__main__":
+    from utils.training_helper import TrainingSchedule
+    
     parser = argparse.ArgumentParser(description="A script that greets the user.")
     parser.add_argument("-t", "--test", action="store_true", help="True for Test")
     parser.add_argument('-nenv', '--nenv', type=int, default=4, help='Number of parallel envs')
@@ -111,7 +121,7 @@ if __name__ == "__main__":
     parser.add_argument('-W', '--width', type=int, default=1920, help='Width of the window')
     parser.add_argument('-gui', '--gui',  action='store_true', help='Whether to display the GUI')
     parser.add_argument('-simlen', '--simlen', type=int, default=500, help='Number of steps to run sim')
-    parser.add_argument('-obj', "--obj_name", type=str, default="block", help="Object to manipulate in sim")
+    parser.add_argument('-obj', "--obj_name", type=str, default="ALL", help="Object to manipulate in sim")
     parser.add_argument('-nrb', '--num_rope_bodies', type=int, default=30, help='Number of cylinders in the rope')
     parser.add_argument("-rf", "--robot_frame", action="store_true", help="Robot Frame Yes or No")
     parser.add_argument("-v", "--vis_servo", action="store_true", help="True for Visual Servoing")
@@ -124,6 +134,10 @@ if __name__ == "__main__":
     parser.add_argument("-cmuri", "--cmuri", action="store_true", help="Set to use CMU RI trajectory")
     parser.add_argument('-rc', '--rope_chunks', type=int, default=50, help='Number of visual rope chunks')
     parser.add_argument('-dontlog', '--dontlog', action="store_true", help='Set to disable logging')
+    parser.add_argument("-ca", "--ca", action="store_true", help="compensate for Actions in reward function")
+    parser.add_argument('-wu', '--warmup', type=int, default=100000, help='Max warmup episodes')
+    parser.add_argument("-cd", "--collect_data", action="store_true", help="Collect data to be stored in RB")
+    parser.add_argument("-rblen", "--rblen", action="store_true", help="How much data to be stored in RB")
     args = parser.parse_args()
     args = vars(args)
 
@@ -133,51 +147,53 @@ if __name__ == "__main__":
     update_dict = {
         'batch_size': 256,
         'current_episode': 0,
-        'n_updates': args['nenv']
+        'n_updates': args['nenv'],
+        'avg_reward': 0
     }
     outer_loops = 0
     inference = False
     
-    now = time.time()
     # TODO: Implement testing script to load a pretrained model and run inference.
+    
+    warmup_scheduler = TrainingSchedule(max_nenvs=args['nenv'], max_nruns=args['nruns'], max_warmup_episodes=args['warmup'])
     if args['gui']:
-        run_env(0, args['simlen'], {}, args)
+        run_env(0, args['simlen'], args['nruns'], {}, args)
     else:
         multiprocessing.set_start_method('spawn', force=True)
         while True:
+            n_threads, n_runs, update_dict['n_updates'] = warmup_scheduler.training_schedule(update_dict['current_episode'])
+            # n_threads, n_runs, update_dict['n_updates'] = args['nenv'], args['nruns'], args['nenv']
             manager = Manager()
             return_dict = manager.dict()
 
             processes = []
-            for i in range(args['nenv']):
-                p = Process(target=run_env, args=(i, args['simlen'], return_dict, args, inference))
+            for i in range(n_threads):
+                p = Process(target=run_env, args=(i, args['simlen'], n_runs, return_dict, args, inference))
                 processes.append(p)
                 p.start()
 
             for p in processes:
                 p.join()
 
-            update_dict['current_episode'] += args['nenv']*args['nruns']
+            update_dict['current_episode'] += n_threads*n_runs
+            update_dict['avg_reward'] = 0
+            replay_data = {'replay_data': []}
+            
+            iters = 0
             for env_id, run_dict in return_dict.items():
-                avg_reward = 0
                 for nrun, data in run_dict.items():
-                    avg_reward += data['r']
-                    send_request(data, MARB_STORE)
+                    iters += 1
+                    update_dict['avg_reward'] += data['r']
+                    replay_data['replay_data'].append((data['s0'], data['a'], data['p'], data['r'], data['s1'], data['d'], data['N']))
                 
-                avg_reward /= args['nenv']
-                if not args['dontlog']:
-                    send_request(avg_reward, "wandb/log_reward")
+            update_dict['avg_reward'] /= iters 
+            send_request(replay_data, MARB_STORE)
             
-            if update_dict['current_episode'] > 20000:
-                print("Data Collection Complete.")
-                print(f"Time taken: {time.time() - now}")
-                send_request(data, MARB_SAVE)
-                break
-        # send_request(update_dict, MA_UPDATE_POLICY)
+            if args['collect_data']:
+                if update_dict['current_episode'] >= args['rblen']:
+                    send_request({}, MARB_SAVE)
+                    break
             
-    # except Exception as e:
-    #     print(e)
-    #     send_request({}, SAVE_MODEL)
-    #     gc.collect()
-    # finally:
-    #     sys.exit(1)
+            send_request(update_dict, MA_UPDATE_POLICY)
+            
+        gc.collect()

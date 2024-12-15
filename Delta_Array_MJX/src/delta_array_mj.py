@@ -17,8 +17,8 @@ import utils.rope_utils as rope_utils
 from src.base_env import BaseMJEnv
 
 class DeltaArrayMJ(BaseMJEnv):
-    def __init__(self, args):
-        super().__init__(args)
+    def __init__(self, args, obj_name):
+        super().__init__(args, obj_name)
         # self.grounded_sam = GroundedSAM(obj_detection_model="IDEA-Research/grounding-dino-tiny", 
         #                                 segmentation_model="facebook/sam-vit-base",
         #                                 device=self.args['vis_device'])
@@ -60,6 +60,9 @@ class DeltaArrayMJ(BaseMJEnv):
         self.high_Z = np.array([1.1]*64)
         self.rope_chunks = args['rope_chunks']
         self.rope = self.args['obj_name'] == 'rope'
+        self.epsilon = 1e-6
+        self.scaling_factor = 0.1
+        self.max_reward = 10000.0
 
         if self.rope:
             self.rope_body_ids = rope_utils.get_rope_body_ids(self.model)
@@ -155,7 +158,7 @@ class DeltaArrayMJ(BaseMJEnv):
         goal_bd_pts_smol_non_homog = self.convert_pix_2_world(geom_helper.sample_boundary_points(goal_bd_pts, 200))
         self.goal_bd_pts_smol = geom_helper.transform_boundary_points(self.init_bd_pts_smol, goal_bd_pts_smol_non_homog, self.init_bd_pts_smol, method="rigid")
         
-        idxs, self.init_nn_bd_pts, _ = self.nn_helper.get_nn_robots_mj(self.init_bd_pts_smol)
+        idxs, self.init_nn_bd_pts, _ = self.nn_helper.get_nn_robots_objs(self.init_bd_pts_smol)
         self.goal_nn_bd_pts = geom_helper.transform_boundary_points(self.init_bd_pts_smol, self.goal_bd_pts_smol, self.init_nn_bd_pts, method="rigid")
         self.active_idxs = list(idxs)
         self.set_rl_states()
@@ -178,7 +181,7 @@ class DeltaArrayMJ(BaseMJEnv):
         init_rope_coords = self.convert_pix_2_world(rope_utils.get_skeleton_from_img(img, trad))
         self.init_bd_pts_smol = rope_utils.get_aligned_smol_rope(init_rope_coords, self.goal_bd_pts_smol, N=self.rope_chunks) # returns rounded coords. 
         
-        self.active_idxs, self.init_nn_bd_pts, self.bd_idxs = self.nn_helper.get_nn_robots_mj(self.init_bd_pts_smol)
+        self.active_idxs, self.init_nn_bd_pts, self.bd_idxs = self.nn_helper.get_nn_robots_rope(self.init_bd_pts_smol)
         
         self.goal_nn_bd_pts = self.goal_bd_pts_smol[self.bd_idxs]
         self.set_rl_states()
@@ -220,7 +223,14 @@ class DeltaArrayMJ(BaseMJEnv):
             self.set_init_obj_pose()
             
     def compute_reward(self):
-        return -100*np.mean(np.linalg.norm(self.goal_bd_pts_smol - self.final_bd_pts_smol, axis=1))
+        dist = np.mean(np.linalg.norm(self.goal_bd_pts_smol - self.final_bd_pts_smol, axis=1))
+        ep_reward = np.clip(self.scaling_factor / (dist**2 + self.epsilon), 0, self.max_reward)
+        
+        if self.args['ca']:
+            ep_reward -= 5*np.mean(abs(self.actions[:self.n_idxs] - self.actions_grasp[:self.n_idxs]))
+            
+        return ep_reward*0.01
+        # return -100*np.mean(np.linalg.norm(self.goal_bd_pts_smol - self.final_bd_pts_smol, axis=1))
         # return -10*np.linalg.norm(self.goal_bd_pts_smol - self.final_bd_pts_smol)
             
     def set_z_positions(self, body_ids, low=True):
@@ -241,32 +251,17 @@ class DeltaArrayMJ(BaseMJEnv):
         displacement_vectors = self.goal_nn_bd_pts - semi_final_nn_bd_pts
         actions = self.actions_grasp[:self.n_idxs] + displacement_vectors
         # actions = np.random.uniform(-0.03, 0.03, size=(self.n_idxs, 2)) #Random Actions Code if needed in future
-        self.actions[:self.n_idxs] = self.Delta.clip_points_to_workspace(actions)
-        # self.visualize_image(self.actions[:self.n_idxs], self.data.qpos[self.obj_id:self.obj_id+3], self.init_bd_pts_smol, self.goal_bd_pts_smol)
+        return actions
         
-        # body_ids = self.robot_ids[self.active_idxs]
-        # self.set_z_positions(body_ids, low=True)
-        # ctrl_indices = np.array([(2*(id-1), 2*(id-1)+1) for id in body_ids]).flatten()
-        # self.data.ctrl[ctrl_indices] = self.actions[:self.n_idxs].reshape(-1)
-            
+        
     def apply_action(self, acts):
+        self.actions[:self.n_idxs] = self.Delta.clip_points_to_workspace(acts)
         body_ids = self.robot_ids[self.active_idxs]
         self.set_z_positions(body_ids, low=True)
         ctrl_indices = np.array([(2*(id-1), 2*(id-1)+1) for id in body_ids]).flatten()
-        self.data.ctrl[ctrl_indices] = acts.reshape(-1)
+        self.data.ctrl[ctrl_indices] = self.actions[:self.n_idxs].reshape(-1)
         
         # self.visualize_image(acts, self.data.qpos[self.obj_id:self.obj_id+3], self.init_bd_pts_smol, self.goal_bd_pts_smol)
-        
-        # for id in self.robot_ids[self.active_idxs]:
-        #     for dx in np.arange(-0.03, 0.03, 0.001):
-        #         self.data.ctrl[2*(id-1) + 0] = dx
-        #         self.update_sim()
-        #         time.sleep(0.01)
-            
-        #     for dy in np.arange(-0.03, 0.03, 0.001):
-        #         self.data.ctrl[2*(id-1) + 1] = dy
-        #         self.update_sim()
-        #         time.sleep(0.01)
         
     def random_actions(self):
         self.data.ctrl = np.random.uniform(-1, 1, self.data.ctrl.shape)
