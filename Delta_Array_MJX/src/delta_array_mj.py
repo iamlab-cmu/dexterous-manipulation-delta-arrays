@@ -6,6 +6,8 @@ import time
 import mujoco
 from scipy.interpolate import CubicSpline
 from scipy.spatial.transform import Rotation as R
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.patches import Arrow, Circle
 from mpl_toolkits.mplot3d import Axes3D

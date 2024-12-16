@@ -7,6 +7,8 @@ import numpy as np
 import sys
 import gc
 import requests
+import warnings
+warnings.filterwarnings("ignore")
 
 import src.delta_array_mj as delta_array_mj
 
@@ -120,10 +122,9 @@ if __name__ == "__main__":
     parser.add_argument('-H', '--height', type=int, default=1080, help='Height of the window')
     parser.add_argument('-W', '--width', type=int, default=1920, help='Width of the window')
     parser.add_argument('-gui', '--gui',  action='store_true', help='Whether to display the GUI')
-    parser.add_argument('-simlen', '--simlen', type=int, default=500, help='Number of steps to run sim')
+    parser.add_argument('-simlen', '--simlen', type=int, default=2000, help='Number of steps to run sim')
     parser.add_argument('-obj', "--obj_name", type=str, default="ALL", help="Object to manipulate in sim")
     parser.add_argument('-nrb', '--num_rope_bodies', type=int, default=30, help='Number of cylinders in the rope')
-    parser.add_argument("-rf", "--robot_frame", action="store_true", help="Robot Frame Yes or No")
     parser.add_argument("-v", "--vis_servo", action="store_true", help="True for Visual Servoing")
     parser.add_argument("-avsd", "--add_vs_data", action="store_true", help="True for adding visual servoing data")
     parser.add_argument("-vsd", "--vs_data", type=float, help="[0 to 1] ratio of data to use for visual servoing")
@@ -133,11 +134,10 @@ if __name__ == "__main__":
     parser.add_argument("-test_traj", "--test_traj", action="store_true", help="Test on trajectories")
     parser.add_argument("-cmuri", "--cmuri", action="store_true", help="Set to use CMU RI trajectory")
     parser.add_argument('-rc', '--rope_chunks', type=int, default=50, help='Number of visual rope chunks')
-    parser.add_argument('-dontlog', '--dontlog', action="store_true", help='Set to disable logging')
     parser.add_argument("-ca", "--ca", action="store_true", help="compensate for Actions in reward function")
     parser.add_argument('-wu', '--warmup', type=int, default=100000, help='Max warmup episodes')
     parser.add_argument("-cd", "--collect_data", action="store_true", help="Collect data to be stored in RB")
-    parser.add_argument("-rblen", "--rblen", action="store_true", help="How much data to be stored in RB")
+    parser.add_argument("-rblen", "--rblen", type=int, default=500000, help="How much data to be stored in RB")
     args = parser.parse_args()
     args = vars(args)
 
@@ -188,12 +188,13 @@ if __name__ == "__main__":
                 
             update_dict['avg_reward'] /= iters 
             send_request(replay_data, MARB_STORE)
+            print(f"Episode: {update_dict['current_episode']}, Avg Reward: {update_dict['avg_reward']}")
             
             if args['collect_data']:
                 if update_dict['current_episode'] >= args['rblen']:
                     send_request({}, MARB_SAVE)
                     break
-            
-            send_request(update_dict, MA_UPDATE_POLICY)
+            if not args['vis_servo']:
+                send_request(update_dict, MA_UPDATE_POLICY)
             
         gc.collect()
