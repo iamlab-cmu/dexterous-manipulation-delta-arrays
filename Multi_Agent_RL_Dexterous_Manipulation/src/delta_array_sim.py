@@ -620,7 +620,7 @@ class DeltaArraySim:
 ################################################################################################################################################################################
                 
                 # if self.current_episode > 0:
-                #     r_poses = self.nn_helper.rb_pos_world[tuple(zip(*self.active_idxs[env_idx]))]
+                #     
                 #     init_pts = self.init_state[env_idx, :self.n_idxs[env_idx], :2].copy()
                 #     goal_bd_pts = self.init_state[env_idx, :self.n_idxs[env_idx], 2:4].copy()
                 #     final_bd_pts = self.final_state[env_idx, :self.n_idxs[env_idx], :2].copy()
@@ -628,6 +628,7 @@ class DeltaArraySim:
                 #     acts = self.actions[env_idx, :self.n_idxs[env_idx]].copy()
                     
                 #     plt.figure(figsize=(10,17.78))
+                    # r_poses = self.nn_helper.rb_pos_world[tuple(zip(*self.active_idxs[env_idx]))]
                 #     plt.scatter(r_poses[:, 0], r_poses[:, 1], c='#880000ff')
 
                 #     plt.scatter(self.goal_bd_pts[env_idx][:, 0], self.goal_bd_pts[env_idx][:, 1], c='#ffa50066')

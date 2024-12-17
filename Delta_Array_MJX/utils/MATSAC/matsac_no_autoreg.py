@@ -85,15 +85,14 @@ class MATSAC:
             q2 = self.tf.decoder_critic2(s1, a, pos).squeeze().mean(dim=1)
             
             with torch.no_grad():
-                if self.gauss:
-                    next_actions, log_probs, _, _= self.tf(s2, pos)
-                else:
-                    next_actions = self.tf(s2, pos)
+                # if self.gauss:
+                #     next_actions, log_probs, _, _= self.tf(s2, pos)
+                # else:
+                #     next_actions = self.tf(s2, pos)
                 
-                next_q1 = self.tf_target.decoder_critic1(s2, next_actions, pos).squeeze()
-                next_q2 = self.tf_target.decoder_critic2(s2, next_actions, pos).squeeze()
-                # print(((1 - d.unsqueeze(1)) * (torch.min(next_q1, next_q2) - self.alpha * log_probs)).mean(dim=1).shape)
-                q_next = r + self.hp_dict['gamma'] * ((1 - d.unsqueeze(1)) * (torch.min(next_q1, next_q2) - self.alpha * log_probs)).mean(dim=1)
+                # next_q1 = self.tf_target.decoder_critic1(s2, next_actions, pos).squeeze()
+                # next_q2 = self.tf_target.decoder_critic2(s2, next_actions, pos).squeeze()
+                q_next = r # + self.hp_dict['gamma'] * ((1 - d.unsqueeze(1)) * (torch.min(next_q1, next_q2) - self.alpha * log_probs)).mean(dim=1)
                 # q_next = r.unsqueeze(1)
             q_loss1 = F.mse_loss(q1, q_next)
             q_loss2 = F.mse_loss(q2, q_next)
