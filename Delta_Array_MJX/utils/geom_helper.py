@@ -23,22 +23,19 @@ def transform_pts_wrt_com(points, transform, com):
     """
     Apply a 2D transformation to a set of points.
     """
-    rot_m = np.array([[np.cos(transform[2]), -np.sin(transform[2])], [np.sin(transform[2]), np.cos(transform[2])]])
-    points = points - com
-    points = com + np.dot(points, rot_m.T)
-    points = points + transform[:2]
-    return points
+    points_h = np.hstack([points - com, np.zeros((points.shape[0], 1)), np.ones((points.shape[0], 1))])
+    transformed_points_h = points_h @ transform.T
+    transformed_points = transformed_points_h[:, :2] + com
+    return transformed_points
 
 def get_transform(init_bd_pts, new_bd_pts):
     min_size = min(init_bd_pts.shape[0], new_bd_pts.shape[0])
     init_bd_pts = init_bd_pts[np.random.choice(init_bd_pts.shape[0], size=min_size, replace=False)]
     new_bd_pts = new_bd_pts[np.random.choice(new_bd_pts.shape[0], size=min_size, replace=False)]
-    M2 = icp(init_bd_pts, new_bd_pts, icp_radius=200)
-    theta = np.arctan2(M2[1, 0], M2[0, 0])
-    obj_2d_pose_delta = [M2[0,3], M2[1,3], theta]
-    return obj_2d_pose_delta
+    M2 = icp(init_bd_pts, new_bd_pts, icp_radius=1)
+    return M2
 
-def icp(a, b, icp_radius = 200):
+def icp(a, b, icp_radius = 1000):
     # plt.scatter(a[:,0], a[:,1], c='r')
     # plt.scatter(b[:,0], b[:,1], c='b')
     # plt.show()
@@ -81,6 +78,8 @@ def transform_boundary_points(init_bd_pts, goal_bd_pts, init_nn_bd_pts, method: 
     Returns:
         goal_nn_bd_pts: Transformed nearest neighbor points (M, 2)
     """
+    # tf_matrix = get_transform(init_bd_pts, goal_bd_pts)
+    # return transform_pts_wrt_com(init_nn_bd_pts, tf_matrix, np.mean(init_bd_pts, axis=0))
     if method == 'rigid':
         return transform_rigid(init_bd_pts, goal_bd_pts, init_nn_bd_pts)
     elif method == 'affine':

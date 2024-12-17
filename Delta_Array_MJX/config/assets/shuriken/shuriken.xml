@@ -1,0 +1,22 @@
+<mujoco model="shuriken">
+  <default>
+    <default class="visual">
+      <geom group="2" type="mesh" contype="0" conaffinity="0"/>
+    </default>
+    <default class="collision">
+      <geom group="3" type="mesh"/>
+    </default>
+  </default>
+  <asset>
+    <texture type="2d" name="texture" file="texture.png"/>
+    <material name="PlasticRed2.002" texture="texture" specular="0.0" shininess="0.0"/>
+    <mesh file="shuriken.obj"/>
+  </asset>
+  <worldbody>
+    <body name="shuriken">
+      <freejoint/>
+      <geom material="PlasticRed2.002" mesh="shuriken" class="visual"/>
+      <geom mesh="shuriken" class="collision"/>
+    </body>
+  </worldbody>
+</mujoco>

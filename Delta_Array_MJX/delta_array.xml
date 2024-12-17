@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <mujoco model="scene">
   <compiler autolimits="true" angle="degree" />
-  <option integrator="implicitfast" timestep="0.005">
+  <option integrator="implicitfast" timestep="0.001">
     <flag multiccd="enable" />
   </option>
   <default>
@@ -19,9 +19,9 @@
     <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2" />
     <material name="collision_material" rgba="0 0 0 0" />
     <material name="visual_material" rgba="0 0 1 0.3" />
-    <texture name="semicircle" file="config/assets/texture.png" type="2d" />
-    <material name="semicircle" texture="semicircle" specular="0.5" shininess="0.5" />
-    <mesh file="config/assets/semicircle.obj" scale="1 1 1" />
+    <texture name="trapezium" file="config/assets/texture.png" type="2d" />
+    <material name="trapezium" texture="trapezium" specular="0.5" shininess="0.5" />
+    <mesh file="config/assets/trapezium.obj" scale="1 1 1" />
   </asset>
   <worldbody>
     <light pos="0 0 1.5" dir="0 0 -1" directional="true" />
@@ -350,139 +350,139 @@
       <geom name="collision_geom" type="box" size="1 1 1" contype="1" conaffinity="1" condim="4" material="collision_material" />
       <geom name="visual_geom" type="box" size="0.15 0.15 0.015" contype="0" conaffinity="0" material="visual_material" />
     </body>
-    <body name="semicircle" pos="0.13125 0.1407285 1.0201" euler="90 0 0">
+    <body name="trapezium" pos="0.13125 0.1407285 1.0201" euler="90 0 0">
       <freejoint />
-      <geom name="object" type="mesh" mesh="semicircle" material="semicircle" mass="0.05" condim="6" />
+      <geom name="object" type="mesh" mesh="trapezium" material="trapezium" mass="0.01" condim="6" />
     </body>
   </worldbody>
   <actuator>
-    <position joint="fingertip_0_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_0_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_1_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_1_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_2_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_2_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_3_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_3_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_4_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_4_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_5_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_5_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_6_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_6_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_7_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_7_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_8_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_8_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_9_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_9_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_10_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_10_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_11_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_11_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_12_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_12_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_13_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_13_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_14_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_14_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_15_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_15_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_16_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_16_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_17_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_17_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_18_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_18_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_19_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_19_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_20_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_20_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_21_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_21_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_22_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_22_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_23_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_23_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_24_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_24_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_25_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_25_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_26_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_26_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_27_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_27_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_28_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_28_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_29_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_29_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_30_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_30_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_31_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_31_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_32_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_32_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_33_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_33_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_34_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_34_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_35_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_35_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_36_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_36_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_37_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_37_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_38_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_38_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_39_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_39_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_40_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_40_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_41_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_41_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_42_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_42_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_43_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_43_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_44_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_44_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_45_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_45_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_46_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_46_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_47_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_47_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_48_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_48_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_49_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_49_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_50_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_50_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_51_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_51_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_52_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_52_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_53_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_53_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_54_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_54_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_55_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_55_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_56_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_56_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_57_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_57_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_58_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_58_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_59_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_59_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_60_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_60_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_61_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_61_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_62_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_62_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_63_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
-    <position joint="fingertip_63_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="50" kv="20" />
+    <position joint="fingertip_0_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_0_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_1_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_1_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_2_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_2_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_3_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_3_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_4_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_4_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_5_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_5_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_6_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_6_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_7_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_7_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_8_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_8_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_9_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_9_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_10_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_10_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_11_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_11_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_12_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_12_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_13_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_13_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_14_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_14_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_15_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_15_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_16_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_16_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_17_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_17_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_18_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_18_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_19_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_19_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_20_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_20_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_21_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_21_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_22_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_22_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_23_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_23_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_24_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_24_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_25_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_25_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_26_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_26_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_27_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_27_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_28_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_28_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_29_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_29_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_30_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_30_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_31_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_31_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_32_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_32_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_33_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_33_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_34_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_34_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_35_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_35_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_36_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_36_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_37_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_37_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_38_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_38_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_39_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_39_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_40_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_40_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_41_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_41_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_42_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_42_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_43_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_43_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_44_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_44_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_45_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_45_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_46_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_46_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_47_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_47_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_48_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_48_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_49_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_49_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_50_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_50_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_51_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_51_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_52_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_52_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_53_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_53_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_54_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_54_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_55_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_55_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_56_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_56_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_57_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_57_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_58_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_58_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_59_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_59_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_60_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_60_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_61_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_61_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_62_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_62_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_63_x" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
+    <position joint="fingertip_63_y" ctrllimited="true" ctrlrange="-0.03 0.03" kp="20" kv="10" />
   </actuator>
 </mujoco>

@@ -44,6 +44,7 @@ class NNHelper:
                 self.rb_pos_pix[i,j] = finger_pos
                 self.kdtree_positions_pix[i*8 + j, :] = self.rb_pos_pix[i,j]
         
+        # print(0.03/(plane_size[1][0]-plane_size[0][0])*1080, 0.03/(plane_size[1][1]-plane_size[0][1])*1920)
         self.cluster_centers = None
 
     def get_min_dist(self, boundary_pts, active_idxs, actions):
@@ -302,18 +303,21 @@ class NNHelper:
 
         return robot_indices, matched_boundary_points, boundary_indices
 
-    def get_nn_robots_objs(self, boundary_pts):
+    def get_nn_robots_objs(self, boundary_pts, world=True):
         """Original implementation modified to return nearest neighbors"""
         hull = ConvexHull(boundary_pts)
-        hull = self.expand_hull(hull, world=True)
+        hull = self.expand_hull(hull, world=world)
         A, b = hull.equations[:, :-1], hull.equations[:, -1:]
         
         nearest_neighbors = {}
         eps = np.finfo(np.float32).eps
-        kdtree = KDTree(self.kdtree_positions_world)
+        
+        kdtree_poses = self.kdtree_positions_world if world else self.kdtree_positions_pix
+        kdtree = KDTree(kdtree_poses)
 
         # Find nearest neighbors for boundary points
-        distances, indices = kdtree.query(boundary_pts, k=3, distance_upper_bound=0.03, workers=8)
+        dub = 0.03 if world else 30
+        distances, indices = kdtree.query(boundary_pts, k=3, distance_upper_bound=dub, workers=8)
         indices = np.unique(indices[~np.isinf(distances)])
         unique_indices = np.unique(indices)
         pos_world = self.rb_pos_world[unique_indices // 8, unique_indices % 8]
@@ -325,12 +329,12 @@ class NNHelper:
         for idx, is_inside in zip(unique_indices, containment_check):
             if not is_inside:
                 # Find nearest boundary point
-                robot_pos = self.kdtree_positions_world[idx]
+                robot_pos = kdtree_poses[idx]
                 _, nearest_idx = boundary_kdtree.query(robot_pos.reshape(1, -1), k=1)
                 nearest_neighbors[idx] = nearest_idx[0]
             else:
-                current_pos = self.kdtree_positions_world[idx]
-                kdt_pos_copy = self.kdtree_positions_world.copy()
+                current_pos = kdtree_poses[idx]
+                kdt_pos_copy = kdtree_poses.copy()
                 mask = np.all(kdt_pos_copy @ A.T + b.T < eps, axis=1)
                 kdt_pos_copy = kdt_pos_copy[~mask]
                 if len(kdt_pos_copy) == 0:
@@ -338,7 +342,7 @@ class NNHelper:
                 new_kdtree = KDTree(kdt_pos_copy)
                 new_idx = new_kdtree.query(current_pos.reshape(1, -1))[1][0]
                 new_pos = kdt_pos_copy[new_idx]
-                new_idx = np.where((self.kdtree_positions_world == new_pos).all(axis=1))[0][0]
+                new_idx = np.where((kdtree_poses == new_pos).all(axis=1))[0][0]
                 # Find nearest boundary point for the outside point
                 _, nearest_idx = boundary_kdtree.query(new_pos.reshape(1, -1), k=1)
                 nearest_neighbors[new_idx] = nearest_idx[0]

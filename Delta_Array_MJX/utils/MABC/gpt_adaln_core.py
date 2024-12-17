@@ -40,28 +40,28 @@ class MultiHeadAttention(nn.Module):
         if self.masked:
             self.register_buffer('tril', torch.tril(torch.ones(max_agents, max_agents)))
 
-    def scaled_dot_product_attention(self, Q, K, V):
+    def scaled_dot_product_attention(self, Q, K, V, n_agents):
         attention_scores = torch.matmul(Q, K.transpose(-1, -2)) / np.sqrt(self.split_head_dim)
         if self.masked:
-            attention_scores = attention_scores.masked_fill(self.tril[:self.n_agents, :self.n_agents] == 0, float('-inf'))
+            attention_scores = attention_scores.masked_fill(self.tril[:n_agents, :n_agents] == 0, float('-inf'))
         attention_probs = torch.softmax(attention_scores, dim=-1)
         output = torch.matmul(attention_probs, V)
         return output
 
-    def split_heads(self, x):
-        return x.view(self.bs, self.n_agents, self.num_heads, self.split_head_dim).transpose(1, 2)
+    def split_heads(self, x, bs, n_agents):
+        return x.view(bs, n_agents, self.num_heads, self.split_head_dim).transpose(1, 2)
 
-    def combine_heads(self, x):
-        return x.transpose(1, 2).contiguous().view(self.bs, self.n_agents, self.model_dim)
+    def combine_heads(self, x, bs, n_agents):
+        return x.transpose(1, 2).contiguous().view(bs, n_agents, self.model_dim)
 
     def forward(self, Q, K, V):
-        self.bs, self.n_agents, _ = Q.size()
-        Q = self.split_heads(self.W_Q(Q))
-        K = self.split_heads(self.W_K(K))
-        V = self.split_heads(self.W_V(V))
+        bs, n_agents, _ = Q.size()
+        Q = self.split_heads(self.W_Q(Q), bs, n_agents)
+        K = self.split_heads(self.W_K(K), bs, n_agents)
+        V = self.split_heads(self.W_V(V), bs, n_agents)
 
-        attn = self.scaled_dot_product_attention(Q, K, V)
-        output = self.W_O(self.combine_heads(attn))
+        attn = self.scaled_dot_product_attention(Q, K, V, n_agents)
+        output = self.W_O(self.combine_heads(attn, bs, n_agents))
         return output
 
 class IntegerEmbeddingModel(nn.Module):
@@ -174,7 +174,7 @@ class FinalLayer(nn.Module):
     """
     The final layer of DiT.
     """
-    def __init__(self, model_dim, action_dim):
+    def __init__(self, model_dim, action_dim, critic=False):
         super().__init__()
         self.norm_final = nn.LayerNorm(model_dim, elementwise_affine=False, eps=1e-6)
         self.linear = wt_init_(nn.Linear(model_dim, action_dim, bias=True))
@@ -182,10 +182,13 @@ class FinalLayer(nn.Module):
             nn.SiLU(),
             wt_init_(nn.Linear(model_dim, 2 * model_dim, bias=True))
         )
+        self.critic = critic
 
     def forward(self, x, c):
         shift, scale = self.adaLN_modulation(c).chunk(2, dim=2)
         x = modulate(self.norm_final(x), shift, scale)
+        if self.critic:
+            x = x / torch.norm(x, p=2, dim=-1, keepdim=True)
         x = self.linear(x)
         return x
 
@@ -201,7 +204,7 @@ class GPT_AdaLN(nn.Module):
         self.critic = critic
         self.gauss = gauss
         if self.critic:
-            self.final_layer = FinalLayer(model_dim, 1)
+            self.final_layer = FinalLayer(model_dim, 1, critic=True)
         else:
             if self.gauss:
                 self.mu = FinalLayer(model_dim, action_dim)
@@ -249,7 +252,7 @@ class Transformer(nn.Module):
         num_layers: number of layers in encoder and decoder
         """
         self.hp_dict = hp_dict
-        self.device = hp_dict['device']
+        self.device = hp_dict['dev_rl']
         self.max_agents = delta_array_size[0] * delta_array_size[1]
         self.act_limit = hp_dict['act_limit']
         self.action_dim = hp_dict['action_dim']
@@ -286,25 +289,25 @@ class Transformer(nn.Module):
     def compute_actor_loss(self, actions, states, pos):
         if self.gauss:
             pred_actions, _, mu, std = self.forward(states, pos)
-            gauss_dist = torch.distributions.Normal(mu, std)
-            log_prob_loss = -gauss_dist.log_prob(actions).sum(axis=-1).mean()
+            # gauss_dist = torch.distributions.Normal(mu, std)
+            # log_prob_loss = -gauss_dist.log_prob(actions).sum(axis=-1).mean()
         else:
             pred_actions = self.forward(states, pos)
-            log_prob_loss = 0
-        loss = F.mse_loss(actions, pred_actions) + log_prob_loss
+            # log_prob_loss = 0
+        loss = F.mse_loss(actions, pred_actions) #+ log_prob_loss
         return loss
     
     def compute_critic_loss(self, s1, a, s2, pos, rewards, d):
         q = self.decoder_critic(s1, a, pos).squeeze().mean(dim=1)
         
         with torch.no_grad():
-            if self.gauss:
-                next_actions, log_probs, _, _= self.forward(s2, pos)
-            else:
-                next_actions = self.forward(s2, pos)
+            # if self.gauss:
+            #     next_actions, log_probs, _, _= self.forward(s2, pos)
+            # else:
+            #     next_actions = self.forward(s2, pos)
             
-            next_q = self.decoder_critic(s2, next_actions, pos).squeeze()
-            q_next = rewards + self.hp_dict['gamma'] * ((1 - d.unsqueeze(1)) * (next_q - self.alpha * log_probs)).mean(dim=1)
+            # next_q = self.decoder_critic(s2, next_actions, pos).squeeze()
+            q_next = rewards #+ self.hp_dict['gamma'] * ((1 - d.unsqueeze(1)) * (next_q - self.alpha * log_probs)).mean(dim=1)
 
         loss = F.mse_loss(q, q_next)
         return loss

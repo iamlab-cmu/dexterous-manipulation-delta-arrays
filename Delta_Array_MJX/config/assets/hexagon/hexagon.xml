@@ -1,0 +1,22 @@
+<mujoco model="hexagon">
+  <default>
+    <default class="visual">
+      <geom group="2" type="mesh" contype="0" conaffinity="0"/>
+    </default>
+    <default class="collision">
+      <geom group="3" type="mesh"/>
+    </default>
+  </default>
+  <asset>
+    <texture type="2d" name="texture" file="texture.png"/>
+    <material name="Material_0.002" texture="texture" specular="0.0" shininess="0.058037193"/>
+    <mesh file="hexagon.obj"/>
+  </asset>
+  <worldbody>
+    <body name="hexagon">
+      <freejoint/>
+      <geom material="Material_0.002" mesh="hexagon" class="visual"/>
+      <geom mesh="hexagon" class="collision"/>
+    </body>
+  </worldbody>
+</mujoco>

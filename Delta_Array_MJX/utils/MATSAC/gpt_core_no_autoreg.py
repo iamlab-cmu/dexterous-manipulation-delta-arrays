@@ -194,7 +194,6 @@ class FinalLayer(nn.Module):
         x = self.linear(x)
         return x
 
-
 class GPT_AdaLN(nn.Module):
     def __init__(self, state_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False, masked=True, gauss=False):
         super(GPT_AdaLN, self).__init__()

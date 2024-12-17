@@ -26,7 +26,7 @@ class DeltaArrayEnvCreator:
     def create_actuator(self, name):
         actuators = []
         for axis in ['x', 'y']:
-            actuators.append(ET.Element('position', joint=f"{name}_{axis}", ctrllimited="true", ctrlrange="-0.03 0.03", kp="50", kv="20"))
+            actuators.append(ET.Element('position', joint=f"{name}_{axis}", ctrllimited="true", ctrlrange="-0.03 0.03", kp="20", kv="10"))
         return actuators
 
     def create_env(self, obj_name, num_rope_bodies=None):
@@ -34,7 +34,7 @@ class DeltaArrayEnvCreator:
         
         ET.SubElement(root, 'compiler', autolimits="true", angle="degree")
         
-        option = ET.SubElement(root, 'option', integrator="implicitfast", timestep="0.005")
+        option = ET.SubElement(root, 'option', integrator="implicitfast", timestep="0.0005")
         ET.SubElement(option, 'flag', multiccd="enable")
         
         default = ET.SubElement(root, 'default')
@@ -57,6 +57,9 @@ class DeltaArrayEnvCreator:
         ET.SubElement(asset, 'material', name="groundplane", texture="groundplane", texuniform="true", texrepeat="5 5", reflectance="0.2")
         ET.SubElement(asset, 'material', name="collision_material", rgba="0 0 0 0")
         ET.SubElement(asset, 'material', name="visual_material", rgba="0 0 1 0.3")
+        ET.SubElement(asset, 'texture', name=obj_name, file=f"config/assets/texture.png", type="2d")
+        ET.SubElement(asset, 'material', name=obj_name, texture=obj_name, specular="0.5", shininess="0.5")
+        ET.SubElement(asset, 'mesh', file=f"config/assets/{obj_name}.obj", scale="1 1 1")
         
         # Create worldbody
         worldbody = ET.SubElement(root, 'worldbody')
@@ -83,13 +86,9 @@ class DeltaArrayEnvCreator:
             ET.SubElement(composite, 'joint', kind="main", stiffness="0", damping="0.1")
             ET.SubElement(composite, 'geom', type="capsule", size=".0075", rgba="0 1 0 1", condim="4", mass="0.005")
         else:
-            # ET.SubElement(root, 'include', file=f"config/assets/{obj_name}/{obj_name}.xml")
-            ET.SubElement(asset, 'texture', name=obj_name, file=f"config/assets/texture.png", type="2d")
-            ET.SubElement(asset, 'material', name=obj_name, texture=obj_name, specular="0.5", shininess="0.5")
-            ET.SubElement(asset, 'mesh', file=f"config/assets/{obj_name}.obj", scale="1 1 1")
-            obj = ET.SubElement(worldbody, 'body', name=f"{obj_name}", pos="0.13125 0.1407285 1.0201", euler="90 0 0")
+            obj = ET.SubElement(worldbody, 'body', name=f"{obj_name}", pos="0.13125 0.1407285 1.0201")
             ET.SubElement(obj, 'freejoint')
-            ET.SubElement(obj, 'geom', name="object", type="mesh", mesh=obj_name, material=obj_name, mass="0.05", condim="6")
+            ET.SubElement(obj, 'geom', name="object", type="mesh", mesh=obj_name, material=obj_name, euler="90 0 0", mass="0.01", condim="4", rgba="0 1 0 1")
         
         actuator = ET.SubElement(root, 'actuator')
         for i in range(arr.shape[0]):
@@ -99,10 +98,4 @@ class DeltaArrayEnvCreator:
             
         # Convert to string
         xml_string = ET.tostring(root, encoding="unicode", method="xml")
-        # tree = ET.ElementTree(root)
-        # ET.indent(tree, space="  ", level=0)  # Pretty print the XML
-
-        # # Save the XML file
-        # with open("./config/delta_array.xml", "wb") as f:
-        #     tree.write(f, encoding="utf-8", xml_declaration=True)
         return xml_string

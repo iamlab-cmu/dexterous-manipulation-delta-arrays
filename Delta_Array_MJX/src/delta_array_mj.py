@@ -7,7 +7,8 @@ import mujoco
 from scipy.interpolate import CubicSpline
 from scipy.spatial.transform import Rotation as R
 import matplotlib
-matplotlib.use('Agg')
+import seaborn as sns
+# matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.patches import Arrow, Circle
 from mpl_toolkits.mplot3d import Axes3D
@@ -63,8 +64,9 @@ class DeltaArrayMJ(BaseMJEnv):
         self.rope_chunks = args['rope_chunks']
         self.rope = self.args['obj_name'] == 'rope'
         self.epsilon = 1e-6
-        self.scaling_factor = 0.1
+        self.scaling_factor = 0.15
         self.max_reward = 10000.0
+        self.obj_name = obj_name
 
         if self.rope:
             self.rope_body_ids = rope_utils.get_rope_body_ids(self.model)
@@ -74,14 +76,14 @@ class DeltaArrayMJ(BaseMJEnv):
             self.goal_bd_pts_smol = rope_utils.sample_points(goal_rope_coords, 50)
             # self.init_rope_bd_pts_world = self.get_bdpts_traditional(self.init_img)
         else:
-            obj_joint_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, self.args['obj_name'])
+            obj_joint_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, self.obj_name)
             self.obj_id = self.model.jnt_qposadr[obj_joint_id]
-            # self.obj_id = self.model.body(self.args['obj_name']).id
+            self.obj_body_id = self.model.body(self.obj_name).id
 
     def run_sim(self):
         loop = range(self.args['simlen']) if self.args['simlen'] is not None else iter(int, 1)
         for i in loop:
-            self.update_sim()
+            self.update_sim(simlen=1)
                 
     def convert_world_2_pix(self, vecs):
         result = np.zeros((vecs.shape[0], 2))
@@ -114,16 +116,17 @@ class DeltaArrayMJ(BaseMJEnv):
             return bd_pts_pix, bd_pts_world, None, None
             
     def get_bdpts_traditional(self, img=None):
-        if img is None:
-            img = self.get_image()
-        hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
-        mask = cv2.inRange(hsv, self.lower_green_filter, self.upper_green_filter)
-        seg_map = cv2.bitwise_and(img, img, mask = mask)
-        seg_map = cv2.cvtColor(seg_map, cv2.COLOR_RGB2GRAY)
+        # if img is None:
+        #     img = self.get_image()
+        # hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+        # mask = cv2.inRange(hsv, self.lower_green_filter, self.upper_green_filter)
+        # seg_map = cv2.bitwise_and(img, img, mask = mask)
+        # seg_map = cv2.cvtColor(seg_map, cv2.COLOR_RGB2GRAY)
 
+        seg_map = self.get_segmentation(self.obj_body_id+1)
         boundary = cv2.Canny(seg_map,100,200)
         boundary_pts = np.array(np.where(boundary==255)).T
-        return boundary_pts
+        return geom_helper.sample_boundary_points(self.convert_pix_2_world(boundary_pts), 200)
     
     def set_body_pose_and_get_bd_pts(self, tx, rot, trad=True):
         self.data.qpos[self.obj_id:self.obj_id+7] = [*tx, *rot.as_quat(scalar_first=True)]
@@ -133,35 +136,41 @@ class DeltaArrayMJ(BaseMJEnv):
         else:
             return self.get_bdpts_learned(self.args['detection_string'])
         
-    def set_rl_states(self):
-        self.n_idxs = len(self.active_idxs)
-        self.pos[:self.n_idxs] = self.active_idxs.copy()
-        
-        self.raw_rb_pos = self.nn_helper.kdtree_positions_world[self.active_idxs]
-        
-        self.init_state[:self.n_idxs, :2] = self.init_nn_bd_pts - self.raw_rb_pos
-        self.init_state[:self.n_idxs, 2:4] = self.goal_nn_bd_pts - self.raw_rb_pos
-        
-        self.final_state[:self.n_idxs, 2:4] = self.goal_nn_bd_pts - self.raw_rb_pos
-        
-        self.init_grasp_state[:self.n_idxs, 2:4] = self.nn_helper.kdtree_positions_pix[self.active_idxs]/self.img_size
-        self.init_grasp_state[:self.n_idxs, :2] = self.convert_world_2_pix(self.init_nn_bd_pts)/self.img_size
+    def set_rl_states(self, grasp=False, final=False):
+        if final:
+            self.get_final_obj_pose()
+            self.final_state[:self.n_idxs, :2] = self.final_nn_bd_pts - self.raw_rb_pos
+            self.final_state[:self.n_idxs, 4:6] = self.actions[:self.n_idxs]
+        elif grasp:
+            self.init_state[:self.n_idxs, 4:6] = self.actions_grasp[:self.n_idxs]
+        else:
+            self.n_idxs = len(self.active_idxs)
+            self.pos[:self.n_idxs] = self.active_idxs.copy()
+            
+            self.raw_rb_pos = self.nn_helper.kdtree_positions_world[self.active_idxs]
+            
+            self.init_state[:self.n_idxs, :2] = self.init_nn_bd_pts - self.raw_rb_pos
+            self.init_state[:self.n_idxs, 2:4] = self.goal_nn_bd_pts - self.raw_rb_pos
+            
+            self.final_state[:self.n_idxs, 2:4] = self.init_state[:self.n_idxs, 2:4].copy()
+            
+            # self.init_grasp_state[:self.n_idxs, 2:4] = self.nn_helper.kdtree_positions_pix[self.active_idxs]/self.img_size
+            # self.init_grasp_state[:self.n_idxs, :2] = self.convert_world_2_pix(self.init_nn_bd_pts)/self.img_size
         
     def set_init_obj_pose(self):
         tx = (np.random.uniform(0.011, 0.24), np.random.uniform(0.007, 0.27), 1.002)
-        rot = R.from_euler('z', np.random.uniform(-np.pi, np.pi))
-        goal_bd_pts = self.set_body_pose_and_get_bd_pts(tx, rot)
+        yaw = np.random.uniform(-np.pi, np.pi)
+        rot = R.from_euler('xyz', (np.pi/2, 0, yaw))
+        self.goal_bd_pts = self.set_body_pose_and_get_bd_pts(tx, rot)
+        self.update_sim(simlen=1, td=0.5)
         
         tx = (tx[0] + np.random.uniform(-0.02, 0.02), tx[1] + np.random.uniform(-0.02, 0.02), 1.002)
-        rot = (rot * R.from_euler('z', np.random.uniform(-1.5707, 1.5707)))
-        init_bd_pts = self.set_body_pose_and_get_bd_pts(tx, rot)
+        rot = (R.from_euler('xyz', (np.pi/2, 0, yaw + np.random.uniform(-1.5707, 1.5707))))
+        self.init_bd_pts = self.set_body_pose_and_get_bd_pts(tx, rot)
         
-        self.init_bd_pts_smol = self.convert_pix_2_world(geom_helper.sample_boundary_points(init_bd_pts, 200))
-        goal_bd_pts_smol_non_homog = self.convert_pix_2_world(geom_helper.sample_boundary_points(goal_bd_pts, 200))
-        self.goal_bd_pts_smol = geom_helper.transform_boundary_points(self.init_bd_pts_smol, goal_bd_pts_smol_non_homog, self.init_bd_pts_smol, method="rigid")
+        idxs, self.init_nn_bd_pts, _ = self.nn_helper.get_nn_robots_objs(self.init_bd_pts, world=True)
+        self.goal_nn_bd_pts = geom_helper.transform_boundary_points(self.init_bd_pts, self.goal_bd_pts, self.init_nn_bd_pts, method="rigid")
         
-        idxs, self.init_nn_bd_pts, _ = self.nn_helper.get_nn_robots_objs(self.init_bd_pts_smol)
-        self.goal_nn_bd_pts = geom_helper.transform_boundary_points(self.init_bd_pts_smol, self.goal_bd_pts_smol, self.init_nn_bd_pts, method="rigid")
         self.active_idxs = list(idxs)
         self.set_rl_states()
         
@@ -189,11 +198,8 @@ class DeltaArrayMJ(BaseMJEnv):
         self.set_rl_states()
         
     def get_final_obj_pose(self):
-        final_bd_pts = self.get_bdpts_traditional()
-        final_bd_pts_smol_non_homog = self.convert_pix_2_world(geom_helper.sample_boundary_points(final_bd_pts, 200))
-        self.final_bd_pts_smol = geom_helper.transform_boundary_points(self.init_bd_pts_smol, final_bd_pts_smol_non_homog, self.init_bd_pts_smol, method="rigid")
-        final_nn_bd_pts = geom_helper.transform_boundary_points(self.init_bd_pts_smol, self.final_bd_pts_smol, self.init_nn_bd_pts, method="rigid")
-        return final_nn_bd_pts - self.raw_rb_pos
+        self.final_bd_pts = self.get_bdpts_traditional()
+        self.final_nn_bd_pts = geom_helper.transform_boundary_points(self.init_bd_pts, self.final_bd_pts, self.init_nn_bd_pts, method="rigid")
 
     def get_final_rope_pose(self):
         img = self.get_image()
@@ -225,7 +231,10 @@ class DeltaArrayMJ(BaseMJEnv):
             self.set_init_obj_pose()
             
     def compute_reward(self):
-        dist = np.mean(np.linalg.norm(self.goal_bd_pts_smol - self.final_bd_pts_smol, axis=1))
+        # self.plot_visual_servo_debug(self.init_nn_bd_pts, self.goal_nn_bd_pts, self.sf_nn_bd_pts, self.final_nn_bd_pts, self.actions[:self.n_idxs])
+        # dist = np.mean(np.linalg.norm(self.final_state[:self.n_idxs, 2:4] - self.final_state[:self.n_idxs, :2], axis=1))
+        dist = np.mean(np.linalg.norm(self.goal_nn_bd_pts - self.final_nn_bd_pts, axis=1))
+        # dist = np.mean(np.linalg.norm(self.goal_bd_pts - self.final_bd_pts, axis=1))
         ep_reward = np.clip(self.scaling_factor / (dist**2 + self.epsilon), 0, self.max_reward)
         
         if self.args['ca']:
@@ -240,24 +249,25 @@ class DeltaArrayMJ(BaseMJEnv):
         xy = self.nn_helper.kdtree_positions_world[self.active_idxs]
         pos = np.hstack((xy, self.low_Z[:self.n_idxs, None] if low else self.high_Z[:self.n_idxs, None]))
         self.model.body_pos[body_ids] = pos
-        self.update_sim()
+        self.update_sim(simlen=1)
         
     def vs_action(self):
         if self.rope:
             semi_final_nn_bd_pts = self.get_final_rope_pose() + self.raw_rb_pos
         else:
-            semi_final_bd_pts = self.get_bdpts_traditional()
-            semi_final_bd_pts_smol = self.convert_pix_2_world(geom_helper.sample_boundary_points(semi_final_bd_pts, 200))
-            semi_final_nn_bd_pts = geom_helper.transform_boundary_points(self.init_bd_pts_smol, semi_final_bd_pts_smol, self.init_nn_bd_pts, method="rigid")
+            sf_bd_pts = self.get_bdpts_traditional()
+            self.sf_nn_bd_pts = geom_helper.transform_boundary_points(self.init_bd_pts, sf_bd_pts, self.init_nn_bd_pts, method="rigid")
         
-        displacement_vectors = self.goal_nn_bd_pts - semi_final_nn_bd_pts
+        displacement_vectors = self.goal_nn_bd_pts - self.sf_nn_bd_pts
         actions = self.actions_grasp[:self.n_idxs] + displacement_vectors
+        
         # actions = np.random.uniform(-0.03, 0.03, size=(self.n_idxs, 2)) #Random Actions Code if needed in future
         return actions
         
         
     def apply_action(self, acts):
         self.actions[:self.n_idxs] = self.Delta.clip_points_to_workspace(acts)
+        # self.actions[:self.n_idxs] = np.clip(acts, -0.03, 0.03)
         body_ids = self.robot_ids[self.active_idxs]
         self.set_z_positions(body_ids, low=True)
         ctrl_indices = np.array([(2*(id-1), 2*(id-1)+1) for id in body_ids]).flatten()
