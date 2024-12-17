@@ -249,7 +249,10 @@ class DeltaArrayMJ(BaseMJEnv):
         if self.args['ca']:
             ep_reward -= 5*np.mean(abs(self.actions[:self.n_idxs] - self.actions_grasp[:self.n_idxs]))
             
-        return ep_reward*0.01/100
+        if self.args['reward_scale'] is not None:
+            return ep_reward*self.args['reward_scale']
+        else:
+            return ep_reward*0.0001
         # return -100*np.mean(np.linalg.norm(self.goal_bd_pts_smol - self.final_bd_pts_smol, axis=1))
         # return -10*np.linalg.norm(self.goal_bd_pts_smol - self.final_bd_pts_smol)
             

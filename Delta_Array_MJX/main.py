@@ -141,6 +141,7 @@ if __name__ == "__main__":
     parser.add_argument('-wu', '--warmup', type=int, default=100000, help='Max warmup episodes')
     parser.add_argument("-cd", "--collect_data", action="store_true", help="Collect data to be stored in RB")
     parser.add_argument("-rblen", "--rblen", type=int, default=500000, help="How much data to be stored in RB")
+    parser.add_argument("-rs", "--reward_scale", type=float, default=1, help="Scale reward function by this value")
     args = parser.parse_args()
     args = vars(args)
 

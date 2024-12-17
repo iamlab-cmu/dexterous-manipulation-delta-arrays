@@ -154,14 +154,6 @@ class MATSAC:
             self.log_dict['std'].append(std.mean().item())
 
     def update(self, batch_size, current_episode, n_updates, logged_rew):
-        self.log_dict = {
-            'Q loss': [],
-            'Pi loss': [],
-            'alpha': [],
-            'mu': [],
-            'std': [],
-            'Reward': logged_rew
-        }
         for j in range(n_updates):
             self.internal_updates_counter += 1
             # if self.internal_updates_counter == 1:
@@ -208,8 +200,17 @@ class MATSAC:
             if (self.train_or_test == "train") and (self.internal_updates_counter % 20000) == 0:
                 torch.save(self.tf.state_dict(), f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
         
-        if not self.hp_dict["dont_log"]:
-            wandb.log({k: np.mean(v) if isinstance(v, list) and len(v) > 0 else v for k, v in self.log_dict.items()})
+            if (not self.hp_dict["dont_log"]) and (self.internal_updates_counter % 100) == 0:
+                wandb.log({k: np.mean(v) if isinstance(v, list) and len(v) > 0 else v for k, v in self.log_dict.items()})
+                self.log_dict = {
+                    'Q loss': [],
+                    'Pi loss': [],
+                    'alpha': [],
+                    'mu': [],
+                    'std': [],
+                    'Reward': logged_rew
+                }
+                
                 
     
     @torch.no_grad()
