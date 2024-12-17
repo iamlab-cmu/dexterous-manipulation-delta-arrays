@@ -5,6 +5,7 @@ import time
 import itertools
 import wandb
 import pickle as pkl
+import uuid
 
 import torch
 import torch.nn as nn
@@ -27,6 +28,8 @@ class MATSAC:
         self.act_limit = self.env_dict['action_space']['high']
         self.device = self.hp_dict['dev_rl']
         self.gauss = hp_dict['gauss']
+        if not self.hp_dict['resume']:
+            self.uuid = uuid.uuid4()
 
         if self.hp_dict['data_type'] == "image":
             self.ma_replay_buffer = MARB.MultiAgentImageReplayBuffer(act_dim=self.act_dim, size=hp_dict['replay_size'], max_agents=self.tf.max_agents)
@@ -198,7 +201,13 @@ class MATSAC:
                     p_target.data.add_((1 - self.hp_dict['tau']) * p.data)
 
             if (self.train_or_test == "train") and (self.internal_updates_counter % 20000) == 0:
-                torch.save(self.tf.state_dict(), f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
+                dicc = {
+                    'model': self.tf.state_dict(),
+                    'actor_optimizer': self.optimizer_actor.state_dict(),
+                    'critic_optimizer': self.optimizer_critic.state_dict(),
+                    'uuid': self.uuid
+                }
+                torch.save(dicc, f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
         
             if (not self.hp_dict["dont_log"]) and (self.internal_updates_counter % 100) == 0:
                 wandb.log({k: np.mean(v) if isinstance(v, list) and len(v) > 0 else v for k, v in self.log_dict.items()})
@@ -222,6 +231,10 @@ class MATSAC:
         return actions.tolist()
         
     def load_saved_policy(self, path='./data/rl_data/backup/matsac_expt_grasp/pyt_save/model.pt'):
-        print(path)
-        self.tf.load_state_dict(torch.load(path, map_location=self.hp_dict['dev_rl']))
+        dicc = torch.load(path, map_location=self.hp_dict['dev_rl'])
+        
+        self.tf.load_state_dict(dicc['model'])
+        self.optimizer_actor.load_state_dict(dicc['actor_optimizer'])
+        self.optimizer_critic.load_state_dict(dicc['critic_optimizer'])
+        self.uuid = dicc['uuid']
         self.tf_target = deepcopy(self.tf)

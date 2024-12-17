@@ -7,6 +7,7 @@ from sklearn.preprocessing import OneHotEncoder, LabelEncoder
 import tqdm
 import itertools
 import wandb
+import uuid
 
 import torch
 import torch.nn as nn
@@ -75,6 +76,8 @@ class MABC_Finetune:
         self.device = self.hp_dict['device']
         self.tf = Transformer(self.hp_dict)
         self.gauss = self.hp_dict['gauss']
+        if not self.hp_dict['resume']:
+            self.uuid = uuid.uuid4()
         # self.tf.to(self.hp_dict['device'])
         # self.optimizer = optim.AdamW(self.tf.parameters(), lr=self.hp_dict['pi_lr'], weight_decay=0)
         # self.tf.load_state_dict(torch.load(self.hp_dict['ckpt_loc'], weights_only=False)['tf'])
@@ -212,12 +215,18 @@ class MABC_Finetune:
             #     for p, p_target in zip(self.tf.parameters(), self.tf_target.parameters()):
             #         p_target.data.mul_(self.hp_dict['tau'])
             #         p_target.data.add_((1 - self.hp_dict['tau']) * p.data)
+            if (self.train_or_test == "train") and (self.internal_updates_counter % 20000) == 0:
+                dicc = {
+                    'model': self.tf.state_dict(),
+                    'actor_optimizer': self.optimizer_actor.state_dict(),
+                    'critic_optimizer': self.optimizer_critic.state_dict(),
+                    'uuid': self.uuid
+                }
+                torch.save(dicc, f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
 
         if not self.hp_dict["dont_log"]:
             wandb.log({k: np.mean(v) if isinstance(v, list) and len(v) > 0 else v for k, v in self.log_dict.items()})
                 
-        if self.internal_updates_counter % 50000 == 0:
-            torch.save(self.tf.state_dict(), f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
     
     @torch.no_grad()
     def get_actions(self, obs, pos, deterministic=False):
@@ -228,6 +237,10 @@ class MABC_Finetune:
         return actions.detach().cpu().numpy()
         
     def load_saved_policy(self, path='./data/rl_data/backup/matsac_expt_grasp/pyt_save/model.pt'):
-        print(path)
-        self.tf.load_state_dict(torch.load(path, map_location=self.hp_dict['dev_rl']))
+        dicc = torch.load(path, map_location=self.hp_dict['dev_rl'])
+        
+        self.tf.load_state_dict(dicc['model'])
+        self.optimizer_actor.load_state_dict(dicc['actor_optimizer'])
+        self.optimizer_critic.load_state_dict(dicc['critic_optimizer'])
+        self.uuid = dicc['uuid']
         self.tf_target = deepcopy(self.tf)

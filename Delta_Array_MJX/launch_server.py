@@ -90,16 +90,10 @@ class DeltaArrayServer():
             'learned_alpha'     : args.la,
             'test_traj'         : args.test_traj,
             'cmu_ri'            : args.cmu_ri,
-            'test_algos'        : ['MABC', 'Random', 'Vis Servo', 'MATSAC', 'MABC Finetuned']
+            'test_algos'        : ['MABC', 'Random', 'Vis Servo', 'MATSAC', 'MABC Finetuned'],
+            'resume'            : args.resume != "No",
         }
         logger_kwargs = {}
-        if self.train_or_test=="train":
-            if not self.hp_dict["dont_log"]:
-                logger_kwargs = setup_logger_kwargs(self.hp_dict['exp_name'], 69420, data_dir=self.hp_dict['data_dir'])
-                # writer = SummaryWriter(log_dir=f"./tensorboard/{self.hp_dict['exp_name']}")
-                wandb.init(project="MARL_Dexterous_Manipulation",
-                        config=self.hp_dict,
-                        name = self.hp_dict['exp_name'])
 
         self.grasping_agent = sac.SAC(single_agent_env_dict, self.hp_dict, logger_kwargs, ma=False, train_or_test="test")
         self.grasping_agent.load_saved_policy('./models/trained_models/SAC_1_agent_stochastic/pyt_save/model.pt')
@@ -118,6 +112,8 @@ class DeltaArrayServer():
         else:
             if args.algo=="MATSAC":
                 self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
+                if args.resume != "No":
+                    self.pushing_agent.load_saved_policy(args.resume)
             elif args.algo=="SAC":
                 self.pushing_agent = sac.SAC(simplified_ma_env_dict, self.hp_dict, logger_kwargs, ma=True, train_or_test="train")
             elif args.algo=="MADP":
@@ -133,6 +129,21 @@ class DeltaArrayServer():
                 self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/pyt_save/model.pt')
             elif (self.train_or_test=="test") and (args.algo in ["MADP", "MABC", "MABC_Finetune"]):
                 self.pushing_agent.load_saved_policy(f'./utils/MABC/{args.name}.pth')
+                
+        
+        if self.train_or_test=="train":
+            if not self.hp_dict["dont_log"]:
+                logger_kwargs = setup_logger_kwargs(self.hp_dict['exp_name'], 69420, data_dir=self.hp_dict['data_dir'])
+                if args.resume != "No":
+                    wandb.init(project="MARL_Dexterous_Manipulation",
+                            config=self.hp_dict,
+                            name = self.hp_dict['exp_name'],
+                            id=self.pushing_agent.uuid)
+                    
+                else:
+                    wandb.init(project="MARL_Dexterous_Manipulation",
+                            config=self.hp_dict,
+                            name = self.hp_dict['exp_name'])
 
 class VisionRequest(BaseModel):
     img: Any
@@ -240,6 +251,7 @@ if __name__ == "__main__":
     parser.add_argument("-bs", "--bs", type=int, default=256, help="Batch Size")
     parser.add_argument("-warmup", "--warmup", type=int, default=5000, help="Exploration Cutoff")
     parser.add_argument("-algo", "--algo", type=str, default="MATSAC", help="RL Algorithm")
+    parser.add_argument("-resume", "--resume", type=str, default="No", help="Path to ckpt to resume from")
     parser.add_argument("-pilr", "--pilr", type=float, default=1e-4, help="% of data to use for visual servoing")
     parser.add_argument("-qlr", "--qlr", type=float, default=1e-4, help="% of data to use for visual servoing")
     parser.add_argument("-q_etamin", "--q_etamin", type=float, default=1e-5, help="% of data to use for visual servoing")
