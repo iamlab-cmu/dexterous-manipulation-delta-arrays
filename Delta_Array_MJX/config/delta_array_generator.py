@@ -34,7 +34,7 @@ class DeltaArrayEnvCreator:
         
         ET.SubElement(root, 'compiler', autolimits="true", angle="degree")
         
-        option = ET.SubElement(root, 'option', integrator="implicitfast", timestep="0.005")
+        option = ET.SubElement(root, 'option', integrator="implicitfast", timestep="0.002")
         ET.SubElement(option, 'flag', multiccd="enable")
         
         default = ET.SubElement(root, 'default')

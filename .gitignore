@@ -25,3 +25,7 @@ mabc_final*
 git-filter-repo
 Delta_Array_MJX/data/rl_data/
 Multi_Agent_RL_Dexterous_Manipulation/data/rl_data/matsac_FINAL/
+Multi_Agent_RL_Dexterous_Manipulation/data/rl_data/matsac_finetune_FINAL/
+Delta_Array_MJX/models/trained_models/
+mabc_mj*
+Multi_Agent_RL_Dexterous_Manipulation/data/rl_data/mabc_finetune_FINAL

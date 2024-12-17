@@ -88,6 +88,8 @@ class DeltaArrayServer():
             'masked'            : not args.unmasked,
             'gauss'             : args.gauss,
             'learned_alpha'     : args.la,
+            'test_traj'         : args.test_traj,
+            'cmu_ri'            : args.cmu_ri,
             'test_algos'        : ['MABC', 'Random', 'Vis Servo', 'MATSAC', 'MABC Finetuned']
         }
         logger_kwargs = {}
@@ -102,7 +104,7 @@ class DeltaArrayServer():
         self.grasping_agent = sac.SAC(single_agent_env_dict, self.hp_dict, logger_kwargs, ma=False, train_or_test="test")
         self.grasping_agent.load_saved_policy('./models/trained_models/SAC_1_agent_stochastic/pyt_save/model.pt')
 
-        if args.test_traj:
+        if self.hp_dict['test_traj']:
             self.pushing_agent = {
                 "Random" : None,
                 "Vis Servo" : None,
@@ -124,6 +126,7 @@ class DeltaArrayServer():
                 self.pushing_agent = mabc.MABC()
             elif args.algo=="MABC_Finetune":
                 self.pushing_agent = mabc_finetune.MABC_Finetune(self.hp_dict)
+                self.pushing_agent.load_saved_policy(f'./utils/MABC/{args.mabc_name}.pt')
 
             if (self.train_or_test=="test") and (args.algo=="MATSAC"):
                 # self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/{args.name}_s69420/pyt_save/model.pt')
@@ -177,6 +180,9 @@ class MATLoadModel(BaseModel):
 class MATLoadModelResponse(BaseModel):
     status: bool
     
+class LogInferenceRequest(BaseModel):
+    rewards: Any
+    
 app = FastAPI()
 @app.post("/vision/")
 def vision_endpoint(request: VisionRequest):
@@ -212,9 +218,11 @@ def ma_endpoint(request):
 def ma_endpoint(request: MATLoadModel):
     return MATLoadModelResponse(status=server.pushing_agent.load_saved_policy(request.path))
 
-@app.post("/wandb/log_reward")
-def wandb_log_reward(reward: float):
-    wandb.log({"Reward": reward})
+@app.post("/log/inference")
+def wandb_log_reward(request: LogInferenceRequest):
+    if not server.hp_dict["dont_log"]:
+        for reward in request.rewards:
+            wandb.log({"Inference Reward": reward})
     return
 
 
@@ -223,6 +231,7 @@ if __name__ == "__main__":
     parser.add_argument("-r", "--real", action="store_true", help="True for Real Robot Expt")
     parser.add_argument("-t", "--test", action="store_true", help="True for Test")
     parser.add_argument("-n", "--name", type=str, default="HAKUNA", help="Expt Name")
+    parser.add_argument("-n2", "--mabc_name", type=str, default="HAKUNA", help="MABC pretrained Expt Name")
     parser.add_argument("-data", "--data_type", type=str, default=None, help="Use simplified setup with only 4 fingers?")
     parser.add_argument('-detstr', "--detection_string", type=str, default="green block", help="Input to detect obj of interest")
     parser.add_argument("-dontlog", "--dont_log", action="store_true", help="Don't Log Experiment")
@@ -233,7 +242,6 @@ if __name__ == "__main__":
     parser.add_argument("-algo", "--algo", type=str, default="MATSAC", help="RL Algorithm")
     parser.add_argument("-pilr", "--pilr", type=float, default=1e-4, help="% of data to use for visual servoing")
     parser.add_argument("-qlr", "--qlr", type=float, default=1e-4, help="% of data to use for visual servoing")
-    parser.add_argument("-adaln", "--adaln", action="store_true", help="Use AdaLN Zero Transformer")
     parser.add_argument("-q_etamin", "--q_etamin", type=float, default=1e-5, help="% of data to use for visual servoing")
     parser.add_argument("-pi_etamin", "--pi_etamin", type=float, default=1e-5, help="% of data to use for visual servoing")
     parser.add_argument("-gradnorm", "--gradnorm", type=float, default=2.0, help="Grad norm for training")
@@ -242,7 +250,9 @@ if __name__ == "__main__":
     parser.add_argument("-odm", "--obj_detection_model", type=str, default="IDEA-Research/grounding-dino-tiny", help="Obj det model from HF")
     parser.add_argument("-sm", "--segmentation_model", type=str, default="facebook/sam-vit-base", help="Seg model from HF")
     parser.add_argument("-gauss", "--gauss", action="store_true", help="Use Gaussian Final Layers")
+    parser.add_argument("-adaln", "--adaln", action="store_true", help="Use AdaLN Zero Transformer")
     parser.add_argument("-tt", "--test_traj", action="store_true", help="Pure Inference Mode. Load all models")
+    parser.add_argument("-cmuri", "--cmu_ri", action="store_true", help="Pure Inference Mode. Load all models")
     parser.add_argument("-la", "--la", action="store_true", help="Is Alpha Learned?")
     parser.add_argument("-amp", "--amp", action="store_true", help="Turn on Automatic Mixed Precision")
     args = parser.parse_args()

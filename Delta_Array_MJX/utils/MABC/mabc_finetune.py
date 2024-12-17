@@ -15,7 +15,7 @@ from torch.utils.data import Dataset, DataLoader, Subset
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
-# from utils.MADP.dit_core import DiffusionTransformer, EMA
+# from utils.MABC.dit_core import DiffusionTransformer, EMA
 from utils.MABC.gpt_adaln_core import Transformer, count_vars
 import utils.multi_agent_replay_buffer as MARB
 
@@ -38,7 +38,7 @@ class MABC_Finetune:
         self.hp_dict = {
             "exp_name"          : parent_hp_dict['exp_name'],
             "data_dir"          : "./data/rl_data",
-            "ckpt_loc"          : "./utils/MADP/mabc_new_data_ac_gauss.pth",
+            "ckpt_loc"          : "./utils/MABC/mabc_new_data_ac_gauss.pth",
             "dont_log"          : parent_hp_dict['dont_log'],
             "replay_size"       : 500001,
             'warmup_epochs'     : 1000,
@@ -47,7 +47,7 @@ class MABC_Finetune:
             "q_eta_min"         : parent_hp_dict['q_eta_min'],
             "pi_eta_min"        : parent_hp_dict['pi_eta_min'],
             'ckpt_dir'          : './mabc_finetune_final.pth',
-            'idx_embed_loc'     : './utils/MADP/idx_embedding_new.pth',
+            'idx_embed_loc'     : './utils/MABC/idx_embedding_new.pth',
             "tau"               : 0.005,
             "gamma"             : 0.99,
 
@@ -57,7 +57,8 @@ class MABC_Finetune:
             'action_dim'        : 2,
             'act_limit'         : 0.03,
             "device"            : parent_hp_dict['dev_rl'],
-            'optim'             : 'adam',
+            "dev_rl"            : parent_hp_dict['dev_rl'],
+            'optim'             : parent_hp_dict['optim'],
             "model_dim"         : 256,
             "num_heads"         : 8,
             "dim_ff"            : 512,
@@ -69,7 +70,6 @@ class MABC_Finetune:
             'masked'            : parent_hp_dict['masked'],
             'cmu_ri'            : parent_hp_dict['cmu_ri'],
             'gauss'             : parent_hp_dict['gauss'],
-            'ca'                : parent_hp_dict['ca'],
             'learned_alpha'     : parent_hp_dict['learned_alpha'],
         }
         self.device = self.hp_dict['device']
@@ -87,8 +87,8 @@ class MABC_Finetune:
         print(f"\nNumber of parameters: {np.sum(var_counts)}\n")
 
         if self.hp_dict['optim']=="adam":
-            self.optimizer_actor = optim.AdamW(filter(lambda p: p.requires_grad, self.tf.decoder_actor.parameters()), lr=self.hp_dict['pi_lr'], weight_decay=1e-6)
-            self.optimizer_critic = optim.AdamW(filter(lambda p: p.requires_grad, self.tf.decoder_critic.parameters()), lr=self.hp_dict['q_lr'], weight_decay=1e-6)
+            self.optimizer_actor = optim.AdamW(self.tf.decoder_actor.parameters(), lr=self.hp_dict['pi_lr'], weight_decay=1e-2)
+            self.optimizer_critic = optim.AdamW(self.tf.decoder_critic.parameters(), lr=self.hp_dict['q_lr'], weight_decay=1e-2)
         elif self.hp_dict['optim']=="sgd":
             self.optimizer_actor = optim.SGD(filter(lambda p: p.requires_grad, self.tf.decoder_actor.parameters()), lr=self.hp_dict['pi_lr'])
             self.optimizer_critic = optim.SGD(filter(lambda p: p.requires_grad, self.tf.decoder_critic.parameters()), lr=self.hp_dict['q_lr'])
@@ -173,7 +173,7 @@ class MABC_Finetune:
             'alpha': [],
             'mu': [],
             'std': [],
-            'Reward': logged_rew.tolist()
+            'Reward': logged_rew
         }
         for j in range(n_envs):
             self.internal_updates_counter += 1
@@ -208,10 +208,10 @@ class MABC_Finetune:
             self.compute_pi_loss(states, pos)
 
             # Target Update
-            # with torch.no_grad():
-            #     for p, p_target in zip(self.tf.parameters(), self.tf_target.parameters()):
-            #         p_target.data.mul_(self.hp_dict['tau'])
-            #         p_target.data.add_((1 - self.hp_dict['tau']) * p.data)
+            with torch.no_grad():
+                for p, p_target in zip(self.tf.parameters(), self.tf_target.parameters()):
+                    p_target.data.mul_(self.hp_dict['tau'])
+                    p_target.data.add_((1 - self.hp_dict['tau']) * p.data)
 
         if not self.hp_dict["dont_log"]:
             wandb.log({k: np.mean(v) if isinstance(v, list) and len(v) > 0 else v for k, v in self.log_dict.items()})
@@ -225,9 +225,11 @@ class MABC_Finetune:
         pos = torch.as_tensor(pos, dtype=torch.int32).unsqueeze(0).to(self.device)
         
         actions = self.tf.get_actions(obs, pos, deterministic=deterministic)
-        return actions.detach().cpu().numpy()
+        return actions.tolist()
         
     def load_saved_policy(self, path='./data/rl_data/backup/matsac_expt_grasp/pyt_save/model.pt'):
-        print(path)
-        self.tf.load_state_dict(torch.load(path, map_location=self.hp_dict['dev_rl']))
+        nn_dicts = torch.load(path, map_location=self.hp_dict['dev_rl'], weights_only=False)
+        self.tf.load_state_dict(nn_dicts['model'])
+        self.optimizer_actor.load_state_dict(nn_dicts['optimizer_actor'])
+        self.optimizer_critic.load_state_dict(nn_dicts['optimizer_critic'])
         self.tf_target = deepcopy(self.tf)

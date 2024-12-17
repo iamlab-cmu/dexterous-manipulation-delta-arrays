@@ -116,16 +116,19 @@ class DeltaArrayMJ(BaseMJEnv):
             return bd_pts_pix, bd_pts_world, None, None
             
     def get_bdpts_traditional(self, img=None):
-        # if img is None:
-        #     img = self.get_image()
-        # hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
-        # mask = cv2.inRange(hsv, self.lower_green_filter, self.upper_green_filter)
-        # seg_map = cv2.bitwise_and(img, img, mask = mask)
-        # seg_map = cv2.cvtColor(seg_map, cv2.COLOR_RGB2GRAY)
+        if img is None:
+            img = self.get_image()
+        hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+        mask = cv2.inRange(hsv, self.lower_green_filter, self.upper_green_filter)
+        seg_map = cv2.bitwise_and(img, img, mask = mask)
+        seg_map = cv2.cvtColor(seg_map, cv2.COLOR_RGB2GRAY)
 
-        seg_map = self.get_segmentation(self.obj_body_id+1)
+        # seg_map = self.get_segmentation(self.obj_body_id+1)
         boundary = cv2.Canny(seg_map,100,200)
         boundary_pts = np.array(np.where(boundary==255)).T
+        # print(len(boundary_pts))
+        if len(boundary_pts) == 0:
+            return None
         return geom_helper.sample_boundary_points(self.convert_pix_2_world(boundary_pts), 200)
     
     def set_body_pose_and_get_bd_pts(self, tx, rot, trad=True):
@@ -162,17 +165,22 @@ class DeltaArrayMJ(BaseMJEnv):
         yaw = np.random.uniform(-np.pi, np.pi)
         rot = R.from_euler('xyz', (np.pi/2, 0, yaw))
         self.goal_bd_pts = self.set_body_pose_and_get_bd_pts(tx, rot)
+        # print(self.goal_bd_pts)
         self.update_sim(simlen=1, td=0.5)
         
         tx = (tx[0] + np.random.uniform(-0.02, 0.02), tx[1] + np.random.uniform(-0.02, 0.02), 1.002)
         rot = (R.from_euler('xyz', (np.pi/2, 0, yaw + np.random.uniform(-1.5707, 1.5707))))
         self.init_bd_pts = self.set_body_pose_and_get_bd_pts(tx, rot)
+        # print(self.init_bd_pts)
+        if (self.init_bd_pts is None) or (self.goal_bd_pts is None):
+            return False
         
         idxs, self.init_nn_bd_pts, _ = self.nn_helper.get_nn_robots_objs(self.init_bd_pts, world=True)
         self.goal_nn_bd_pts = geom_helper.transform_boundary_points(self.init_bd_pts, self.goal_bd_pts, self.init_nn_bd_pts, method="rigid")
         
         self.active_idxs = list(idxs)
         self.set_rl_states()
+        return True
         
     def set_rope_pose(self, trad=True):
         for _ in range(1000):
@@ -226,9 +234,10 @@ class DeltaArrayMJ(BaseMJEnv):
         self.pos = np.zeros(64)
         
         if self.rope:
-            self.set_rope_pose()
+            return self.set_rope_pose()
         else:
-            self.set_init_obj_pose()
+            return self.set_init_obj_pose()
+        
             
     def compute_reward(self):
         # self.plot_visual_servo_debug(self.init_nn_bd_pts, self.goal_nn_bd_pts, self.sf_nn_bd_pts, self.final_nn_bd_pts, self.actions[:self.n_idxs])
@@ -240,7 +249,7 @@ class DeltaArrayMJ(BaseMJEnv):
         if self.args['ca']:
             ep_reward -= 5*np.mean(abs(self.actions[:self.n_idxs] - self.actions_grasp[:self.n_idxs]))
             
-        return ep_reward*0.01
+        return ep_reward*0.01/100
         # return -100*np.mean(np.linalg.norm(self.goal_bd_pts_smol - self.final_bd_pts_smol, axis=1))
         # return -10*np.linalg.norm(self.goal_bd_pts_smol - self.final_bd_pts_smol)
             

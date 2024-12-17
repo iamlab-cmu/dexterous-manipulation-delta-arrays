@@ -12,7 +12,7 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader, Subset
 import torch.nn.functional as F
 # from utils.MADP.dit_core import DiffusionTransformer, EMA
-from utils.MADP.gpt_adaln_no_autoreg import Transformer
+from utils.MABC.gpt_adaln_core import Transformer
 
 device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 

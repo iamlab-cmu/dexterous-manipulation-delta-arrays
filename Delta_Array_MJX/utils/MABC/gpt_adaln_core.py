@@ -237,7 +237,7 @@ class GPT_AdaLN(nn.Module):
             return act_mean, std
         else:
             act_mean = self.final_layer(act_enc, conditional_enc)
-        return act_mean
+            return act_mean
 
 class Transformer(nn.Module):
     def __init__(self, hp_dict, delta_array_size = (8, 8)):

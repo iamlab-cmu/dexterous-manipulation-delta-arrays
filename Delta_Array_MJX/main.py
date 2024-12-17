@@ -20,6 +20,7 @@ MARB_STORE          = 4
 MARB_SAVE           = 5
 SAVE_MODEL          = 6
 LOAD_MODEL          = 7
+LOG_INFERENCE       = 8
 
 url_dict = {
     QUERY_VLM: "http://localhost:8000/vision",
@@ -30,6 +31,7 @@ url_dict = {
     MARB_SAVE: "http://localhost:8000/marb/save",
     SAVE_MODEL: "http://localhost:8000/marl/save_model",
     LOAD_MODEL: "http://localhost:8000/marl/load_model",
+    LOG_INFERENCE: "http://localhost:8000/log/inference"
 }
 
 OBJ_NAMES = ["block", 'crescent', 'cross', 'diamond', 'hexagon', 'star', 'triangle', 'parallelogram', 'semicircle', "trapezium", 'disc']
@@ -57,51 +59,54 @@ def run_env(env_id, sim_len, n_runs, return_dict, args, inference=False):
         run_dict = {}
         try:
             for nrun in range(n_runs):
-                env.reset()
-                grasp_states = { 'states': env.init_grasp_state[:env.n_idxs].tolist() }
+                if env.reset():
+                    grasp_states = { 'states': env.init_grasp_state[:env.n_idxs].tolist() }
 
-                # env.actions_grasp[:env.n_idxs] = send_request(grasp_states, SA_GET_ACTION)['actions']
-                env.actions_grasp[:env.n_idxs] = env.init_nn_bd_pts - env.raw_rb_pos
-                env.set_rl_states(grasp=True)
-                
-                # APPLY GRASP ACTIONS
-                env.apply_action(env.actions_grasp[:env.n_idxs])
-                env.update_sim(sim_len)
-
-                push_states = {
-                    'states': env.init_state[:env.n_idxs].tolist(),
-                    'pos': env.pos[:env.n_idxs].tolist(),
-                    'det': inference
-                }
-
-                # APPLY PUSH ACTIONS
-                if (args['vis_servo']) or (np.random.rand() < args['vsd']):
-                    actions = env.vs_action()
-                    env.apply_action(actions)
-                else:
-                    response = send_request(push_states, MA_GET_ACTION)
-                    if response is None:
-                        print("Failed to get actions from server.")
-                        return
-                    actions = np.array(response['ma_actions'])
-                    env.final_state[:env.n_idxs, 4:6] = actions
-                    env.apply_action(actions)
+                    # env.actions_grasp[:env.n_idxs] = send_request(grasp_states, SA_GET_ACTION)['actions']
+                    env.actions_grasp[:env.n_idxs] = env.init_nn_bd_pts - env.raw_rb_pos
+                    env.set_rl_states(grasp=True)
                     
-                env.update_sim(sim_len)
+                    # APPLY GRASP ACTIONS
+                    env.apply_action(env.actions_grasp[:env.n_idxs])
+                    env.update_sim(sim_len)
 
-                env.set_rl_states(final=True)
-                reward = env.compute_reward()
-                # print(f"Env {env_id}, Run {nrun} Reward: {reward}")
+                    push_states = {
+                        'states': env.init_state[:env.n_idxs].tolist(),
+                        'pos': env.pos[:env.n_idxs].tolist(),
+                        'det': inference
+                    }
 
-                run_dict[nrun] = {
-                    "s0": push_states['states'],
-                    "a": env.actions[:env.n_idxs].tolist(),
-                    "p": push_states['pos'],
-                    "r": reward,
-                    "s1": env.final_state[:env.n_idxs].tolist(),
-                    "d": True if reward > 90 else False,
-                    "N": env.n_idxs,
-                }
+                    # APPLY PUSH ACTIONS
+                    if (args['vis_servo']) or (np.random.rand() < args['vsd']):
+                        actions = env.vs_action()
+                        env.apply_action(actions)
+                    else:
+                        response = send_request(push_states, MA_GET_ACTION)
+                        if response is None:
+                            print("Failed to get actions from server.")
+                            return
+                        actions = np.array(response['ma_actions'])
+                        env.final_state[:env.n_idxs, 4:6] = actions
+                        env.apply_action(actions)
+                        
+                    env.update_sim(sim_len)
+
+                    env.set_rl_states(final=True)
+                    reward = env.compute_reward()
+                    # print(f"Env {env_id}, Run {nrun} Reward: {reward}")
+
+                    run_dict[nrun] = {
+                        "s0": push_states['states'],
+                        "a": env.actions[:env.n_idxs].tolist(),
+                        "p": push_states['pos'],
+                        "r": reward,
+                        "s1": env.final_state[:env.n_idxs].tolist(),
+                        "d": True if reward > 0.8 else False,
+                        "N": env.n_idxs,
+                    }
+                else:
+                    print("Gandlela Env")
+                    continue
             # Store results in the shared return_dict
         finally:
             return_dict[env_id] = run_dict
@@ -126,8 +131,7 @@ if __name__ == "__main__":
     parser.add_argument('-obj', "--obj_name", type=str, default="ALL", help="Object to manipulate in sim")
     parser.add_argument('-nrb', '--num_rope_bodies', type=int, default=30, help='Number of cylinders in the rope')
     parser.add_argument("-v", "--vis_servo", action="store_true", help="True for Visual Servoing")
-    parser.add_argument("-vsd", "--vs_data", type=float, default=0, help="[0 to 1] ratio of data to use for visual servoing")
-    parser.add_argument("-print", "--print_summary", action="store_true", help="Print Summary and Store in Pickle File")
+    parser.add_argument("-vsd", "--vsd", type=float, default=0, help="[0 to 1] ratio of data to use for visual servoing")
     parser.add_argument("-savevid", "--save_vid", action="store_true", help="Save Videos at inference")
     parser.add_argument("-XX", "--donothing", action="store_true", help="Do nothing to test sim")
     parser.add_argument("-test_traj", "--test_traj", action="store_true", help="Test on trajectories")
@@ -166,35 +170,53 @@ if __name__ == "__main__":
             manager = Manager()
             return_dict = manager.dict()
 
+            if outer_loops%10 == 0:
+                inference = True
+                n_threads = 50
+                nruns = 20
+            else:
+                inference = False
+                
             processes = []
             for i in range(n_threads):
                 p = Process(target=run_env, args=(i, args['simlen'], n_runs, return_dict, args, inference))
                 processes.append(p)
                 p.start()
-
             for p in processes:
                 p.join()
 
-            update_dict['current_episode'] += n_threads*n_runs
-            update_dict['avg_reward'] = 0
-            replay_data = {'replay_data': []}
-            
-            iters = 0
-            for env_id, run_dict in return_dict.items():
-                for nrun, data in run_dict.items():
-                    iters += 1
-                    update_dict['avg_reward'] += data['r']
-                    replay_data['replay_data'].append((data['s0'], data['a'], data['p'], data['r'], data['s1'], data['d'], data['N']))
+            if inference:
+                rewards = []
+                for env_id, run_dict in return_dict.items():
+                    rew = 0
+                    for n, (nrun, data) in enumerate(run_dict.items()):
+                        rew += data['r']
+                    rewards.append(rew/n)
+                    print(f"Inference Avg Reward: {rew/n}")
+                send_request({'rewards': rewards}, LOG_INFERENCE)
+            else:
+                update_dict['avg_reward'] = 0
+                replay_data = {'replay_data': []}
                 
-            update_dict['avg_reward'] += iters 
-            send_request(replay_data, MARB_STORE)
-            print(f"Episode: {update_dict['current_episode']}, Avg Reward: {update_dict['avg_reward']}")
+                iters = 0
+                for env_id, run_dict in return_dict.items():
+                    for nrun, data in run_dict.items():
+                        iters += 1
+                        update_dict['avg_reward'] += data['r']
+                        replay_data['replay_data'].append((data['s0'], data['a'], data['p'], data['r'], data['s1'], data['d'], data['N']))
+                    
+                update_dict['current_episode'] += iters
+                update_dict['avg_reward'] /= iters 
+                send_request(replay_data, MARB_STORE)
+                print(f"Episode: {update_dict['current_episode']}, Avg Reward: {update_dict['avg_reward']}")
+                
+                if args['collect_data']:
+                    if update_dict['current_episode'] >= args['rblen']:
+                        send_request({}, MARB_SAVE)
+                        break
+                if not args['vis_servo']:
+                    send_request(update_dict, MA_UPDATE_POLICY)
             
-            if args['collect_data']:
-                if update_dict['current_episode'] >= args['rblen']:
-                    send_request({}, MARB_SAVE)
-                    break
-            if not args['vis_servo']:
-                send_request(update_dict, MA_UPDATE_POLICY)
+            outer_loops += 1
             
         gc.collect()

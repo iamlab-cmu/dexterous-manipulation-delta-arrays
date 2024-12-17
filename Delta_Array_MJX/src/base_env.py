@@ -37,7 +37,7 @@ class BaseMJEnv:
     def setup_gui(self, lookat=np.array((0.13125, 0.1407285, 1.5)), distance=0.85, elevation=90, azimuth=0):
         self.width, self.height = 1920, 1080
         self.renderer = mujoco.Renderer(self.model, self.height, self.width)
-        self.renderer.enable_segmentation_rendering()
+        self.renderer.disable_segmentation_rendering()
         self.camera = mujoco.MjvCamera()
             
         self.camera.lookat = lookat
@@ -53,6 +53,7 @@ class BaseMJEnv:
             self.viewer.cam.azimuth = azimuth
 
     def get_segmentation(self, target_id=67):
+        self.renderer.enable_segmentation_rendering()
         self.renderer.update_scene(self.data, camera=self.camera)
         seg = self.renderer.render()
         geom_ids = seg[:, :, 0]
@@ -60,7 +61,6 @@ class BaseMJEnv:
         return (255*mask).astype(np.uint8)
 
     def get_image(self):
-        self.renderer.disable_segmentation_rendering()
         self.renderer.update_scene(self.data, camera=self.camera)        
         return self.renderer.render()
 
