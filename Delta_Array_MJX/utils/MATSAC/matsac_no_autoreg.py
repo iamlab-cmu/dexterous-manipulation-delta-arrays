@@ -28,6 +28,13 @@ class MATSAC:
         self.act_limit = self.env_dict['action_space']['high']
         self.device = self.hp_dict['dev_rl']
         self.gauss = hp_dict['gauss']
+        self.log_dict = {
+            'Q loss': [],
+            'Pi loss': [],
+            'alpha': [],
+            'mu': [],
+            'std': [],
+        }
         if not self.hp_dict['resume']:
             self.uuid = uuid.uuid4()
 
@@ -157,6 +164,7 @@ class MATSAC:
             self.log_dict['std'].append(std.mean().item())
 
     def update(self, batch_size, current_episode, n_updates, logged_rew):
+        wandb.log({'Reward': logged_rew})
         for j in range(n_updates):
             self.internal_updates_counter += 1
             # if self.internal_updates_counter == 1:
@@ -217,7 +225,6 @@ class MATSAC:
                     'alpha': [],
                     'mu': [],
                     'std': [],
-                    'Reward': logged_rew
                 }
                 
                 
