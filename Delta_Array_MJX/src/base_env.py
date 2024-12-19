@@ -63,11 +63,18 @@ class BaseMJEnv:
     def get_image(self):
         self.renderer.update_scene(self.data, camera=self.camera)        
         return self.renderer.render()
+    
+    def update_sim_recorder(self, simlen, recorder):
+        for i in range(simlen):
+            mujoco.mj_step(self.model, self.data)    
+            recorder.add_frame(self.get_image())
 
-    def update_sim(self, simlen, td=None):
+    def update_sim(self, simlen, td=None, recorder=None):
         if self.gui:
             for i in range(simlen):
                 mujoco.mj_step(self.model, self.data)
+                if recorder is not None:
+                    recorder.add_frame(self.get_image())
                 self.viewer.sync()
                 if td is None:
                     time.sleep(0.0005)

@@ -118,6 +118,58 @@ def run_env(env_id, sim_len, n_runs, return_dict, args, inference=False):
 
 if __name__ == "__main__":
     from utils.training_helper import TrainingSchedule
+        
+    def run_env_gui(sim_len, n_runs, args, inference=True):
+        # Set a unique random seed for this environment
+        seed = np.random.randint(0, 2**32 - 1)
+        np.random.seed(seed)
+        
+        if args['save_vid']:
+            from utils.video_utils import VideoRecorder
+            recorder = VideoRecorder(output_dir="./data/videos", fps=120)
+        for nrun in range(n_runs):
+            if args['obj_name'] == "ALL":
+                obj_name = OBJ_NAMES[np.random.randint(0, len(OBJ_NAMES))]
+            else:
+                obj_name = args['obj_name']
+
+            env = delta_array_mj.DeltaArrayMJ(args, obj_name)
+            if env.reset():
+                grasp_states = { 'states': env.init_grasp_state[:env.n_idxs].tolist() }
+
+                # env.actions_grasp[:env.n_idxs] = send_request(grasp_states, SA_GET_ACTION)['actions']
+                env.actions_grasp[:env.n_idxs] = env.init_nn_bd_pts - env.raw_rb_pos
+                env.set_rl_states(grasp=True)
+                
+                # APPLY GRASP ACTIONS
+                env.apply_action(env.actions_grasp[:env.n_idxs])
+                env.update_sim_recorder(sim_len, recorder)
+
+                push_states = {
+                    'states': env.init_state[:env.n_idxs].tolist(),
+                    'pos': env.pos[:env.n_idxs].tolist(),
+                    'det': inference
+                }
+
+                # APPLY PUSH ACTIONS
+                if (args['vis_servo']) or (np.random.rand() < args['vsd']):
+                    actions = env.vs_action()
+                    env.apply_action(actions)
+                else:
+                    response = send_request(push_states, MA_GET_ACTION)
+                    if response is None:
+                        print("Failed to get actions from server.")
+                        return
+                    actions = np.array(response['ma_actions'])
+                    env.final_state[:env.n_idxs, 4:6] = actions
+                    env.apply_action(actions)
+                    
+                env.update_sim_recorder(sim_len, recorder)
+
+                env.set_rl_states(final=True)
+                reward = env.compute_reward()
+                print(f"Obj Name: {obj_name}, Reward: {reward}")
+                recorder.save_video()
     
     parser = argparse.ArgumentParser(description="A script that greets the user.")
     parser.add_argument("-t", "--test", action="store_true", help="True for Test")
@@ -137,7 +189,7 @@ if __name__ == "__main__":
     parser.add_argument("-test_traj", "--test_traj", action="store_true", help="Test on trajectories")
     parser.add_argument("-cmuri", "--cmuri", action="store_true", help="Set to use CMU RI trajectory")
     parser.add_argument('-rc', '--rope_chunks', type=int, default=50, help='Number of visual rope chunks')
-    parser.add_argument("-ca", "--ca", action="store_true", help="compensate for Actions in reward function")
+    parser.add_argument("-ca", "--ca", action="store_true", help="cost for Actions in reward function")
     parser.add_argument('-wu', '--warmup', type=int, default=100000, help='Max warmup episodes')
     parser.add_argument("-cd", "--collect_data", action="store_true", help="Collect data to be stored in RB")
     parser.add_argument("-rblen", "--rblen", type=int, default=500000, help="How much data to be stored in RB")
@@ -161,8 +213,8 @@ if __name__ == "__main__":
     
     warmup_scheduler = TrainingSchedule(max_nenvs=args['nenv'], max_nruns=args['nruns'], max_warmup_episodes=args['warmup'])
     if args['gui'] or (args['nenv']==1):
-        # while True:
-        run_env(0, args['simlen'], args['nruns'], {}, args)
+        while True:
+            run_env_gui(args['simlen'], args['nruns'], args)
     else:
         multiprocessing.set_start_method('spawn', force=True)
         while True:
@@ -208,15 +260,18 @@ if __name__ == "__main__":
                     
                 update_dict['current_episode'] += iters
                 update_dict['avg_reward'] /= iters 
-                send_request(replay_data, MARB_STORE)
                 print(f"Episode: {update_dict['current_episode']}, Avg Reward: {update_dict['avg_reward']}")
+
                 
-                if args['collect_data']:
-                    if update_dict['current_episode'] >= args['rblen']:
-                        send_request({}, MARB_SAVE)
-                        break
-                if not args['vis_servo']:
-                    send_request(update_dict, MA_UPDATE_POLICY)
+                if not args['test']:
+                    send_request(replay_data, MARB_STORE)
+                    
+                    if args['collect_data']:
+                        if update_dict['current_episode'] >= args['rblen']:
+                            send_request({}, MARB_SAVE)
+                            break
+                    if not args['vis_servo']:
+                        send_request(update_dict, MA_UPDATE_POLICY)
             
             outer_loops += 1
             

@@ -64,7 +64,7 @@ class DeltaArrayServer():
             "q_eta_min"         : args.q_etamin,
             "pi_eta_min"        : args.pi_etamin,
             "eta_min"           : args.q_etamin,
-            "alpha"             : 0.2,
+            "alpha"             : args.alpha,
             'optim'             : args.optim,
             'epsilon'           : 1.0,
             "batch_size"        : args.bs,
@@ -126,7 +126,10 @@ class DeltaArrayServer():
 
             if (self.train_or_test=="test") and (args.algo=="MATSAC"):
                 # self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/{args.name}_s69420/pyt_save/model.pt')
-                self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/pyt_save/model.pt')
+                if args.t_path is not None:
+                    self.pushing_agent.load_saved_policy(args.t_path)
+                else:
+                    self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/pyt_save/model.pt')
             elif (self.train_or_test=="test") and (args.algo in ["MADP", "MABC", "MABC_Finetune"]):
                 self.pushing_agent.load_saved_policy(f'./utils/MABC/{args.name}.pth')
                 
@@ -138,7 +141,7 @@ class DeltaArrayServer():
                     wandb.init(project="MARL_Dexterous_Manipulation",
                             config=self.hp_dict,
                             name = self.hp_dict['exp_name'],
-                            id=self.pushing_agent.uuid)
+                            id="w10i8dfm", resume=True)
                     
                 else:
                     wandb.init(project="MARL_Dexterous_Manipulation",
@@ -241,6 +244,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Args for sim/real test/train")
     parser.add_argument("-r", "--real", action="store_true", help="True for Real Robot Expt")
     parser.add_argument("-t", "--test", action="store_true", help="True for Test")
+    parser.add_argument("-t_path", "--t_path", type=str, default=None, help="Path to test model")
     parser.add_argument("-n", "--name", type=str, default="HAKUNA", help="Expt Name")
     parser.add_argument("-n2", "--mabc_name", type=str, default="HAKUNA", help="MABC pretrained Expt Name")
     parser.add_argument("-data", "--data_type", type=str, default=None, help="Use simplified setup with only 4 fingers?")
@@ -267,6 +271,7 @@ if __name__ == "__main__":
     parser.add_argument("-cmuri", "--cmu_ri", action="store_true", help="Pure Inference Mode. Load all models")
     parser.add_argument("-la", "--la", action="store_true", help="Is Alpha Learned?")
     parser.add_argument("-amp", "--amp", action="store_true", help="Turn on Automatic Mixed Precision")
+    parser.add_argument("-alpha", "--alpha", type=float, default=0.2, help="Temperature")
     args = parser.parse_args()
     
     train_or_test = "test" if args.test else "train"
