@@ -6,9 +6,9 @@ class TrainingSchedule:
         self.nruns_stage_1 = max_nruns//2
         self.nruns_stage_2 = max_nruns
         
-        self.nupdates_stage_1 = self.nenvs_stage_1*self.nruns_stage_1//30
-        self.nupdates_stage_2 = self.nenvs_stage_1*self.nruns_stage_2//10
-        self.nupdates_stage_3 = self.nenvs_stage_2*self.nruns_stage_2//5
+        self.nupdates_stage_1 = self.nenvs_stage_1*self.nruns_stage_1//5
+        self.nupdates_stage_2 = self.nenvs_stage_1*self.nruns_stage_2
+        self.nupdates_stage_3 = self.nenvs_stage_2*self.nruns_stage_2*5
         
         self.warmup_stage_1 = max_warmup_episodes // 5
         self.warmup_stage_2 = max_warmup_episodes
