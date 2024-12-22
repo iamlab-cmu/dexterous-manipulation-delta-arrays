@@ -132,7 +132,6 @@ class DeltaArrayServer():
                     self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/pyt_save/model.pt')
             elif (self.train_or_test=="test") and (args.algo in ["MADP", "MABC", "MABC_Finetune"]):
                 self.pushing_agent.load_saved_policy(f'./utils/MABC/{args.name}.pth')
-                
         
         if self.train_or_test=="train":
             if not self.hp_dict["dont_log"]:
@@ -142,7 +141,6 @@ class DeltaArrayServer():
                             config=self.hp_dict,
                             name = self.hp_dict['exp_name'],
                             id="w10i8dfm", resume=True)
-                    
                 else:
                     wandb.init(project="MARL_Dexterous_Manipulation",
                             config=self.hp_dict,

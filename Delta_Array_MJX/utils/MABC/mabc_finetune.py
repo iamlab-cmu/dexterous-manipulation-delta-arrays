@@ -113,13 +113,13 @@ class MABC_Finetune:
         q = self.tf.decoder_critic(s1, a, pos).squeeze().mean(dim=1)
         
         with torch.no_grad():
-            if self.gauss:
-                next_actions, log_probs, _, _= self.tf(s2, pos)
-            else:
-                next_actions = self.tf(s2, pos)
+            # if self.gauss:
+            #     next_actions, log_probs, _, _= self.tf(s2, pos)
+            # else:
+            #     next_actions = self.tf(s2, pos)
             
-            next_q = self.tf.decoder_critic(s2, next_actions, pos).squeeze()
-            q_next = r + self.hp_dict['gamma'] * ((1 - d.unsqueeze(1)) * (next_q - self.alpha * log_probs)).mean(dim=1)
+            # next_q = self.tf.decoder_critic(s2, next_actions, pos).squeeze()
+            q_next = r # + self.hp_dict['gamma'] * ((1 - d.unsqueeze(1)) * (next_q - self.alpha * log_probs)).mean(dim=1)
             # q_next = r.unsqueeze(1)
         q_loss = F.mse_loss(q, q_next)
         q_loss.backward()

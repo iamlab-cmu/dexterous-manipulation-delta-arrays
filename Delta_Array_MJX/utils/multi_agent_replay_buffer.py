@@ -47,7 +47,7 @@ class MultiAgentReplayBuffer:
                 "rew":self.rew_buf,
                 "done":self.done_buf,
                 "num_agents":self.num_agents_buf,}
-        pkl.dump(dic, open("./data/replay_buffer_rope.pkl", "wb"))
+        pkl.dump(dic, open("./data/replay_buffer_mixed.pkl", "wb"))
 
 class MultiAgentImageReplayBuffer:
     def __init__(self, act_dim, size, max_agents):

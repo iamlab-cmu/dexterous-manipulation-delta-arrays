@@ -154,6 +154,9 @@ if __name__ == "__main__":
                 # APPLY PUSH ACTIONS
                 if (args['vis_servo']) or (np.random.rand() < args['vsd']):
                     actions = env.vs_action()
+                    if np.random.rand() < 0.5:
+                        actions = np.random.uniform(-0.03, 0.03, size=(env.n_idxs, 2))
+                    
                     env.apply_action(actions)
                 else:
                     response = send_request(push_states, MA_GET_ACTION)
