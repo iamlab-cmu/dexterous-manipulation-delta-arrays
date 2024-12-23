@@ -86,7 +86,7 @@ class MATSAC:
                 self.alpha = self.log_alpha.exp()
                 self.alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=hp_dict['pi_lr'])
             else:
-                self.alpha = torch.tensor([0.2], requires_grad=False, device=self.device)
+                self.alpha = torch.tensor([self.hp_dict['alpha']], requires_grad=False, device=self.device)
 
     def compute_q_loss(self, s1, a, s2, r, d, pos):
         

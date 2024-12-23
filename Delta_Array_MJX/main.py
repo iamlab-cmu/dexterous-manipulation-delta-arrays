@@ -143,7 +143,10 @@ if __name__ == "__main__":
                 
                 # APPLY GRASP ACTIONS
                 env.apply_action(env.actions_grasp[:env.n_idxs])
-                env.update_sim_recorder(sim_len, recorder)
+                if args['save_vid']:
+                    env.update_sim_recorder(sim_len, recorder)
+                else:
+                    env.update_sim(sim_len)
 
                 push_states = {
                     'states': env.init_state[:env.n_idxs].tolist(),
@@ -154,8 +157,8 @@ if __name__ == "__main__":
                 # APPLY PUSH ACTIONS
                 if (args['vis_servo']) or (np.random.rand() < args['vsd']):
                     actions = env.vs_action()
-                    if np.random.rand() < 0.5:
-                        actions = np.random.uniform(-0.03, 0.03, size=(env.n_idxs, 2))
+                    # if np.random.rand() < 0.5:
+                    #     actions = np.random.uniform(-0.03, 0.03, size=(env.n_idxs, 2))
                     
                     env.apply_action(actions)
                 else:
@@ -167,12 +170,16 @@ if __name__ == "__main__":
                     env.final_state[:env.n_idxs, 4:6] = actions
                     env.apply_action(actions)
                     
-                env.update_sim_recorder(sim_len, recorder)
+                if args['save_vid']:
+                    env.update_sim_recorder(sim_len, recorder)
+                else:
+                    env.update_sim(sim_len)
 
                 env.set_rl_states(final=True)
                 reward = env.compute_reward()
                 print(f"Obj Name: {obj_name}, Reward: {reward}")
-                recorder.save_video()
+                if args['save_vid']:
+                    recorder.save_video()
     
     parser = argparse.ArgumentParser(description="A script that greets the user.")
     parser.add_argument("-t", "--test", action="store_true", help="True for Test")

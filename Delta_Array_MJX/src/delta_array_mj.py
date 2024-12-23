@@ -246,9 +246,10 @@ class DeltaArrayMJ(BaseMJEnv):
         # dist = np.mean(np.linalg.norm(self.goal_bd_pts - self.final_bd_pts, axis=1))
         ep_reward = np.clip(self.scaling_factor / (dist**2 + self.epsilon), 0, self.max_reward)
         
+        # print("OG Reward ", ep_reward)
         if self.args['ca']:
-            ep_reward -= 5*np.mean(abs(self.actions[:self.n_idxs] - self.actions_grasp[:self.n_idxs]))
-            
+            ep_reward -= 10000*np.mean(abs(self.actions[:self.n_idxs] - self.actions_grasp[:self.n_idxs]))
+            # print("CA Reward ", ep_reward) 
         return ep_reward*self.args['reward_scale']
         
         # return -100*np.mean(np.linalg.norm(self.goal_bd_pts_smol - self.final_bd_pts_smol, axis=1))
