@@ -89,9 +89,9 @@ class FF_MLP(nn.Module):
     def forward(self, x):
         return self.fc2(self.activation(self.fc1(x)))
 
-class GPTLayer(nn.Module):
+class GPTLayer_CA(nn.Module):
     def __init__(self, model_dim, num_heads, max_agents, dim_ff, dropout, masked):
-        super(GPTLayer, self).__init__()
+        super(GPTLayer_CA, self).__init__()
         self.self_attention = MultiHeadAttention(model_dim, num_heads, max_agents, masked=masked)
         self.cross_attention = MultiHeadAttention(model_dim, num_heads, max_agents, masked=masked)
         self.feed_forward = FF_MLP(model_dim, dim_ff)
@@ -109,22 +109,51 @@ class GPTLayer(nn.Module):
         ff_embed = self.feed_forward(x)
         x = x + self.dropout(ff_embed)
         return x
+    
+class GPTLayer_SA(nn.Module):
+    def __init__(self, model_dim, num_heads, max_agents, dim_ff, dropout, masked):
+        super(GPTLayer_SA, self).__init__()
+        self.self_attention = MultiHeadAttention(2*model_dim, num_heads, max_agents, masked=masked)
+        self.feed_forward = FF_MLP(2*model_dim, dim_ff)
+        self.dropout = nn.Dropout(dropout)
+        self.layer_norm1 = nn.LayerNorm(2*model_dim)
+        self.layer_norm2 = nn.LayerNorm(2*model_dim)
+        self.fc = wt_init_(nn.Linear(2*model_dim, model_dim))
+
+    def forward(self, act_enc, conditional_enc):
+        x = torch.cat([act_enc, conditional_enc], dim=-1)
+        x = self.layer_norm1(x)
+        attn = self.self_attention(x, x, x)
+        x = self.layer_norm2(x + self.dropout(attn))
+        ff_embed = self.feed_forward(x)
+        x = x + self.dropout(ff_embed)
+        x = self.fc(x)
+        return x
 
 class GPT(nn.Module):
-    def __init__(self, state_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False, masked=True):
+    def __init__(self, state_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, critic=False, masked=True, gauss=False, SA=False):
         super(GPT, self).__init__()
+        self.SA = SA
+        print(model_dim)
         self.state_enc = nn.Linear(state_dim, model_dim)
         self.action_embedding = wt_init_(nn.Linear(action_dim, model_dim))
         self.pos_embedding = pos_embedding
         self.dropout = nn.Dropout(dropout)
 
-        self.decoder_layers = nn.ModuleList([GPTLayer(model_dim, num_heads, max_agents, dim_ff, dropout, masked) for _ in range(n_layers)])
-        self.critic = critic
-        if self.critic:
-            self.actor_mu_layer = wt_init_(nn.Linear(model_dim, 1))
+        if self.SA:
+            self.decoder_layers = nn.ModuleList([GPTLayer_SA(model_dim, num_heads, max_agents, dim_ff, dropout, masked) for _ in range(n_layers)])
         else:
-            self.actor_mu_layer = wt_init_(nn.Linear(model_dim, action_dim))
-            # self.actor_std_layer = wt_init_(nn.Linear(model_dim, action_dim))
+            self.decoder_layers = nn.ModuleList([GPTLayer_CA(model_dim, num_heads, max_agents, dim_ff, dropout, masked) for _ in range(n_layers)])
+        self.critic = critic
+        self.gauss = gauss
+        if self.critic:
+            self.final_layer = wt_init_(nn.Linear(model_dim, 1))
+        else:
+            if self.gauss:
+                self.mu = wt_init_(nn.Linear(model_dim, action_dim))
+                self.log_std = wt_init_(nn.Linear(model_dim, action_dim))
+            else:
+                self.final_layer = wt_init_(nn.Linear(model_dim, action_dim))
         self.activation = nn.GELU()
 
     def forward(self, state, actions, pos, idx=None):
@@ -141,14 +170,16 @@ class GPT(nn.Module):
         act_enc = self.activation(self.action_embedding(actions))
         for layer in self.decoder_layers:
             act_enc = layer(act_enc, conditional_enc)
-        act_mean = self.actor_mu_layer(act_enc)
         
+        if self.gauss:
+            act_mean = self.mu(act_enc)
+            act_std = self.log_std(act_enc)
+            act_std = torch.clamp(act_std, LOG_STD_MIN, LOG_STD_MAX)
+            std = torch.exp(act_std)
+            return act_mean, std
+        else:
+            act_mean = self.final_layer(act_enc)
         return act_mean
-        # act_mean = self.actor_mu_layer(act_enc)
-        # act_std = self.actor_std_layer(act_enc)
-        # act_std = torch.clamp(act_std, LOG_STD_MIN, LOG_STD_MAX)
-        # std = torch.exp(act_std)
-        # return act_mean, std
 
 class AdaLNLayer(nn.Module):
     """
@@ -267,14 +298,16 @@ class Transformer(nn.Module):
         self.log_std = torch.nn.Parameter(log_std)
         self.gauss = hp_dict['gauss']
 
-        if hp_dict["adaln"]:
+        if hp_dict["attn_mech"] == "AdaLN":
             self.decoder_actor = GPT_AdaLN(hp_dict['state_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['actor'], masked=hp_dict['masked'], gauss=hp_dict['gauss'])
             self.decoder_critic1 = GPT_AdaLN(hp_dict['state_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'], critic=True, masked=hp_dict['masked'])
             self.decoder_critic2 = GPT_AdaLN(hp_dict['state_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'], critic=True, masked=hp_dict['masked'])
-        else:
-            self.decoder_actor = GPT(hp_dict['state_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['actor'], masked=hp_dict['masked'])
-            self.decoder_critic1 = GPT(hp_dict['state_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'], critic=True, masked=hp_dict['masked'])
-            self.decoder_critic2 = GPT(hp_dict['state_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'], critic=True, masked=hp_dict['masked'])
+        elif hp_dict["attn_mech"] in ["CA", "SA"]:
+            if hp_dict["attn_mech"] == "SA":
+                sa_bool = True
+            self.decoder_actor = GPT(hp_dict['state_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['actor'], masked=hp_dict['masked'], gauss=hp_dict['gauss'], SA=sa_bool)
+            self.decoder_critic1 = GPT(hp_dict['state_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'], critic=True, masked=hp_dict['masked'], SA=sa_bool)
+            self.decoder_critic2 = GPT(hp_dict['state_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'], critic=True, masked=hp_dict['masked'], SA=sa_bool)
 
     def forward(self, state, pos):
         bs, n_agents, _ = state.size()

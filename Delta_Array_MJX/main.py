@@ -23,15 +23,15 @@ LOAD_MODEL          = 7
 LOG_INFERENCE       = 8
 
 url_dict = {
-    QUERY_VLM: "http://localhost:8000/vision",
-    SA_GET_ACTION: "http://localhost:8000/sac/get_actions",
-    MA_GET_ACTION: "http://localhost:8000/ma/get_actions",
-    MA_UPDATE_POLICY: "http://localhost:8000/marl/update",
-    MARB_STORE: "http://localhost:8000/marb/store",
-    MARB_SAVE: "http://localhost:8000/marb/save",
-    SAVE_MODEL: "http://localhost:8000/marl/save_model",
-    LOAD_MODEL: "http://localhost:8000/marl/load_model",
-    LOG_INFERENCE: "http://localhost:8000/log/inference"
+    QUERY_VLM: "http://localhost:8001/vision",
+    SA_GET_ACTION: "http://localhost:8001/sac/get_actions",
+    MA_GET_ACTION: "http://localhost:8001/ma/get_actions",
+    MA_UPDATE_POLICY: "http://localhost:8001/marl/update",
+    MARB_STORE: "http://localhost:8001/marb/store",
+    MARB_SAVE: "http://localhost:8001/marb/save",
+    SAVE_MODEL: "http://localhost:8001/marl/save_model",
+    LOAD_MODEL: "http://localhost:8001/marl/load_model",
+    LOG_INFERENCE: "http://localhost:8001/log/inference"
 }
 
 OBJ_NAMES = ["block", 'crescent', 'cross', 'diamond', 'hexagon', 'star', 'triangle', 'parallelogram', 'semicircle', "trapezium", 'disc']
@@ -204,6 +204,7 @@ if __name__ == "__main__":
     parser.add_argument("-cd", "--collect_data", action="store_true", help="Collect data to be stored in RB")
     parser.add_argument("-rblen", "--rblen", type=int, default=500000, help="How much data to be stored in RB")
     parser.add_argument("-rs", "--reward_scale", type=float, default=1, help="Scale reward function by this value")
+    parser.add_argument("-el", "--explen", type=int, default=3_000_000, help="How long to run RL")
     args = parser.parse_args()
     args = vars(args)
 
@@ -283,6 +284,9 @@ if __name__ == "__main__":
                     if not args['vis_servo']:
                         send_request(update_dict, MA_UPDATE_POLICY)
             
+            if update_dict['current_episode'] >= args['explen']:
+                send_request({}, SAVE_MODEL)
+                break
             outer_loops += 1
             
         gc.collect()

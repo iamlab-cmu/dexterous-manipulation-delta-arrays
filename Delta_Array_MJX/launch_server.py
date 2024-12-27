@@ -26,9 +26,9 @@ logging.basicConfig(level=logging.WARNING)
 class DeltaArrayServer():
     def __init__(self, args, train_or_test="test"):
         self.train_or_test = train_or_test
-        self.vision_model = GroundedSAM(obj_detection_model=args.obj_detection_model, 
-                                        segmentation_model=args.segmentation_model,
-                                        device=torch.device(f"cuda:{args.vis_device}"))
+        # self.vision_model = GroundedSAM(obj_detection_model=args.obj_detection_model, 
+        #                                 segmentation_model=args.segmentation_model,
+        #                                 device=torch.device(f"cuda:{args.vis_device}"))
         
         if not os.path.exists(f'./data/rl_data/{args.name}/pyt_save'):
             os.makedirs(f'./data/rl_data/{args.name}/pyt_save')
@@ -92,6 +92,7 @@ class DeltaArrayServer():
             'cmu_ri'            : args.cmu_ri,
             'test_algos'        : ['MABC', 'Random', 'Vis Servo', 'MATSAC', 'MABC Finetuned'],
             'resume'            : args.resume != "No",
+            'attn_mech'    : args.attn_mech,
         }
         logger_kwargs = {}
 
@@ -196,9 +197,9 @@ class LogInferenceRequest(BaseModel):
     rewards: Any
     
 app = FastAPI()
-@app.post("/vision/")
-def vision_endpoint(request: VisionRequest):
-    return VisionResponse(bd_pts=server.vision_model.grounded_obj_segmentation(request.img, request.label))
+# @app.post("/vision/")
+# def vision_endpoint(request: VisionRequest):
+#     return VisionResponse(bd_pts=server.vision_model.grounded_obj_segmentation(request.img, request.label))
 
 @app.post("/sac/get_actions")
 def sac_endpoint(request: SARequest):
@@ -270,9 +271,14 @@ if __name__ == "__main__":
     parser.add_argument("-la", "--la", action="store_true", help="Is Alpha Learned?")
     parser.add_argument("-amp", "--amp", action="store_true", help="Turn on Automatic Mixed Precision")
     parser.add_argument("-alpha", "--alpha", type=float, default=0.2, help="Temperature")
+    parser.add_argument("-am", "--attn_mech", type=str, default="AdaLN", help="Choose between SA, CA, AdaLN")
+    parser.add_argument("-port", "--port", type=int, default=8000, help="Port to launch expt")
     args = parser.parse_args()
+    
+    if args.attn_mech not in ['SA', 'CA', 'AdaLN']:
+        raise ValueError("Invalid Attention Mechanism")
     
     train_or_test = "test" if args.test else "train"
     server = DeltaArrayServer(args, train_or_test)
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=args.port)
     
