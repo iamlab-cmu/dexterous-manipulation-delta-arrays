@@ -7,6 +7,7 @@ from pathlib import Path
 import argparse
 from typing import Any
 import os
+import numpy as np
 
 import utils.SAC.sac as sac
 import utils.MATSAC.matsac_no_autoreg as matsac
@@ -273,12 +274,17 @@ if __name__ == "__main__":
     parser.add_argument("-alpha", "--alpha", type=float, default=0.2, help="Temperature")
     parser.add_argument("-am", "--attn_mech", type=str, default="AdaLN", help="Choose between SA, CA, AdaLN")
     parser.add_argument("-port", "--port", type=int, default=8000, help="Port to launch expt")
+    parser.add_argument("-seed", "--seed", type=int, default=13, help="Random Seed")
     args = parser.parse_args()
     
     if args.attn_mech not in ['SA', 'CA', 'AdaLN']:
         raise ValueError("Invalid Attention Mechanism")
     
     train_or_test = "test" if args.test else "train"
+    
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    
     server = DeltaArrayServer(args, train_or_test)
     uvicorn.run(app, host="127.0.0.1", port=args.port)
     
