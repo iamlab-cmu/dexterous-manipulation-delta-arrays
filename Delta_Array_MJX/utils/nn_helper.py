@@ -233,7 +233,7 @@ class NNHelper:
 
         return idxs, np.array(nearest_neighbors)
 
-    def get_nn_robots_rope(self, boundary_pts, search_radius=0.04):
+    def get_nn_robots_rope(self, boundary_pts, search_radius=0.031):
         """
         Optimized function to find nearest neighbor robots around a deformable boundary.
         """

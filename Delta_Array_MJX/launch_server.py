@@ -93,7 +93,8 @@ class DeltaArrayServer():
             'cmu_ri'            : args.cmu_ri,
             'test_algos'        : ['MABC', 'Random', 'Vis Servo', 'MATSAC', 'MABC Finetuned'],
             'resume'            : args.resume != "No",
-            'attn_mech'    : args.attn_mech,
+            'attn_mech'         : args.attn_mech,
+            'pos_embed'         : args.pos_embed,
         }
         logger_kwargs = {}
 
@@ -142,7 +143,7 @@ class DeltaArrayServer():
                     wandb.init(project="MARL_Dexterous_Manipulation",
                             config=self.hp_dict,
                             name = self.hp_dict['exp_name'],
-                            id="w10i8dfm", resume=True)
+                            id="vn901xiw", resume=True)
                 else:
                     wandb.init(project="MARL_Dexterous_Manipulation",
                             config=self.hp_dict,
@@ -212,7 +213,7 @@ def ma_endpoint(request: MAInferenceRequest):
 
 @app.post("/marl/update")
 def ma_endpoint(request: MATrainRequest):
-    print(f'Episodes Elapsed: {request.current_episode}, Avg Reward: {request.avg_reward}')
+    # print(f'Episodes Elapsed: {request.current_episode}, Avg Reward: {request.avg_reward}')
     return server.pushing_agent.update(request.batch_size, request.current_episode, request.n_updates, request.avg_reward)
 
 @app.post("/marb/store")
@@ -274,7 +275,8 @@ if __name__ == "__main__":
     parser.add_argument("-alpha", "--alpha", type=float, default=0.2, help="Temperature")
     parser.add_argument("-am", "--attn_mech", type=str, default="AdaLN", help="Choose between SA, CA, AdaLN")
     parser.add_argument("-port", "--port", type=int, default=8000, help="Port to launch expt")
-    parser.add_argument("-seed", "--seed", type=int, default=13, help="Random Seed")
+    parser.add_argument("-seed", "--seed", type=int, default=None, help="Random Seed")
+    parser.add_argument("-pe", "--pos_embed", type=str, default="SCE", help="Choose between SCE, SPE, RoPE")
     args = parser.parse_args()
     
     if args.attn_mech not in ['SA', 'CA', 'AdaLN']:
@@ -282,8 +284,9 @@ if __name__ == "__main__":
     
     train_or_test = "test" if args.test else "train"
     
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
+    if args.seed is not None:
+        np.random.seed(args.seed)
+        torch.manual_seed(args.seed)
     
     server = DeltaArrayServer(args, train_or_test)
     uvicorn.run(app, host="127.0.0.1", port=args.port)

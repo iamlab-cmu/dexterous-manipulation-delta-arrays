@@ -73,7 +73,7 @@ class DeltaArrayMJ(BaseMJEnv):
             # self.rope_body_poses = rope_utils.get_rope_positions(self.data, self.rope_body_ids)
             img = self.get_image()
             goal_rope_coords = self.convert_pix_2_world(rope_utils.get_skeleton_from_img(img))
-            self.goal_bd_pts_smol = rope_utils.sample_points(goal_rope_coords, 50)
+            self.goal_bd_pts_smol = rope_utils.sample_points(goal_rope_coords, self.rope_chunks)
             # self.init_rope_bd_pts_world = self.get_bdpts_traditional(self.init_img)
         else:
             obj_joint_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, self.obj_name)
@@ -141,7 +141,10 @@ class DeltaArrayMJ(BaseMJEnv):
         
     def set_rl_states(self, grasp=False, final=False):
         if final:
-            self.get_final_obj_pose()
+            if self.rope:
+                self.get_final_rope_pose()
+            else:
+                self.get_final_obj_pose()
             self.final_state[:self.n_idxs, :2] = self.final_nn_bd_pts - self.raw_rb_pos
             self.final_state[:self.n_idxs, 4:6] = self.actions[:self.n_idxs]
         elif grasp:
@@ -199,11 +202,14 @@ class DeltaArrayMJ(BaseMJEnv):
         img = self.get_image()
         init_rope_coords = self.convert_pix_2_world(rope_utils.get_skeleton_from_img(img, trad))
         self.init_bd_pts_smol = rope_utils.get_aligned_smol_rope(init_rope_coords, self.goal_bd_pts_smol, N=self.rope_chunks) # returns rounded coords. 
+        if self.init_bd_pts_smol is None:
+            return False
         
         self.active_idxs, self.init_nn_bd_pts, self.bd_idxs = self.nn_helper.get_nn_robots_rope(self.init_bd_pts_smol)
         
         self.goal_nn_bd_pts = self.goal_bd_pts_smol[self.bd_idxs]
         self.set_rl_states()
+        return True
         
     def get_final_obj_pose(self):
         self.final_bd_pts = self.get_bdpts_traditional()
@@ -214,8 +220,8 @@ class DeltaArrayMJ(BaseMJEnv):
         final_rope_coords = self.convert_pix_2_world(rope_utils.get_skeleton_from_img(img, trad=True))
         self.final_bd_pts_smol = rope_utils.get_aligned_smol_rope(final_rope_coords, self.goal_bd_pts_smol, N=self.rope_chunks)
         
-        final_nn_bd_pts = self.final_bd_pts_smol[self.bd_idxs]
-        return final_nn_bd_pts - self.raw_rb_pos
+        self.final_nn_bd_pts = self.final_bd_pts_smol[self.bd_idxs]
+        return self.final_nn_bd_pts
     
     def reset(self):
         self.set_z_positions(self.robot_ids[self.active_idxs], low=False)
@@ -238,9 +244,13 @@ class DeltaArrayMJ(BaseMJEnv):
         else:
             return self.set_init_obj_pose()
         
-            
     def compute_reward(self):
-        # self.plot_visual_servo_debug(self.init_nn_bd_pts, self.goal_nn_bd_pts, self.sf_nn_bd_pts, self.final_nn_bd_pts, self.actions[:self.n_idxs])
+        if self.rope:
+            init_dist = np.mean(np.linalg.norm(self.goal_nn_bd_pts - self.init_nn_bd_pts, axis=1))
+            final_dist = np.mean(np.linalg.norm(self.goal_nn_bd_pts - self.final_nn_bd_pts, axis=1))
+            delta = 10*(init_dist - final_dist)
+            return delta/self.args['reward_scale']
+            
         # dist = np.mean(np.linalg.norm(self.final_state[:self.n_idxs, 2:4] - self.final_state[:self.n_idxs, :2], axis=1))
         dist = np.mean(np.linalg.norm(self.goal_nn_bd_pts - self.final_nn_bd_pts, axis=1))
         # dist = np.mean(np.linalg.norm(self.goal_bd_pts - self.final_bd_pts, axis=1))
@@ -264,7 +274,7 @@ class DeltaArrayMJ(BaseMJEnv):
         
     def vs_action(self):
         if self.rope:
-            semi_final_nn_bd_pts = self.get_final_rope_pose() + self.raw_rb_pos
+            self.sf_nn_bd_pts = self.get_final_rope_pose()
         else:
             sf_bd_pts = self.get_bdpts_traditional()
             self.sf_nn_bd_pts = geom_helper.transform_boundary_points(self.init_bd_pts, sf_bd_pts, self.init_nn_bd_pts, method="rigid")

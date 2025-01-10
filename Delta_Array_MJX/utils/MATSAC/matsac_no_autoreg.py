@@ -35,6 +35,7 @@ class MATSAC:
             'mu': [],
             'std': [],
         }
+        self.max_avg_rew = 0
         if not self.hp_dict['resume']:
             self.uuid = uuid.uuid4()
 
@@ -208,14 +209,17 @@ class MATSAC:
                     p_target.data.mul_(self.hp_dict['tau'])
                     p_target.data.add_((1 - self.hp_dict['tau']) * p.data)
 
-            if (self.train_or_test == "train") and (self.internal_updates_counter % 20000) == 0:
-                dicc = {
-                    'model': self.tf.state_dict(),
-                    'actor_optimizer': self.optimizer_actor.state_dict(),
-                    'critic_optimizer': self.optimizer_critic.state_dict(),
-                    'uuid': self.uuid
-                }
-                torch.save(dicc, f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
+            if (self.train_or_test == "train") and (self.internal_updates_counter % 5000) == 0:
+                if self.max_avg_rew < logged_rew:
+                    print("ckpt saved @ ", current_episode, self.internal_updates_counter)
+                    self.max_avg_rew = logged_rew
+                    dicc = {
+                        'model': self.tf.state_dict(),
+                        'actor_optimizer': self.optimizer_actor.state_dict(),
+                        'critic_optimizer': self.optimizer_critic.state_dict(),
+                        'uuid': self.uuid
+                    }
+                    torch.save(dicc, f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
         
             if (not self.hp_dict["dont_log"]) and (self.internal_updates_counter % 100) == 0:
                 wandb.log({k: np.mean(v) if isinstance(v, list) and len(v) > 0 else v for k, v in self.log_dict.items()})
@@ -241,7 +245,7 @@ class MATSAC:
         dicc = torch.load(path, map_location=self.hp_dict['dev_rl'])
         
         self.tf.load_state_dict(dicc['model'])
-        self.optimizer_actor.load_state_dict(dicc['actor_optimizer'])
-        self.optimizer_critic.load_state_dict(dicc['critic_optimizer'])
+        # self.optimizer_actor.load_state_dict(dicc['actor_optimizer'])
+        # self.optimizer_critic.load_state_dict(dicc['critic_optimizer'])
         self.uuid = dicc['uuid']
         self.tf_target = deepcopy(self.tf)

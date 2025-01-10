@@ -23,15 +23,15 @@ LOAD_MODEL          = 7
 LOG_INFERENCE       = 8
 
 url_dict = {
-    QUERY_VLM: "http://localhost:8001/vision",
-    SA_GET_ACTION: "http://localhost:8001/sac/get_actions",
-    MA_GET_ACTION: "http://localhost:8001/ma/get_actions",
-    MA_UPDATE_POLICY: "http://localhost:8001/marl/update",
-    MARB_STORE: "http://localhost:8001/marb/store",
-    MARB_SAVE: "http://localhost:8001/marb/save",
-    SAVE_MODEL: "http://localhost:8001/marl/save_model",
-    LOAD_MODEL: "http://localhost:8001/marl/load_model",
-    LOG_INFERENCE: "http://localhost:8001/log/inference"
+    QUERY_VLM: "http://localhost:8002/vision",
+    SA_GET_ACTION: "http://localhost:8002/sac/get_actions",
+    MA_GET_ACTION: "http://localhost:8002/ma/get_actions",
+    MA_UPDATE_POLICY: "http://localhost:8002/marl/update",
+    MARB_STORE: "http://localhost:8002/marb/store",
+    MARB_SAVE: "http://localhost:8002/marb/save",
+    SAVE_MODEL: "http://localhost:8002/marl/save_model",
+    LOAD_MODEL: "http://localhost:8002/marl/load_model",
+    LOG_INFERENCE: "http://localhost:8002/log/inference"
 }
 
 OBJ_NAMES = ["block", 'crescent', 'cross', 'diamond', 'hexagon', 'star', 'triangle', 'parallelogram', 'semicircle', "trapezium", 'disc']
@@ -123,19 +123,17 @@ if __name__ == "__main__":
         # Set a unique random seed for this environment
         seed = np.random.randint(0, 2**32 - 1)
         np.random.seed(seed)
-        if args['obj_name'] == "rope":
-            obj_name = args['obj_name']
-            env = delta_array_mj.DeltaArrayMJ(args, obj_name)
-            
+        
         if args['save_vid']:
             from utils.video_utils import VideoRecorder
             recorder = VideoRecorder(output_dir="./data/videos", fps=120)
-            
         for nrun in range(n_runs):
             if args['obj_name'] == "ALL":
-                env = delta_array_mj.DeltaArrayMJ(args, obj_name)
                 obj_name = OBJ_NAMES[np.random.randint(0, len(OBJ_NAMES))]
+            else:
+                obj_name = args['obj_name']
 
+            env = delta_array_mj.DeltaArrayMJ(args, obj_name)
             if env.reset():
                 grasp_states = { 'states': env.init_grasp_state[:env.n_idxs].tolist() }
 
