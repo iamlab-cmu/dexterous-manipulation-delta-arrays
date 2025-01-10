@@ -334,6 +334,10 @@ class GPT_AdaLN(nn.Module):
         self.state_enc = nn.Linear(state_dim, model_dim)
         self.action_embedding = wt_init_(nn.Linear(action_dim, model_dim))
         self.pos_embedding = pos_embedding
+        if pos_embedding is not None:
+            self.fwd_fn = self.forward_normal
+        else:
+            self.fwd_fn = self.forward_rotpe
         self.dropout = nn.Dropout(dropout)
 
         self.decoder_layers = nn.ModuleList([AdaLNLayer(model_dim, num_heads, max_agents, dim_ff, dropout, masked, mha) for _ in range(n_layers)])
@@ -351,6 +355,9 @@ class GPT_AdaLN(nn.Module):
         self.activation = nn.GELU()
 
     def forward(self, state, actions, pos, idx=None):
+        return self.fwd_fn(state, actions, pos, idx)
+
+    def forward_normal(self, state, actions, pos, idx=None):
         """
         Input: state (bs, n_agents, state_dim)
                actions (bs, n_agents, action_dim)
@@ -375,6 +382,21 @@ class GPT_AdaLN(nn.Module):
             act_mean = self.final_layer(act_enc, conditional_enc)
         return act_mean
 
+    def forward_rotpe(self, state, actions, pos, idx=None):
+        state_enc = self.state_enc(state)
+        act_enc = self.activation(self.action_embedding(actions))
+        for layer in self.decoder_layers:
+            act_enc = layer(act_enc, state_enc)
+            
+        if self.gauss:
+            act_mean = self.mu(act_enc, state_enc)
+            act_std = self.log_std(act_enc, state_enc)
+            act_std = torch.clamp(act_std, LOG_STD_MIN, LOG_STD_MAX)
+            std = torch.exp(act_std)
+            return act_mean, std
+        else:
+            act_mean = self.final_layer(act_enc, state_enc)
+        return act_mean
 
 class Transformer(nn.Module):
     def __init__(self, hp_dict, delta_array_size = (8, 8)):
@@ -413,6 +435,7 @@ class Transformer(nn.Module):
             mha = MultiHeadAttention
             
         elif hp_dict['pos_embed'] == "RoPE":
+            self.pos_embedding = None
             mha = MultiHeadAttentionRoPE
             
         if mha is None:
