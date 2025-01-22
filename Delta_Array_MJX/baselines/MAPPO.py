@@ -5,7 +5,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 import baselines.mappo_network as Actor, Critic
-import baselines.multi_agent_replay_buffer as MARB
+import Delta_Array_MJX.baselines.multi_agent_ppo_replay_buffer as MARB
 import baselines.utils as utils
 
 def count_vars(module):

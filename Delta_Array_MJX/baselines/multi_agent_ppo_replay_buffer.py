@@ -8,6 +8,8 @@ class MultiAgentReplayBuffer:
         self.obs_buf = np.zeros((size, max_agents, obs_dim), dtype=np.float32)
         self.obs2_buf = np.zeros((size, max_agents, obs_dim), dtype=np.float32)
         self.act_buf = np.zeros((size, max_agents, act_dim), dtype=np.float32)
+        self.act_log_probs_buf = np.zeros((size, max_agents, act_dim), dtype=np.float32)
+        self.val_buf = np.zeros((size, max_agents), dtype=np.float32)
         self.pos_buf = np.zeros((size, max_agents), dtype=np.int32)
         self.rew_buf = np.zeros(size, dtype=np.float32)
         self.done_buf = np.zeros(size, dtype=np.float32)
@@ -15,10 +17,12 @@ class MultiAgentReplayBuffer:
         self.ptr, self.size, self.max_size = 0, 0, size
 
     def store(self, replay_data):
-        for (obs, act, pos, rew, next_obs, done, n_agents) in replay_data:
+        for (obs, act, act_log_prob, val, pos, rew, next_obs, done, n_agents) in replay_data:
             self.obs_buf[self.ptr, :n_agents] = obs
             self.obs2_buf[self.ptr, :n_agents] = next_obs
             self.act_buf[self.ptr, :n_agents] = act
+            self.act_log_probs_buf[self.ptr, :n_agents] = act_log_prob
+            self.val_buf[self.ptr, :n_agents] = val
             self.pos_buf[self.ptr, :n_agents] = pos
             self.rew_buf[self.ptr] = rew
             self.done_buf[self.ptr] = done

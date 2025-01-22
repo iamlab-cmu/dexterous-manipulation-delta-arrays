@@ -58,7 +58,7 @@ class MABC_Finetune:
             'act_limit'         : 0.03,
             "device"            : parent_hp_dict['dev_rl'],
             "dev_rl"            : parent_hp_dict['dev_rl'],
-            'optim'             : parent_hp_dict['optim'],
+            'optim'             : "adam",
             "model_dim"         : 256,
             "num_heads"         : 8,
             "dim_ff"            : 512,
@@ -68,7 +68,6 @@ class MABC_Finetune:
             "alpha"             : 0.2,
             "adaln"             : parent_hp_dict['adaln'],
             'masked'            : parent_hp_dict['masked'],
-            'cmu_ri'            : parent_hp_dict['cmu_ri'],
             'gauss'             : parent_hp_dict['gauss'],
             'learned_alpha'     : parent_hp_dict['learned_alpha'],
         }

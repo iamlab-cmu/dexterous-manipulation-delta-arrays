@@ -14,7 +14,7 @@ import itertools
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class SAC:
-    def __init__(self, env_dict, hp_dict, logger_kwargs=dict(), ma=False, train_or_test="train"):
+    def __init__(self, env_dict, hp_dict, ma=False, train_or_test="train"):
         # if train_or_test == "train":
         #     self.logger = EpochLogger(**logger_kwargs)
         #     self.logger.save_config(locals())

@@ -96,16 +96,15 @@ class DeltaArrayServer():
             'attn_mech'         : args.attn_mech,
             'pos_embed'         : args.pos_embed,
         }
-        logger_kwargs = {}
 
-        self.grasping_agent = sac.SAC(single_agent_env_dict, self.hp_dict, logger_kwargs, ma=False, train_or_test="test")
+        self.grasping_agent = sac.SAC(single_agent_env_dict, self.hp_dict, ma=False, train_or_test="test")
         self.grasping_agent.load_saved_policy('./models/trained_models/SAC_1_agent_stochastic/pyt_save/model.pt')
 
         if self.hp_dict['test_traj']:
             self.pushing_agent = {
                 "Random" : None,
                 "Vis Servo" : None,
-                "MATSAC" : matsac.MATSAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="test"),
+                "MATSAC" : matsac.MATSAC(ma_env_dict, self.hp_dict, train_or_test="test"),
                 "MABC" : mabc.MABC(self.hp_dict),
                 "MABC Finetuned" : mabc_finetune.MABC_Finetune(self.hp_dict),
             }
@@ -114,11 +113,11 @@ class DeltaArrayServer():
             self.pushing_agent["MABC Finetuned"].load_saved_policy('./utils/MADP/MABC_Finetuned.pth')
         else:
             if args.algo=="MATSAC":
-                self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
+                self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, train_or_test="train")
                 if args.resume != "No":
                     self.pushing_agent.load_saved_policy(args.resume)
             elif args.algo=="SAC":
-                self.pushing_agent = sac.SAC(simplified_ma_env_dict, self.hp_dict, logger_kwargs, ma=True, train_or_test="train")
+                self.pushing_agent = sac.SAC(simplified_ma_env_dict, self.hp_dict, ma=True, train_or_test="train")
             elif args.algo=="MADP":
                 self.pushing_agent = madp_test.MADP()
             elif args.algo=="MABC":
@@ -138,7 +137,6 @@ class DeltaArrayServer():
         
         if self.train_or_test=="train":
             if not self.hp_dict["dont_log"]:
-                logger_kwargs = setup_logger_kwargs(self.hp_dict['exp_name'], 69420, data_dir=self.hp_dict['data_dir'])
                 if args.resume != "No":
                     wandb.init(project="MARL_Dexterous_Manipulation",
                             config=self.hp_dict,
@@ -226,7 +224,7 @@ def marb_store():
     server.pushing_agent.ma_replay_buffer.save_RB()
 
 @app.post("/marl/save_model")
-def ma_endpoint(request):
+def ma_endpoint():
     server.pushing_agent.save_policy()
     
 @app.post("/marl/load_model")

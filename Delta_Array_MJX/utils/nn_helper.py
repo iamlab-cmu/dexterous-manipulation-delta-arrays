@@ -304,52 +304,41 @@ class NNHelper:
         return robot_indices, matched_boundary_points, boundary_indices
 
     def get_nn_robots_objs(self, boundary_pts, world=True):
-        """Original implementation modified to return nearest neighbors"""
         hull = ConvexHull(boundary_pts)
-        hull = self.expand_hull(hull, world=world)
+        hull = self.expand_hull(hull, world=world)  # custom user function
         A, b = hull.equations[:, :-1], hull.equations[:, -1:]
         
-        nearest_neighbors = {}
-        eps = np.finfo(np.float32).eps
-        
         kdtree_poses = self.kdtree_positions_world if world else self.kdtree_positions_pix
-        kdtree = KDTree(kdtree_poses)
+        main_kdtree = KDTree(kdtree_poses)
 
-        # Find nearest neighbors for boundary points
-        dub = 0.03 if world else 30
-        distances, indices = kdtree.query(boundary_pts, k=3, distance_upper_bound=dub, workers=8)
-        indices = np.unique(indices[~np.isinf(distances)])
-        unique_indices = np.unique(indices)
+        eps = np.finfo(np.float32).eps
+        dub = 0.04 if world else 30
+
+        distances, idx_candidates = main_kdtree.query(boundary_pts, k=8, distance_upper_bound=dub, workers=1)
+        valid_indices = idx_candidates[~np.isinf(distances)]
+        unique_indices = np.unique(valid_indices)
+
         pos_world = self.rb_pos_world[unique_indices // 8, unique_indices % 8]
-        containment_check = np.all(pos_world @ A.T + b.T < eps, axis=1)
+        inside_mask = np.all(pos_world @ A.T + b.T < eps, axis=1)
 
-        # Create KDTree for boundary points
+        # 6) Build a KDTree over boundary_pts for nearest-boundary queries
         boundary_kdtree = KDTree(boundary_pts)
 
-        for idx, is_inside in zip(unique_indices, containment_check):
-            if not is_inside:
-                # Find nearest boundary point
-                robot_pos = kdtree_poses[idx]
-                _, nearest_idx = boundary_kdtree.query(robot_pos.reshape(1, -1), k=1)
-                nearest_neighbors[idx] = nearest_idx[0]
-            else:
-                current_pos = kdtree_poses[idx]
-                kdt_pos_copy = kdtree_poses.copy()
-                mask = np.all(kdt_pos_copy @ A.T + b.T < eps, axis=1)
-                kdt_pos_copy = kdt_pos_copy[~mask]
-                if len(kdt_pos_copy) == 0:
-                    continue
-                new_kdtree = KDTree(kdt_pos_copy)
-                new_idx = new_kdtree.query(current_pos.reshape(1, -1))[1][0]
-                new_pos = kdt_pos_copy[new_idx]
-                new_idx = np.where((kdtree_poses == new_pos).all(axis=1))[0][0]
-                # Find nearest boundary point for the outside point
-                _, nearest_idx = boundary_kdtree.query(new_pos.reshape(1, -1), k=1)
-                nearest_neighbors[new_idx] = nearest_idx[0]
+        # We'll store the mapping from robot_idx -> boundary_pt_idx
+        nearest_neighbors = {}
 
-        nearest_bdpts = list(nearest_neighbors.values())
-        bd_pts = boundary_pts[nearest_bdpts]
-        return list(nearest_neighbors.keys()), np.array(bd_pts), nearest_bdpts
+        for robot_idx, is_inside in zip(unique_indices, inside_mask):
+            robot_pos = kdtree_poses[robot_idx]
+
+            if not is_inside:
+                # Robot is outside the hull => direct nearest boundary
+                _, nearest_bd_idx = boundary_kdtree.query(robot_pos[None, :], k=1)
+                nearest_neighbors[robot_idx] = nearest_bd_idx[0]
+
+        final_robot_indices = list(nearest_neighbors.keys())            # len = K
+        final_boundary_indices = list(nearest_neighbors.values())       # len = K
+        final_bd_pts = boundary_pts[final_boundary_indices]            # shape: (K, 2)
+        return final_robot_indices, final_bd_pts, final_boundary_indices
     
     def expand_hull(self, hull, world=True, rope=False):
         """
@@ -359,7 +348,7 @@ class NNHelper:
             if rope:
                 robot_radius = 0.015
             else:
-                robot_radius = 0.009
+                robot_radius = 0.008
         else:
             robot_radius = 30
         expanded_hull_vertices = []
