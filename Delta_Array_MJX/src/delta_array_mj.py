@@ -254,12 +254,12 @@ class DeltaArrayRB(DeltaArrayBase):
     def compute_reward(self, actions):
         dist = np.mean(np.linalg.norm(self.goal_nn_bd_pts - self.final_nn_bd_pts, axis=1))
         if self.new_rew:
-            return self.new_reward(dist)
+            return dist, self.new_reward(dist)
         
         ep_reward = np.clip(self.scaling_factor / (dist**2 + self.epsilon), 0, self.max_reward)
         if self.args['compa']:
             ep_reward -= 10000*np.sum(abs(actions[:self.n_idxs] - self.actions_grasp[:self.n_idxs]))
-        return ep_reward*self.args['reward_scale']
+        return dist, ep_reward*self.args['reward_scale']
     
     def new_reward(self, dist):
         return 100 * (np.exp(-(dist**2) / (2 * 0.015**2)))
