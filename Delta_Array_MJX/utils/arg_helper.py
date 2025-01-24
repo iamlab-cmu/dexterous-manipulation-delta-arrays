@@ -40,6 +40,7 @@ def parse_args():
     parser.add_argument("-compa", "--compa", action="store_true", help="cost for Actions in reward function")
     parser.add_argument("-rs", "--reward_scale", type=float, default=0.01, help="Scale reward function by this value")
     parser.add_argument("-cd", "--collect_data", action="store_true", help="Collect data to be stored in RB")
+    parser.add_argument("-newr", "--new_rew", action="store_true", help="New Gaussian reward function")
     
     # Required arguments
     parser.add_argument("-algo", "--algo", type=str, required=True,  help="Choose RL Algorithm: [SAC]")
