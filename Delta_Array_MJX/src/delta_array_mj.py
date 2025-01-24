@@ -131,7 +131,7 @@ class DeltaArrayBase(BaseMJEnv):
             actions = self.actions_grasp[:self.n_idxs] + displacement_vectors
         return self.clip_actions_to_ws(actions)
         
-    def set_rl_states(self, actions, final=False, test_traj=False):
+    def set_rl_states(self, actions=None, final=False, test_traj=False):
         if final:
             # x, y = self.data.qpos[self.obj_id: self.obj_id+2]
             # if not((0.009 < x < 0.242) and (0.034 < y < 0.376)):
