@@ -58,7 +58,7 @@ class MABC_Finetune:
             'act_limit'         : 0.03,
             "device"            : parent_hp_dict['dev_rl'],
             "dev_rl"            : parent_hp_dict['dev_rl'],
-            'optim'             : "adam",
+            'optim'             : parent_hp_dict['optim'],
             "model_dim"         : 256,
             "num_heads"         : 8,
             "dim_ff"            : 512,
@@ -66,7 +66,7 @@ class MABC_Finetune:
             "dropout"           : 0,
             "max_grad_norm"     : parent_hp_dict['max_grad_norm'],
             "alpha"             : 0.2,
-            "adaln"             : parent_hp_dict['adaln'],
+            "attn_mech"         : parent_hp_dict['attn_mech'],
             'masked'            : parent_hp_dict['masked'],
             'gauss'             : parent_hp_dict['gauss'],
             'learned_alpha'     : parent_hp_dict['learned_alpha'],
@@ -74,6 +74,16 @@ class MABC_Finetune:
         self.device = self.hp_dict['device']
         self.tf = Transformer(self.hp_dict)
         self.gauss = self.hp_dict['gauss']
+        self.log_dict = {
+            'Q loss': [],
+            'Pi loss': [],
+            'alpha': [],
+            'mu': [],
+            'std': [],
+            'Reward': []
+        }
+        self.max_avg_rew = 0
+        self.batch_size = parent_hp_dict['batch_size']
         # self.tf.to(self.hp_dict['device'])
         # self.optimizer = optim.AdamW(self.tf.parameters(), lr=self.hp_dict['pi_lr'], weight_decay=0)
         # self.tf.load_state_dict(torch.load(self.hp_dict['ckpt_loc'], weights_only=False)['tf'])
@@ -85,7 +95,7 @@ class MABC_Finetune:
         # if self.train_or_test == "train":
         print(f"\nNumber of parameters: {np.sum(var_counts)}\n")
 
-        if self.hp_dict['optim']=="adam":
+        if self.hp_dict['optim']=="adamW":
             self.optimizer_actor = optim.AdamW(self.tf.decoder_actor.parameters(), lr=self.hp_dict['pi_lr'], weight_decay=1e-2)
             self.optimizer_critic = optim.AdamW(self.tf.decoder_critic.parameters(), lr=self.hp_dict['q_lr'], weight_decay=1e-2)
         elif self.hp_dict['optim']=="sgd":
@@ -165,15 +175,8 @@ class MABC_Finetune:
             self.log_dict['mu'].append(mu.mean().item())
             self.log_dict['std'].append(std.mean().item())
 
-    def update(self, batch_size, current_episode, n_envs, logged_rew):
-        self.log_dict = {
-            'Q loss': [],
-            'Pi loss': [],
-            'alpha': [],
-            'mu': [],
-            'std': [],
-            'Reward': logged_rew
-        }
+    def update(self, current_episode, n_envs, avg_reward):
+        self.log_dict['Reward'].append(avg_reward)
         for j in range(n_envs):
             self.internal_updates_counter += 1
             if self.internal_updates_counter == 1:
@@ -189,7 +192,7 @@ class MABC_Finetune:
             self.scheduler_actor.step()
             self.scheduler_critic.step()
 
-            data = self.ma_replay_buffer.sample_batch(batch_size)
+            data = self.ma_replay_buffer.sample_batch(self.batch_size)
             n_agents = int(torch.max(data['num_agents']))
             states = data['obs'][:,:n_agents].to(self.device)
             actions = data['act'][:,:n_agents].to(self.device)
@@ -212,11 +215,27 @@ class MABC_Finetune:
                     p_target.data.mul_(self.hp_dict['tau'])
                     p_target.data.add_((1 - self.hp_dict['tau']) * p.data)
 
+            if self.internal_updates_counter % 5000 == 0:
+                if self.max_avg_rew < avg_reward:
+                    print("ckpt saved @ ", current_episode, self.internal_updates_counter)
+                    self.max_avg_rew = avg_reward
+                    dicc = {
+                        'model': self.tf.state_dict(),
+                        'actor_optimizer': self.optimizer_actor.state_dict(),
+                        'critic_optimizer': self.optimizer_critic.state_dict(),
+                    }
+                    torch.save(dicc, f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
+        
         if not self.hp_dict["dont_log"]:
             wandb.log({k: np.mean(v) if isinstance(v, list) and len(v) > 0 else v for k, v in self.log_dict.items()})
-                
-        if self.internal_updates_counter % 50000 == 0:
-            torch.save(self.tf.state_dict(), f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
+            self.log_dict = {
+                'Q loss': [],
+                'Pi loss': [],
+                'alpha': [],
+                'mu': [],
+                'std': [],
+                'Reward': []
+            }
     
     @torch.no_grad()
     def get_actions(self, obs, pos, deterministic=False):
@@ -224,11 +243,20 @@ class MABC_Finetune:
         pos = torch.as_tensor(pos, dtype=torch.int32).unsqueeze(0).to(self.device)
         
         actions = self.tf.get_actions(obs, pos, deterministic=deterministic)
-        return actions.tolist()
+        return actions.detach().cpu().numpy()[0]
+    
+    def save_model(self):
+        dicc = {
+            'model': self.tf.state_dict(),
+            'actor_optimizer': self.optimizer_actor.state_dict(),
+            'critic_optimizer': self.optimizer_critic.state_dict(),
+        }
+        torch.save(dicc, self.hp_dict['ckpt_dir'])
         
     def load_saved_policy(self, path='./data/rl_data/backup/matsac_expt_grasp/pyt_save/model.pt'):
+        print(path)
         nn_dicts = torch.load(path, map_location=self.hp_dict['dev_rl'], weights_only=False)
         self.tf.load_state_dict(nn_dicts['model'])
-        self.optimizer_actor.load_state_dict(nn_dicts['optimizer_actor'])
-        self.optimizer_critic.load_state_dict(nn_dicts['optimizer_critic'])
+        self.optimizer_actor.load_state_dict(nn_dicts['actor_optimizer'])
+        self.optimizer_critic.load_state_dict(nn_dicts['critic_optimizer'])
         self.tf_target = deepcopy(self.tf)

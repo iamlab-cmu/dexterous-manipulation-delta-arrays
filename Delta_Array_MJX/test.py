@@ -3,6 +3,7 @@ import numpy as np
 import gc
 import warnings
 import time
+import os
 warnings.filterwarnings("ignore")
 from scipy.spatial.transform import Rotation as R
 
@@ -25,8 +26,9 @@ SAVE_MODEL           = 5
 LOAD_MODEL           = 6
 LOG_INFERENCE        = 7
 TOGGLE_PUSHING_AGENT = 8
+TT_GET_ACTION        = 9
 
-OBJ_NAMES = ['hexagon', "block", 'disc', 'cross', 'diamond', 'star', 'triangle', 'parallelogram', 'semicircle', "trapezium"]#'crescent', 
+OBJ_NAMES = ["block", 'hexagon', 'disc', 'cross', 'diamond', 'star', 'triangle', 'parallelogram', 'semicircle', "trapezium"]#'crescent', 
 
 ###################################################
 # Client <-> Server Communication
@@ -52,125 +54,193 @@ def send_request(lock, pipe_conn, action_code, data=None):
 ###################################################
 # Test Trajectory
 ###################################################
-def run_test_traj_rb(env_id, sim_len, return_dict, config, inference, pipe_conn, lock):
-    if config['save_vid']:
-        recorder = VideoRecorder(output_dir="./data/videos", fps=240)
-    else:
-        recorder = None
-        
-    # TODO: Rotate through all algos
-    algos = ["Random", "Vis Servo", "MATSAC", 'MABC', "MABC Finetuned"]
-    actions = send_request(lock, pipe_conn, TOGGLE_PUSHING_AGENT, algos[1])
-    config['vis_servo'] = True
+# def run_test_traj_rb(env_id, sim_len, experiment_data, algo, recorder, config, inference, pipe_conn, lock):
+#     print(algo)
+#     algo_dict = experiment_data.get(algo, {})
+#     print(f"Running Test Trajectories for {algo}")
     
+#     # Load test trajectories with existence check
+#     traj_file = "./data/test_traj/test_trajs_new.pkl"
+#     if not os.path.exists(traj_file):
+#         raise FileNotFoundError(f"Trajectory file {traj_file} not found")
+    
+#     with open(traj_file, "rb") as f:
+#         data = pkl.load(f)
+
+#     for obj_name in OBJ_NAMES:
+#         if obj_name in algo_dict:  # Skip already processed objects
+#             print(f"Skipping already processed {obj_name} for {algo}")
+#             continue
+            
+#         print(f"{algo}: Object: {obj_name}")
+#         algo_dict[obj_name] = {}
+#         env = delta_array_mj.DeltaArrayRB(config, obj_name)
+
+#         for traj_name, path in data.items():
+#             algo_dict[obj_name][traj_name] = {}
+            
+#             for run_id in range(10):
+#                 if run_id in algo_dict[obj_name].get(traj_name, {}):  # Skip completed runs
+#                     print(f"Skipping {traj_name} run {run_id}")
+#                     continue
+                    
+#                 path_cp = path.tolist()
+#                 if len(path_cp) < 2:  # Validate path length
+#                     print(f"Path too short in {traj_name}, skipping")
+#                     continue
+                    
+#                 # Rest of your existing loop logic here
+#                 # Add array validation before processing:
+#                 if not isinstance(env.goal_bd_pts, np.ndarray) or env.goal_bd_pts.ndim != 2:
+#                     print("Invalid boundary points, skipping iteration")
+#                     continue
+
+#     # Update experiment data only if not existing
+#     if algo not in experiment_data:
+#         experiment_data[algo] = algo_dict
+
+def run_test_traj_rb(env_id, sim_len, experiment_data, algo, recorder, config, inference, pipe_conn, lock):
+    print(algo)
+    algo_dict = {}
+    # send_request(lock, pipe_conn, TOGGLE_PUSHING_AGENT, algo)
+    print(f"Running Test Trajectories for {algo}")
     for obj_name in OBJ_NAMES:
+        print(f"{algo}: Object: {obj_name}")
+        algo_dict[obj_name] = {}
         env = delta_array_mj.DeltaArrayRB(config, obj_name)
-        data = pkl.load(open("./data/test_traj/test_trajs.pkl", "rb"))
-        traj_stats = {}
-        for name, path in data.items():
-            traj_stats[name] = {}
-            for i in range(1):
+        with open(f"./data/test_traj/test_trajs_new.pkl", "rb") as f:
+            data = pkl.load(f)
+        # data = pkl.load(open("./data/test_traj/test_trajs_new.pkl", "rb"))
+                    
+        for traj_name, path in data.items():
+            algo_dict[obj_name][traj_name] = {}
+            
+            for run_id in range(10):
+                algo_dict[obj_name][traj_name][run_id] = []
                 path_cp = path.tolist()
                 init_pose = path_cp.pop(0)
                 next_pose = path_cp.pop(0)
                 env.traj_reset(init=init_pose, goal=next_pose)
-                tries = 0
+                
+                try_id = 0
+                tries = 1
+                
                 while len(path_cp) > 0:
+                    try_id += 1
                     env.apply_action(env.actions_grasp[:env.n_idxs])
                     env.update_sim(sim_len, recorder)
-                    print("obj grasped")
-                    push_states = (env.init_state[:env.n_idxs], env.pos[:env.n_idxs], inference)
-                    if (config['vis_servo']) or (np.random.rand() < config['vsd']):
-                        actions = env.vs_action()
-                        env.apply_action(actions)
+                    
+                    push_states = (algo, env.init_state[:env.n_idxs], env.pos[:env.n_idxs], inference)
+                    if algo == "Vis Servo":
+                        actions = env.vs_action(random=False)
+                    elif algo == "Random":
+                        actions = env.vs_action(random=True)
                     else:
-                        actions = send_request(lock, pipe_conn, MA_GET_ACTION, push_states)
+                        actions = send_request(lock, pipe_conn, TT_GET_ACTION, push_states)
                         env.final_state[:env.n_idxs, 4:6] = actions
-                        env.apply_action(actions)
                         
-                    print('obj pushed')
+                    env.apply_action(actions)
                     env.update_sim(sim_len, recorder)
-                    env.set_rl_states(final=True)
-                    reward = env.compute_reward(actions)
-                    print(f"Obj: {obj_name} Traj: {name} Step: {len(path_cp)}, Reward: {reward}")
+                    env.set_rl_states(actions, final=True, test_traj=True)
+                    dist, reward = env.compute_reward(actions)
+                    # print(f"Algo: {algo}, Obj: {obj_name}, Traj: {traj_name}, Run: {run_id}, Attempt: {try_id}, Reward: {reward}")
+                    
+                    step_data = {
+                            'try_id'        : try_id,
+                            'init_qpos'     : env.init_qpos,
+                            'goal_qpos'     : env.goal_qpos,
+                            'final_qpos'    : env.final_qpos,
+                            'dist'          : dist,
+                            'reward'        : float(reward),
+                            'tries'         : tries,
+                            'robot_indices' : (env.active_idxs.copy()),
+                            'actions'       : actions.tolist(),
+                            'robot_count'   : (env.n_idxs),
+                        }
+                    
+                    algo_dict[obj_name][traj_name][run_id].append(step_data)
                     
                     # TODO: Set a proper threshold
-                    if (reward > 30) or (tries>3):
-                        tries = 0
+                    if (reward > 80) or (tries>3):
+                        tries = 1
                         next_pose = path_cp.pop(0)
                         env.traj_reset(goal=next_pose)
                     else:
                         tries+=1
                         env.traj_reset()
-
+    
+    experiment_data[algo] = algo_dict
+        
 ###################################################
 # Environment Runner
 ###################################################
-def run_env(env_id, sim_len, n_runs, return_dict, config, inference, pipe_conn, lock):
-    seed = np.random.randint(0, 2**32 - 1)
-    np.random.seed(seed)
 
-    if config['obj_name'] == "ALL":
-        obj_name = OBJ_NAMES[np.random.randint(0, len(OBJ_NAMES))]
-    else:
-        obj_name = config['obj_name']
+# def run_env(env_id, sim_len, n_runs, return_dict, config, inference, pipe_conn, lock):
+#     seed = np.random.randint(0, 2**32 - 1)
+#     np.random.seed(seed)
 
-    if config['save_vid']:
-        recorder = VideoRecorder(output_dir="./data/videos", fps=120)
-    else:
-        recorder = None
+#     if config['obj_name'] == "ALL":
+#         obj_name = OBJ_NAMES[np.random.randint(0, len(OBJ_NAMES))]
+#     else:
+#         obj_name = config['obj_name']
+
+#     if config['save_vid']:
+#         recorder = VideoRecorder(output_dir="./data/videos", fps=120)
+#     else:
+#         recorder = None
         
-    env = delta_array_mj.DeltaArrayMJ(config, obj_name)
+#     env = delta_array_mj.DeltaArrayMJ(config, obj_name)
 
-    try:
-        run_dict = {}
-        try:
-            for nrun in range(n_runs):
-                if env.reset():
-                    # grasp_states = { 'states': env.init_grasp_state[:env.n_idxs].tolist() }
-                    # env.actions_grasp[:env.n_idxs] = send_request(grasp_states, SA_GET_ACTION)['actions']
-                    env.actions_grasp[:env.n_idxs] = env.init_nn_bd_pts - env.raw_rb_pos
-                    env.set_rl_states(grasp=True)
+#     try:
+#         run_dict = {}
+#         try:
+#             for nrun in range(n_runs):
+#                 if env.reset():
+#                     # grasp_states = { 'states': env.init_grasp_state[:env.n_idxs].tolist() }
+#                     # env.actions_grasp[:env.n_idxs] = send_request(grasp_states, SA_GET_ACTION)['actions']
+#                     env.actions_grasp[:env.n_idxs] = env.init_nn_bd_pts - env.raw_rb_pos
+#                     env.set_rl_states(grasp=True)
                     
-                    # APPLY GRASP ACTIONS
-                    env.apply_action(env.actions_grasp[:env.n_idxs])
-                    env.update_sim(sim_len)
+#                     # APPLY GRASP ACTIONS
+#                     env.apply_action(env.actions_grasp[:env.n_idxs])
+#                     env.update_sim(sim_len)
 
-                    push_states = (env.init_state[:env.n_idxs], env.pos[:env.n_idxs], inference)
-                    # APPLY PUSH ACTIONS
-                    if (config['vis_servo']) or (np.random.rand() < config['vsd']):
-                        actions = env.vs_action()
-                        env.apply_action(actions)
-                    else:
-                        actions = send_request(lock, pipe_conn, MA_GET_ACTION, push_states)
-                        env.final_state[:env.n_idxs, 4:6] = actions
-                        env.apply_action(actions)
+#                     push_states = (env.init_state[:env.n_idxs], env.pos[:env.n_idxs], inference)
+#                     # APPLY PUSH ACTIONS
+#                     if (config['vis_servo']) or (np.random.rand() < config['vsd']):
+#                         actions = env.vs_action()
+#                         env.apply_action(actions)
+#                     else:
+#                         actions = send_request(lock, pipe_conn, MA_GET_ACTION, push_states)
+#                         env.final_state[:env.n_idxs, 4:6] = actions
+#                         env.apply_action(actions)
                         
-                    env.update_sim(sim_len, recorder)
-                    env.set_rl_states(final=True)
-                    reward = env.compute_reward()
+#                     env.update_sim(sim_len, recorder)
+#                     env.set_rl_states(final=True)
+#                     reward = env.compute_reward()
 
-                    run_dict[nrun] = {
-                        "s0": push_states[0],
-                        "a": env.actions[:env.n_idxs],
-                        "p": push_states[1],
-                        "r": reward,
-                        "s1": env.final_state[:env.n_idxs],
-                        "d": True if reward > 0.8 else False,
-                        "N": env.n_idxs,
-                    }
-                else:
-                    print("Gandlela Env")
-                    continue
-        finally:
-            if recorder is not None:
-                recorder.save_video()
-            return_dict[env_id] = run_dict
-    finally:
-        # Clean up resources
-        env.close()
-        del env
-        gc.collect()
+#                     run_dict[nrun] = {
+#                         "s0": push_states[0],
+#                         "a": env.actions[:env.n_idxs],
+#                         "p": push_states[1],
+#                         "r": reward,
+#                         "s1": env.final_state[:env.n_idxs],
+#                         "d": True if reward > 0.8 else False,
+#                         "N": env.n_idxs,
+#                     }
+#                 else:
+#                     print("Gandlela Env")
+#                     continue
+#         finally:
+#             if recorder is not None:
+#                 recorder.save_video()
+#             return_dict[env_id] = run_dict
+#     finally:
+#         # Clean up resources
+#         env.close()
+#         del env
+#         gc.collect()
+
 
 ###################################################
 # Main
@@ -200,7 +270,34 @@ if __name__ == "__main__":
 
     outer_loops = 0
     if config['test_traj']:
-        run_test_traj_rb(0, config['simlen'], {}, config, True, parent_conn, lock)
+        if config['save_vid']:
+            recorder = VideoRecorder(output_dir="./data/videos", fps=240)
+        else:
+            recorder = None
+            
+        if config['gui']:
+            algos = ['Vis Servo']
+        else:
+            algos = ["Vis Servo", "MABC Finetuned", "MATSAC", 'MABC']
+        
+        experiment_data = manager.dict()
+        processes = []
+        for i in range(len(algos)):
+            p = Process(target=run_test_traj_rb, args=(0, config['simlen'], experiment_data, algos[i], recorder, config, True, parent_conn, lock))
+            processes.append(p)
+            p.start()
+        for p in processes:
+            p.join()
+            
+        # for algo in algos:
+        #     run_test_traj_rb(0, config['simlen'], {}, config, True, parent_conn, lock)
+            
+        save_path = f"./data/test_traj/test_traj_data_new.pkl"
+        pkl.dump(experiment_data, open(save_path, "wb"))
+        print(f"Saved Test Trajectory Data at {save_path}")
+        if recorder is not None:
+            recorder.save_video()
+            
     elif config['gui']:
         while True:
             run_env(0, config['simlen'], config['nruns'], {}, config, inference, parent_conn, lock)

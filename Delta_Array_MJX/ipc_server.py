@@ -8,7 +8,7 @@ import os
 
 import utils.SAC.sac as sac
 import utils.MATSAC.matsac_no_autoreg as matsac
-import utils.MABC.madptest as madp_test
+# import utils.MABC.madptest as madp_test
 import utils.MABC.mabc_test as mabc
 import utils.MABC.mabc_finetune as mabc_finetune
 import utils.multi_agent_replay_buffer as MARB
@@ -87,14 +87,13 @@ class DeltaArrayServer():
             self.pushing_agents = {
                 "Random" : None,
                 "Vis Servo" : None,
-                # "MATSAC" : matsac.MATSAC(ma_env_dict, self.hp_dict, train_or_test="test"),
-                # "MABC" : mabc.MABC(self.hp_dict),
-                # "MABC Finetuned" : mabc_finetune.MABC_Finetune(self.hp_dict),
+                "MATSAC" : matsac.MATSAC(ma_env_dict, self.hp_dict, train_or_test="test"),
+                "MABC" : mabc.MABC(self.hp_dict),
+                "MABC Finetuned" : mabc_finetune.MABC_Finetune(self.hp_dict),
             }
-            # self.pushing_agents["MATSAC"].load_saved_policy('./data/rl_data/matsac_mj_final/pyt_save/model.pt')
-            # self.pushing_agents["MABC"].load_saved_policy('./utils/MABC/mabc_new_data_ac_gauss.pth')
-            # # TODO: Make these 3 things proper
-            # self.pushing_agents["MABC Finetuned"].load_saved_policy('./utils/MABC/mabc_new_data_ac_gauss.pth')
+            self.pushing_agents["MATSAC"].load_saved_policy("./models/trained_models/matsac.pt")
+            self.pushing_agents["MABC"].load_saved_policy("./models/trained_models/mabc.pt")
+            self.pushing_agents["MABC Finetuned"].load_saved_policy("./models/trained_models/mabc_finetuned.pt")
         else:
             if config['algo']=="MATSAC":
                 self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, train_or_test="train")
@@ -131,11 +130,11 @@ class DeltaArrayServer():
                         config=self.hp_dict,
                         name = self.hp_dict['exp_name'])
                     
-    def toggle_pushing_agent(self, algo):
-        if algo in self.pushing_agents:
-            self.pushing_agent = self.pushing_agents[algo]
-        else:
-            print(f"Invalid algo: {algo}")
+    # def toggle_pushing_agent(self, algo):
+    #     if algo in self.pushing_agents:
+    #         self.pushing_agent = self.pushing_agents[algo]
+    #     else:
+    #         print(f"Invalid algo: {algo}")
 
 def server_process_main(pipe_conn, config):
     """
@@ -162,6 +161,7 @@ def server_process_main(pipe_conn, config):
     LOAD_MODEL           = 6
     LOG_INFERENCE        = 7
     TOGGLE_PUSHING_AGENT = 8
+    TT_GET_ACTION        = 9
     
     np.random.seed(config['seed'])
     torch.manual_seed(config['seed'])
@@ -180,6 +180,12 @@ def server_process_main(pipe_conn, config):
                 pipe_conn.send(response)
                 break
 
+            elif endpoint == TT_GET_ACTION:
+                algo, data = data[0], data[1:]
+                with update_lock:
+                    action = server.pushing_agents[algo].get_actions(*data)
+                response = action
+                
             elif endpoint == MA_GET_ACTION:
                 with update_lock:
                     action = server.pushing_agent.get_actions(*data)

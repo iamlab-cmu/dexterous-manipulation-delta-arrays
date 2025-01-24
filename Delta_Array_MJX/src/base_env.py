@@ -76,7 +76,8 @@ class BaseMJEnv:
                 if recorder is not None:
                     recorder.add_frame(self.get_image())
                 self.viewer.sync()
-                time.sleep(0.00075)
+                time.sleep(0.0001)
+                # time.sleep(0.00075)
         elif recorder is not None:
             self.update_sim_recorder(simlen, recorder)
         else:

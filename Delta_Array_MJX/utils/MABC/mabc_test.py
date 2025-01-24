@@ -46,7 +46,7 @@ class MABC:
             "dropout"           : 0,
             "max_grad_norm"     : parent_hp_dict['max_grad_norm'],
             "alpha"             : 0.2,
-            "adaln"             : parent_hp_dict['adaln'],
+            "attn_mech"         : parent_hp_dict['attn_mech'],
             'masked'            : parent_hp_dict['masked'],
             'gauss'             : parent_hp_dict['gauss'],
             'ca'                : parent_hp_dict['ca'],

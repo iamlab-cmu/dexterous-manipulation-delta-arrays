@@ -90,8 +90,8 @@ def run_env(env_id, sim_len, n_runs, return_dict, config, inference, pipe_conn, 
                 env.apply_action(actions)
                 
             env.update_sim(sim_len, recorder)
-            env.set_rl_states(final=True)
-            reward = env.compute_reward(actions)
+            env.set_rl_states(actions, final=True)
+            dist, reward = env.compute_reward(actions)
             if env.gui:
                 print(reward)
 

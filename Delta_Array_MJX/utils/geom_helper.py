@@ -78,22 +78,52 @@ def sample_boundary_points(boundary_points: np.ndarray, n_samples: int) -> np.nd
 #     # R, t = icp_open3d(init_bd_pts, goal_bd_pts)
 #     return (R @ (init_nn_bd_pts - com0).T).T + com1
 
-def icp_open3d(source, target):
-    source_pcd = o3d.geometry.PointCloud()
-    target_pcd = o3d.geometry.PointCloud()
-    source_pcd.points = o3d.utility.Vector3dVector(np.pad(source, ((0, 0), (0, 1))))  # Add z=0
-    target_pcd.points = o3d.utility.Vector3dVector(np.pad(target, ((0, 0), (0, 1))))  # Add z=0
-    threshold = 0.1
-    trans_init = np.eye(4)
-    result = o3d.pipelines.registration.registration_icp(
-        source_pcd, target_pcd, threshold, trans_init,
-        o3d.pipelines.registration.TransformationEstimationPointToPoint()
-    )
-    return result.transformation[:2, :2], result.transformation[:2, 3]
+
+def icp_rot_with_correspondence(src, tgt):
+    # Find nearest neighbors in tgt for each point in src
+    tgt_matched = np.zeros_like(src)
+    for i in range(len(src)):
+        distances = np.linalg.norm(tgt - src[i], axis=1)
+        tgt_matched[i] = tgt[np.argmin(distances)]
+    
+    H = src.T @ tgt_matched
+    U, _, Vt = np.linalg.svd(H)
+    R = Vt.T @ U.T
+    
+    if np.linalg.det(R) < 0:
+        Vt[-1, :] *= -1
+        R = Vt.T @ U.T
+    
+    return R
 
 def transform_boundary_points(init_bd_pts, goal_bd_pts, init_nn_bd_pts):
-    R, t = icp_open3d(init_bd_pts, goal_bd_pts)
-    return (R @ (init_nn_bd_pts - init_bd_pts.mean(axis=0)).T).T + goal_bd_pts.mean(axis=0)
+    com0 = np.mean(init_bd_pts, axis=0)
+    com1 = np.mean(goal_bd_pts, axis=0)
+    
+    src = init_bd_pts - com0
+    tgt = goal_bd_pts - com1
+    
+    R = icp_rot_with_correspondence(src, tgt)
+    
+    transformed_nn = (R @ (init_nn_bd_pts - com0).T).T + com1
+    return transformed_nn
+
+# def icp_open3d(source, target):
+#     source_pcd = o3d.geometry.PointCloud()
+#     target_pcd = o3d.geometry.PointCloud()
+#     source_pcd.points = o3d.utility.Vector3dVector(np.pad(source, ((0, 0), (0, 1))))  # Add z=0
+#     target_pcd.points = o3d.utility.Vector3dVector(np.pad(target, ((0, 0), (0, 1))))  # Add z=0
+#     threshold = 0.1
+#     trans_init = np.eye(4)
+#     result = o3d.pipelines.registration.registration_icp(
+#         source_pcd, target_pcd, threshold, trans_init,
+#         o3d.pipelines.registration.TransformationEstimationPointToPoint()
+#     )
+#     return result.transformation[:2, :2], result.transformation[:2, 3]
+
+# def transform_boundary_points(init_bd_pts, goal_bd_pts, init_nn_bd_pts):
+#     R, t = icp_open3d(init_bd_pts, goal_bd_pts)
+#     return (R @ (init_nn_bd_pts - init_bd_pts.mean(axis=0)).T).T + goal_bd_pts.mean(axis=0)
 
 def random_resample_boundary_points(init_bd_pts: np.ndarray, goal_bd_pts: np.ndarray):
     n1, n2 = len(init_bd_pts), len(goal_bd_pts)

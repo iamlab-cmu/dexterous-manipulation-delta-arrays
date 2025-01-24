@@ -26,7 +26,7 @@ class DeltaArrayEnvCreator:
     def create_actuator(self, name):
         actuators = []
         for axis in ['x', 'y']:
-            actuators.append(ET.Element('position', joint=f"{name}_{axis}", ctrllimited="true", ctrlrange="-0.03 0.03", kp="100", kv="35"))
+            actuators.append(ET.Element('position', joint=f"{name}_{axis}", ctrllimited="true", ctrlrange="-0.03 0.03", kp="50", kv="20"))
         return actuators
 
     def create_env(self, obj_name, num_rope_bodies=None):

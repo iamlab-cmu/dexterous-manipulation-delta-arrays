@@ -42,7 +42,6 @@ class DeltaArrayBase(BaseMJEnv):
         self.robot_ids = np.array([self.data.body(f'fingertip_{i*8 + j}').id for i in range(8) for j in range(8)])
         self.nn_helper = nn_helper.NNHelper(self.plane_size, real_or_sim="sim")
         
-        self.nn_bd_pts = None
         self.init_state = np.zeros((64, 6))
         self.final_state = np.zeros((64, 6))
         self.init_grasp_state = np.zeros((64, 4))
@@ -55,6 +54,7 @@ class DeltaArrayBase(BaseMJEnv):
         self.epsilon = 1e-6
         self.scaling_factor = 0.15
         self.max_reward = 10000.0
+        self.new_rew = args['new_rew']
                 
     def convert_world_2_pix(self, vecs):
         result = np.zeros((vecs.shape[0], 2))
@@ -98,7 +98,7 @@ class DeltaArrayBase(BaseMJEnv):
         if len(boundary_pts) == 0:
             return None
         return geom_helper.sample_boundary_points(self.convert_pix_2_world(boundary_pts), 200)
-        
+    
     def set_z_positions(self, active_idxs=None, low=True):
         if active_idxs is None:
             body_ids = self.robot_ids
@@ -108,7 +108,7 @@ class DeltaArrayBase(BaseMJEnv):
             body_ids = self.robot_ids[active_idxs]
             xy = self.nn_helper.kdtree_positions_world[self.active_idxs]
             n_idxs = len(active_idxs)
-            
+        
         pos = np.hstack((xy, self.low_Z[:n_idxs, None] if low else self.high_Z[:n_idxs, None]))
         self.model.body_pos[body_ids] = pos
         self.update_sim(1)
@@ -123,21 +123,27 @@ class DeltaArrayBase(BaseMJEnv):
         self.data.ctrl[ctrl_indices] = acts.reshape(-1)
         
     def vs_action(self, random=False):
-        self.sf_bd_pts, self.sf_nn_bd_pts = self.get_current_bd_pts()
-        displacement_vectors = self.goal_nn_bd_pts - self.sf_nn_bd_pts
-        actions = self.actions_grasp[:self.n_idxs] + displacement_vectors
         if random:
             actions = np.random.uniform(-0.03, 0.03, size=(self.n_idxs, 2))
+        else:
+            self.sf_bd_pts, self.sf_nn_bd_pts = self.get_current_bd_pts()
+            displacement_vectors = self.goal_nn_bd_pts - self.sf_nn_bd_pts
+            actions = self.actions_grasp[:self.n_idxs] + displacement_vectors
         return self.clip_actions_to_ws(actions)
         
-    def set_rl_states(self, final=False):
+    def set_rl_states(self, actions, final=False, test_traj=False):
         if final:
+            # x, y = self.data.qpos[self.obj_id: self.obj_id+2]
+            # if not((0.009 < x < 0.242) and (0.034 < y < 0.376)):
+            #     self.data.qpos[self.obj_id:self.obj_id+7] = self.init_qpos.copy()
+            #     self.update_sim(1)
+                
             self.final_bd_pts, self.final_nn_bd_pts = self.get_current_bd_pts()
             # self.visualizer.vis_bd_points(self.final_nn_bd_pts, self.goal_nn_bd_pts, final_bd_pts, self.goal_bd_pts)
             self.final_state[:self.n_idxs, :2] = self.final_nn_bd_pts - self.raw_rb_pos
-            self.final_state[:self.n_idxs, 4:6] = self.actions[:self.n_idxs]
-        # elif grasp:
-        #     self.init_state[:self.n_idxs, 4:6] = self.actions_grasp[:self.n_idxs]
+            self.final_state[:self.n_idxs, 4:6] = actions[:self.n_idxs]
+            if test_traj:
+                self.final_qpos = self.data.qpos[self.obj_id:self.obj_id+7].copy()
         else:
             
             self.n_idxs = len(self.active_idxs)
@@ -155,9 +161,7 @@ class DeltaArrayBase(BaseMJEnv):
             
             # self.init_grasp_state[:self.n_idxs, 2:4] = self.nn_helper.kdtree_positions_pix[self.active_idxs]/self.img_size
             # self.init_grasp_state[:self.n_idxs, :2] = self.convert_world_2_pix(self.init_nn_bd_pts)/self.img_size
-            time.sleep(1)
             self.set_z_positions(self.active_idxs, low=True)
-            time.sleep(1)
     
     def get_current_bd_pts(self):
         raise NotImplementedError
@@ -219,6 +223,8 @@ class DeltaArrayRB(DeltaArrayBase):
     
     def get_current_bd_pts(self):
         current_bd_pts = self.get_bdpts_traditional()
+        if current_bd_pts is None:
+            return None, None
         current_nn_bd_pts = geom_helper.transform_boundary_points(self.init_bd_pts.copy(), current_bd_pts, self.init_nn_bd_pts.copy())
         return current_bd_pts, current_nn_bd_pts
     
@@ -245,33 +251,30 @@ class DeltaArrayRB(DeltaArrayBase):
             return False
         return True
     
-    def compute_reward(self, actions):
-        # dist = np.mean(np.linalg.norm(self.final_state[:self.n_idxs, 2:4] - self.final_state[:self.n_idxs, :2], axis=1))
-        self.visualizer.vis_bd_points(self.sf_bd_pts, self.sf_nn_bd_pts, self.final_nn_bd_pts, self.goal_nn_bd_pts, self.final_bd_pts, self.goal_bd_pts, actions, self.active_idxs, self.nn_helper.kdtree_positions_world)
+    def compute_reward(self):
         dist = np.mean(np.linalg.norm(self.goal_nn_bd_pts - self.final_nn_bd_pts, axis=1))
-        dist2 = np.linalg.norm(self.goal_bd_pts - self.final_bd_pts)
-        print(dist, dist2)
-        ep_reward = np.clip(self.scaling_factor / (dist**2 + self.epsilon), 0, self.max_reward)
-        ep_reward2 = np.clip(self.scaling_factor / (dist2**2 + self.epsilon), 0, self.max_reward)
-        print(ep_reward, ep_reward2)
+        if self.new_rew:
+            return self.new_reward(dist)
         
-        # print("OG Reward ", ep_reward)
+        ep_reward = np.clip(self.scaling_factor / (dist**2 + self.epsilon), 0, self.max_reward)
         if self.args['compa']:
-            ep_reward -= 10000*np.mean(abs(self.actions[:self.n_idxs] - self.actions_grasp[:self.n_idxs]))
-            # print("CA Reward ", ep_reward) 
+            ep_reward -= 10000*np.sum(abs(self.actions[:self.n_idxs] - self.actions_grasp[:self.n_idxs]))
         return ep_reward*self.args['reward_scale']
     
-    def get_current_2dpos(self):
-        obj_pose = self.data.qpos[self.obj_id:self.obj_id+7]
-        xy = obj_pose[:2]
-        yaw = R.from_quat(obj_pose[3:], scalar_first=True).as_euler('xyz')[2]
-        return [*xy, yaw]
-        
+    def new_reward(self, dist):
+        return 100 * (np.exp(-(dist**2) / (2 * 0.015**2)))
+            
     def traj_reset(self, init=None, goal=None):
         self.set_z_positions(active_idxs=None, low=False)
+        self.data.qpos[:128] = np.zeros(128)
+        self.data.ctrl = np.zeros(128)
+        mujoco.mj_step(self.model, self.data, 1)
         
         self.raw_rb_pos = None
         self.n_idxs = 0
+        self.active_idxs = []
+        self.init_bd_pts = None
+        self.init_nn_bd_pts = None
         self.actions[:] = np.array((0,0))
         self.actions_grasp[:] = np.array((0,0))
         self.init_state = np.zeros((64, 6))
@@ -280,28 +283,31 @@ class DeltaArrayRB(DeltaArrayBase):
         self.pos = np.zeros(64)
         
         if init is not None:
-            self.curr_pos = init
-            init_qpos = [*[*init[:2], 1.002], *R.from_euler('xyz', (np.pi/2, 0, init[2])).as_quat(scalar_first=True)]
-            self.data.qpos[self.obj_id:self.obj_id+7] = init_qpos
+            # self.curr_pos = init
+            self.init_qpos = [*[*init[:2], 1.002], *R.from_euler('xyz', (np.pi/2, 0, init[2])).as_quat(scalar_first=True)]
+            self.data.qpos[self.obj_id:self.obj_id+7] = self.init_qpos.copy()
             self.update_sim(1)
             
         if goal is not None:
             self.init_bd_pts = self.get_bdpts_traditional()
             self.get_active_idxs()
+            self.goal_qpos  = [*[*goal[:2], 1.002], *R.from_euler('xyz', (np.pi/2, 0, goal[2])).as_quat(scalar_first=True)]
+            self.goal_bd_pts = self.set_body_pose_and_get_bd_pts([*goal[:2], 1.002], R.from_euler('xyz', (np.pi/2, 0, goal[2])))
             
-            init_yaw = normalize_angle(self.curr_pos[2])
-            goal_yaw = normalize_angle(goal[2])
-            angle_diff = normalize_angle(goal_yaw - init_yaw)
-            alt_angle = angle_diff - np.sign(angle_diff) * 2 * np.pi
-            final_angle = angle_diff if abs(angle_diff) <= abs(alt_angle) else alt_angle
+            # init_yaw = normalize_angle(self.curr_pos[2])
+            # goal_yaw = normalize_angle(goal[2])
+            # angle_diff = normalize_angle(goal_yaw - init_yaw)
+            # alt_angle = angle_diff - np.sign(angle_diff) * 2 * np.pi
+            # final_angle = angle_diff if abs(angle_diff) <= abs(alt_angle) else alt_angle
             
-            cos_theta = np.cos(final_angle)
-            sin_theta = np.sin(final_angle)
-            rot = np.array([[cos_theta, -sin_theta], [sin_theta, cos_theta]])
+            # cos_theta = np.cos(final_angle)
+            # sin_theta = np.sin(final_angle)
+            # rot = np.array([[cos_theta, -sin_theta], [sin_theta, cos_theta]])
             
-            centered_pts = self.init_bd_pts - np.mean(self.init_bd_pts, axis=0)
-            self.goal_bd_pts = (rot @ centered_pts.T).T + np.array(goal[:2])
-    
+            # centered_pts = self.init_bd_pts - np.mean(self.init_bd_pts, axis=0)
+            
+            # self.goal_qpos = [*[*goal[:2], 1.002], *R.from_euler('xyz', (np.pi/2, 0, goal[2])).as_quat(scalar_first=True)]
+            # self.goal_bd_pts = (rot @ centered_pts.T).T + np.array(goal[:2])
             # goal_qpos = [*[*goal[:2], 1.002], *R.from_euler('xyz', (np.pi/2, 0, goal[2])).as_quat(scalar_first=True)]
             # init_qpos = self.data.qpos[self.obj_id:self.obj_id+7]
             # self.data.qpos[self.obj_id:self.obj_id+7] = goal_qpos
@@ -311,12 +317,22 @@ class DeltaArrayRB(DeltaArrayBase):
             # self.data.qpos[self.obj_id:self.obj_id+7] = init_qpos
             # mujoco.mj_step(self.model, self.data, 3)
             
+            if len(self.active_idxs) == 0:
+                self.data.qpos[self.obj_id:self.obj_id+7] = self.init_qpos
+                self.update_sim(1)
+                self.init_bd_pts = self.get_bdpts_traditional()
+                self.get_active_idxs()
             self.set_goal_nn_bd_pts()
             self.set_rl_states()
             
         if (init is None) and (goal is None):
             self.init_bd_pts = self.get_bdpts_traditional()
             self.get_active_idxs()
+            if len(self.active_idxs) == 0:
+                self.data.qpos[self.obj_id:self.obj_id+7] = self.init_qpos
+                self.update_sim(1)
+                self.init_bd_pts = self.get_bdpts_traditional()
+                self.get_active_idxs()
             self.set_goal_nn_bd_pts()
             self.set_rl_states()
     

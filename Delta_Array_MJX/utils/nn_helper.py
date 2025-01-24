@@ -8,6 +8,7 @@ from scipy.interpolate import interp1d
 import networkx as nx
 from collections import OrderedDict
 from sklearn.neighbors import NearestNeighbors
+from copy import deepcopy
 
 class NNHelper:
     def __init__(self, plane_size, real_or_sim="real"):
@@ -308,7 +309,7 @@ class NNHelper:
         hull = self.expand_hull(hull, world=world)  # custom user function
         A, b = hull.equations[:, :-1], hull.equations[:, -1:]
         
-        kdtree_poses = self.kdtree_positions_world if world else self.kdtree_positions_pix
+        kdtree_poses = deepcopy(self.kdtree_positions_world) if world else deepcopy(self.kdtree_positions_pix)
         main_kdtree = KDTree(kdtree_poses)
 
         eps = np.finfo(np.float32).eps
@@ -318,20 +319,15 @@ class NNHelper:
         valid_indices = idx_candidates[~np.isinf(distances)]
         unique_indices = np.unique(valid_indices)
 
-        pos_world = self.rb_pos_world[unique_indices // 8, unique_indices % 8]
+        pos_world = deepcopy(self.rb_pos_world[unique_indices // 8, unique_indices % 8])
         inside_mask = np.all(pos_world @ A.T + b.T < eps, axis=1)
 
-        # 6) Build a KDTree over boundary_pts for nearest-boundary queries
         boundary_kdtree = KDTree(boundary_pts)
-
-        # We'll store the mapping from robot_idx -> boundary_pt_idx
         nearest_neighbors = {}
-
         for robot_idx, is_inside in zip(unique_indices, inside_mask):
             robot_pos = kdtree_poses[robot_idx]
 
             if not is_inside:
-                # Robot is outside the hull => direct nearest boundary
                 _, nearest_bd_idx = boundary_kdtree.query(robot_pos[None, :], k=1)
                 nearest_neighbors[robot_idx] = nearest_bd_idx[0]
 
