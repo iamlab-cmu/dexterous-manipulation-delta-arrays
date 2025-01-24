@@ -63,7 +63,7 @@ class DeltaArrayServer():
             "dev_rl"            : config['dev_rl'],
             "model_dim"         : 256,
             "num_heads"         : 8,
-            "dim_ff"            : 128,
+            "dim_ff"            : config['dim_ff'],
             "n_layers_dict"     : {'encoder':5, 'actor': 10, 'critic': 10},
             "dropout"           : 0,
             "max_grad_norm"     : config['gradnorm'],
