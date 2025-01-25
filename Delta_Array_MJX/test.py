@@ -54,51 +54,6 @@ def send_request(lock, pipe_conn, action_code, data=None):
 ###################################################
 # Test Trajectory
 ###################################################
-# def run_test_traj_rb(env_id, sim_len, experiment_data, algo, recorder, config, inference, pipe_conn, lock):
-#     print(algo)
-#     algo_dict = experiment_data.get(algo, {})
-#     print(f"Running Test Trajectories for {algo}")
-    
-#     # Load test trajectories with existence check
-#     traj_file = "./data/test_traj/test_trajs_new.pkl"
-#     if not os.path.exists(traj_file):
-#         raise FileNotFoundError(f"Trajectory file {traj_file} not found")
-    
-#     with open(traj_file, "rb") as f:
-#         data = pkl.load(f)
-
-#     for obj_name in OBJ_NAMES:
-#         if obj_name in algo_dict:  # Skip already processed objects
-#             print(f"Skipping already processed {obj_name} for {algo}")
-#             continue
-            
-#         print(f"{algo}: Object: {obj_name}")
-#         algo_dict[obj_name] = {}
-#         env = delta_array_mj.DeltaArrayRB(config, obj_name)
-
-#         for traj_name, path in data.items():
-#             algo_dict[obj_name][traj_name] = {}
-            
-#             for run_id in range(10):
-#                 if run_id in algo_dict[obj_name].get(traj_name, {}):  # Skip completed runs
-#                     print(f"Skipping {traj_name} run {run_id}")
-#                     continue
-                    
-#                 path_cp = path.tolist()
-#                 if len(path_cp) < 2:  # Validate path length
-#                     print(f"Path too short in {traj_name}, skipping")
-#                     continue
-                    
-#                 # Rest of your existing loop logic here
-#                 # Add array validation before processing:
-#                 if not isinstance(env.goal_bd_pts, np.ndarray) or env.goal_bd_pts.ndim != 2:
-#                     print("Invalid boundary points, skipping iteration")
-#                     continue
-
-#     # Update experiment data only if not existing
-#     if algo not in experiment_data:
-#         experiment_data[algo] = algo_dict
-
 def run_test_traj_rb(env_id, sim_len, experiment_data, algo, recorder, config, inference, pipe_conn, lock):
     print(algo)
     algo_dict = {}
@@ -292,8 +247,9 @@ if __name__ == "__main__":
         # for algo in algos:
         #     run_test_traj_rb(0, config['simlen'], {}, config, True, parent_conn, lock)
             
+        final_expt_data = dict(experiment_data)
         save_path = f"./data/test_traj/test_traj_data_new.pkl"
-        pkl.dump(experiment_data, open(save_path, "wb"))
+        pkl.dump(final_expt_data, open(save_path, "wb"))
         print(f"Saved Test Trajectory Data at {save_path}")
         if recorder is not None:
             recorder.save_video()

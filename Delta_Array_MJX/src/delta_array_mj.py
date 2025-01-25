@@ -133,12 +133,13 @@ class DeltaArrayBase(BaseMJEnv):
         
     def set_rl_states(self, actions=None, final=False, test_traj=False):
         if final:
-            # x, y = self.data.qpos[self.obj_id: self.obj_id+2]
-            # if not((0.009 < x < 0.242) and (0.034 < y < 0.376)):
-            #     self.data.qpos[self.obj_id:self.obj_id+7] = self.init_qpos.copy()
-            #     self.update_sim(1)
-                
             self.final_bd_pts, self.final_nn_bd_pts = self.get_current_bd_pts()
+            x, y = self.data.qpos[self.obj_id: self.obj_id+2]
+            if (not((0.009 < x < 0.242) and (0.034 < y < 0.376))) or (self.final_bd_pts is None):
+                self.final_bd_pts, self.final_nn_bd_pts = self.get_current_bd_pts()
+                self.data.qpos[self.obj_id:self.obj_id+7] = self.init_qpos.copy()
+                self.update_sim(1)
+                
             # self.visualizer.vis_bd_points(self.final_nn_bd_pts, self.goal_nn_bd_pts, final_bd_pts, self.goal_bd_pts)
             self.final_state[:self.n_idxs, :2] = self.final_nn_bd_pts - self.raw_rb_pos
             self.final_state[:self.n_idxs, 4:6] = actions[:self.n_idxs]
@@ -194,6 +195,7 @@ class DeltaArrayBase(BaseMJEnv):
         self.pos = np.zeros(64)
         
         if self.set_init_and_goal_pose(long_horizon):
+            self.init_qpos = self.data.qpos[self.obj_id:self.obj_id+7].copy()
             self.get_active_idxs()
             self.set_goal_nn_bd_pts()
             self.set_rl_states()
@@ -262,7 +264,7 @@ class DeltaArrayRB(DeltaArrayBase):
         return dist, ep_reward*self.args['reward_scale']
     
     def new_reward(self, dist):
-        return 100 * (np.exp(-(dist**2) / (2 * 0.015**2)))
+        return 100 * (np.exp(-(dist**2 + 1e-7) / (0.00016199999)))
             
     def traj_reset(self, init=None, goal=None):
         self.set_z_positions(active_idxs=None, low=False)

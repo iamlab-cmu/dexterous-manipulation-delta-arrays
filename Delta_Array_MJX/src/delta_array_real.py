@@ -185,4 +185,10 @@ class DeltaArrayReal:
     def get_bdpts(self):
         img = current_frame.copy()
         if self.traditional:
+            hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+            mask = cv2.inRange(hsv, self.lower_green, self.upper_green)
+            
+            _, seg_map = cv2.threshold(mask, 1, 250, cv2.THRESH_BINARY)
+            
+            
             

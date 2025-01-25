@@ -72,7 +72,7 @@ def parse_args():
     parser.add_argument("-tau", "--tau", type=float, default=0.005, help="EMA Tau")
     parser.add_argument('-gamma', '--gamma', type=float, default=0.99, help='Discount factor (default: 0.99)')
     parser.add_argument('-d', '--dropout', type=float, default=0.0, help='Dropout')
-    parser.add_argument('-alpha', '--alpha', type=float, default=0.1, help='Initial temperature parameter (default: 1.2214). Log of this is 0.2')
+    parser.add_argument('-alpha', '--alpha', type=float, default=0.2, help='Initial temperature parameter (default: 1.2214). Log of this is 0.2')
     parser.add_argument('-la', '--la', action="store_true", help='Whether to automatically tune alpha (default: False)')
     parser.add_argument('-bs', '--bs', type=int, default=256, help='Batch size for training (default: 256)')
     parser.add_argument('-ln', '--layer_norm', action="store_true", help='Whether to use layer normalization (default: False)')
