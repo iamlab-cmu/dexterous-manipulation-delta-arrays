@@ -31,6 +31,7 @@ class BaseMJEnv:
         self.setup_gui()
         self.gui_lock = Lock()
         self.visualizer = visualizer_utils.Visualizer()
+        self.fps_ctr = 0
         
         mujoco.mj_forward(self.model, self.data)
 
@@ -66,8 +67,10 @@ class BaseMJEnv:
     
     def update_sim_recorder(self, simlen, recorder):
         for i in range(simlen):
+            self.fps_ctr += 1
             mujoco.mj_step(self.model, self.data)    
-            recorder.add_frame(self.get_image())
+            if (self.fps_ctr % 20 == 0):
+                recorder.add_frame(self.get_image())
 
     def update_sim(self, simlen, recorder=None):
         if self.gui:
@@ -76,9 +79,9 @@ class BaseMJEnv:
                 if recorder is not None:
                     recorder.add_frame(self.get_image())
                 self.viewer.sync()
-                time.sleep(0.0001)
+                # time.sleep(0.0001)
                 # time.sleep(0.00075)
-        elif recorder is not None:
+        elif (recorder is not None):
             self.update_sim_recorder(simlen, recorder)
         else:
             mujoco.mj_step(self.model, self.data, simlen)

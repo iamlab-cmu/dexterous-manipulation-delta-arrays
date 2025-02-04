@@ -33,7 +33,7 @@ class MATSAC:
         self.batch_size = hp_dict['batch_size']
 
         if self.hp_dict['data_type'] == "image":
-            self.ma_replay_buffer = MARB.MultiAgentImageReplayBuffer(act_dim=self.act_dim, size=hp_dict['replay_size'], max_agents=self.tf.max_agents)
+            self.ma_replay_buffer = MARB.MultiAgentImageReplayBuffer(act_dim=self.act_dim, size=hp_dict['rblen'], max_agents=self.tf.max_agents)
             # TODO: In future add ViT here as an option
         else:
             # self.tf = core.Transformer(self.obs_dim, self.act_dim, self.act_limit, self.hp_dict["model_dim"], self.hp_dict["num_heads"], self.hp_dict["dim_ff"], self.hp_dict["n_layers_dict"], self.hp_dict["dropout"], self.device, self.hp_dict["delta_array_size"], self.hp_dict["adaln"], self.hp_dict['masked'])
@@ -46,7 +46,7 @@ class MATSAC:
             # Freeze target networks with respect to optimizers (only update via polyak averaging)
             for p in self.tf_target.parameters():
                 p.requires_grad = False
-            self.ma_replay_buffer = MARB.MultiAgentReplayBuffer(obs_dim=self.obs_dim, act_dim=self.act_dim, size=hp_dict['replay_size'], max_agents=self.tf.max_agents)
+            self.ma_replay_buffer = MARB.MultiAgentReplayBuffer(obs_dim=self.obs_dim, act_dim=self.act_dim, size=hp_dict['rblen'], max_agents=self.tf.max_agents)
 
         # Count variables (protip: try to get a feel for how different size networks behave!)
         var_counts = tuple(core.count_vars(module) for module in [self.tf.decoder_actor, self.tf.decoder_critic1, self.tf.decoder_critic2])

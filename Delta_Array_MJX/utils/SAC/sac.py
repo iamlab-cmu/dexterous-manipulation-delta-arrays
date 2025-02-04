@@ -42,7 +42,7 @@ class SAC:
         # Freeze target networks with respect to optimizers (only update via polyak averaging)
         for p in self.ac_targ.parameters():
             p.requires_grad = False
-        self.replay_buffer = ReplayBuffer(obs_dim=self.obs_dim, act_dim=self.act_dim, size=hp_dict['replay_size'])
+        self.replay_buffer = ReplayBuffer(obs_dim=self.obs_dim, act_dim=self.act_dim, size=hp_dict['rblen'])
 
         # Count variables (protip: try to get a feel for how different size networks behave!)
         var_counts = tuple(core.count_vars(module) for module in [self.ac.pi, self.ac.q1, self.ac.q2])

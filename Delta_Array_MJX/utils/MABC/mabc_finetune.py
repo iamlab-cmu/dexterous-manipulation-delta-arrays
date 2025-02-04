@@ -40,7 +40,7 @@ class MABC_Finetune:
             "data_dir"          : "./data/rl_data",
             "ckpt_loc"          : "./utils/MABC/mabc_new_data_ac_gauss.pth",
             "dont_log"          : parent_hp_dict['dont_log'],
-            "replay_size"       : 500001,
+            "rblen"             : parent_hp_dict['rblen'],
             'warmup_epochs'     : 1000,
             'pi_lr'             : parent_hp_dict['pi_lr'],
             'q_lr'              : parent_hp_dict['q_lr'],
@@ -89,7 +89,7 @@ class MABC_Finetune:
         # self.tf.load_state_dict(torch.load(self.hp_dict['ckpt_loc'], weights_only=False)['tf'])
         
         self.tf.to(self.hp_dict['device'])
-        self.ma_replay_buffer = MARB.MultiAgentReplayBuffer(obs_dim=self.hp_dict['state_dim'], act_dim=self.hp_dict['action_dim'], size=self.hp_dict['replay_size'], max_agents=self.tf.max_agents)
+        self.ma_replay_buffer = MARB.MultiAgentReplayBuffer(obs_dim=self.hp_dict['state_dim'], act_dim=self.hp_dict['action_dim'], size=self.hp_dict['rblen'], max_agents=self.tf.max_agents)
         
         var_counts = tuple(count_vars(module) for module in [self.tf.decoder_actor, self.tf.decoder_critic])
         # if self.train_or_test == "train":
@@ -215,7 +215,7 @@ class MABC_Finetune:
                     p_target.data.mul_(self.hp_dict['tau'])
                     p_target.data.add_((1 - self.hp_dict['tau']) * p.data)
 
-            if self.internal_updates_counter % 5000 == 0:
+            if self.internal_updates_counter % 500 == 0:
                 if self.max_avg_rew < avg_reward:
                     print("ckpt saved @ ", current_episode, self.internal_updates_counter)
                     self.max_avg_rew = avg_reward
@@ -259,4 +259,6 @@ class MABC_Finetune:
         self.tf.load_state_dict(nn_dicts['model'])
         self.optimizer_actor.load_state_dict(nn_dicts['actor_optimizer'])
         self.optimizer_critic.load_state_dict(nn_dicts['critic_optimizer'])
+        # self.optimizer_actor.load_state_dict(nn_dicts['optimizer_actor'])
+        # self.optimizer_critic.load_state_dict(nn_dicts['optimizer_critic'])
         self.tf_target = deepcopy(self.tf)

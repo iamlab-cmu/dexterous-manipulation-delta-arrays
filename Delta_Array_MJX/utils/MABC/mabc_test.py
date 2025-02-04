@@ -63,7 +63,7 @@ class MABC:
         pos = torch.as_tensor(pos, dtype=torch.int32).unsqueeze(0).to(self.device)
             
         actions = self.tf.get_actions(obs, pos, deterministic)
-        return actions.detach().cpu().numpy()
+        return actions.detach().cpu().numpy()[0]
     
     @torch.no_grad()
     def get_actions_batch(self, obs, pos, deterministic=False):
@@ -74,5 +74,6 @@ class MABC:
         return actions.detach().cpu().numpy().mean(axis=0)
 
     def load_saved_policy(self, path):
+        print("HAKUNA")
         expt_dict = torch.load(path, map_location=self.device, weights_only=False)
         self.tf.load_state_dict(expt_dict['model'])

@@ -21,11 +21,17 @@ class NNHelper:
                 if real_or_sim=="real":
                     """ Let's just use sim coords for real also as the learning methods are trained on sim data """
                     if i%2!=0:
-                        finger_pos = np.array((i*0.0375, -j*0.043301 + 0.02165))
-                        self.rb_pos_world[i,j] = np.array((i*0.0375, -j*0.043301 + 0.02165))
+                        finger_pos = np.array((i*0.0375, j*0.043301 - 0.02165))
+                        self.rb_pos_world[i,j] = np.array((i*0.0375, j*0.043301 - 0.02165))
                     else:
-                        finger_pos = np.array((i*0.0375, -j*0.043301))
-                        self.rb_pos_world[i,j] = np.array((i*0.0375, -j*0.043301))
+                        finger_pos = np.array((i*0.0375, j*0.043301))
+                        self.rb_pos_world[i,j] = np.array((i*0.0375, j*0.043301))
+                    # if i%2!=0:
+                    #     finger_pos = np.array((i*0.0375, -j*0.043301 + 0.02165))
+                    #     self.rb_pos_world[i,j] = np.array((i*0.0375, -j*0.043301 + 0.02165))
+                    # else:
+                    #     finger_pos = np.array((i*0.0375, -j*0.043301))
+                    #     self.rb_pos_world[i,j] = np.array((i*0.0375, -j*0.043301))
                 else:
                     if i%2!=0:
                         finger_pos = np.array((i*0.0375, j*0.043301 - 0.02165))
@@ -37,7 +43,8 @@ class NNHelper:
         
                 finger_pos[0] = (finger_pos[0] - plane_size[0][0])/(plane_size[1][0]-plane_size[0][0])*1080 - 0
                 if real_or_sim=="real":
-                    finger_pos[1] = (finger_pos[1] - plane_size[0][1])/(plane_size[1][1]-plane_size[0][1])*1920 - 0
+                    finger_pos[1] = 1920 - (finger_pos[1] - plane_size[0][1])/(plane_size[1][1]-plane_size[0][1])*1920
+                    # finger_pos[1] = (finger_pos[1] - plane_size[0][1])/(plane_size[1][1]-plane_size[0][1])*1920 - 0
                 else:
                     finger_pos[1] = 1920 - (finger_pos[1] - plane_size[0][1])/(plane_size[1][1]-plane_size[0][1])*1920
                 
@@ -344,7 +351,7 @@ class NNHelper:
             if rope:
                 robot_radius = 0.015
             else:
-                robot_radius = 0.008
+                robot_radius = 0.005
         else:
             robot_radius = 30
         expanded_hull_vertices = []

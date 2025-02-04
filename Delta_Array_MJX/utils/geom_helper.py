@@ -15,10 +15,23 @@ from scipy.interpolate import interp1d
 lower_green_filter = np.array([35, 50, 50])
 upper_green_filter = np.array([85, 255, 255])
 
+def get_2Dtf_matrix(x, y, yaw):
+    return np.array([[np.cos(yaw), -np.sin(yaw), x],
+                     [np.sin(yaw), np.cos(yaw), y],
+                     [0, 0, 1]])
+    
+def transform2D_pts(bd_pts, M):
+    homo_pts = np.hstack([bd_pts, np.ones((bd_pts.shape[0], 1))])
+    tfed_bd_pts = np.dot(M, homo_pts.T).T
+    return tfed_bd_pts[:, :2]
+
+def get_tfed_2Dpts(init_bd_pts, init_pose, goal_pose):
+    M_init = get_2Dtf_matrix(*init_pose)
+    M_goal = get_2Dtf_matrix(*goal_pose)
+    M = M_goal @ np.linalg.inv(M_init)
+    return transform2D_pts(init_bd_pts, M)
+
 def transform_pts_wrt_com(points, transform, com):
-    """
-    Apply a 2D transformation to a set of points.
-    """
     points_h = np.hstack([points - com, np.zeros((points.shape[0], 1)), np.ones((points.shape[0], 1))])
     transformed_points_h = points_h @ transform.T
     transformed_points = transformed_points_h[:, :2] + com

@@ -28,7 +28,7 @@ LOG_INFERENCE        = 7
 TOGGLE_PUSHING_AGENT = 8
 TT_GET_ACTION        = 9
 
-OBJ_NAMES = ["block", 'hexagon', 'disc', 'cross', 'diamond', 'star', 'triangle', 'parallelogram', 'semicircle', "trapezium"]#'crescent', 
+OBJ_NAMES = ['star', "block", 'hexagon', 'disc', 'cross', 'diamond', 'triangle', 'parallelogram', 'semicircle', "trapezium"]#'crescent', 
 
 ###################################################
 # Client <-> Server Communication
@@ -54,28 +54,35 @@ def send_request(lock, pipe_conn, action_code, data=None):
 ###################################################
 # Test Trajectory
 ###################################################
-def run_test_traj_rb(env_id, sim_len, experiment_data, algo, recorder, config, inference, pipe_conn, lock):
+def run_test_traj_rb(env_id, sim_len, experiment_data, algo, VideoRecorder, config, inference, pipe_conn, lock):
     print(algo)
     algo_dict = {}
-    # send_request(lock, pipe_conn, TOGGLE_PUSHING_AGENT, algo)
+    if config['save_vid']:
+        recorder = VideoRecorder(output_dir="./data/videos", fps=30)
+    else:
+        recorder = None
+        
     print(f"Running Test Trajectories for {algo}")
     for obj_name in OBJ_NAMES:
+
         print(f"{algo}: Object: {obj_name}")
         algo_dict[obj_name] = {}
         env = delta_array_mj.DeltaArrayRB(config, obj_name)
         with open(f"./data/test_traj/test_trajs_new.pkl", "rb") as f:
             data = pkl.load(f)
-        # data = pkl.load(open("./data/test_traj/test_trajs_new.pkl", "rb"))
                     
         for traj_name, path in data.items():
+            
+            if recorder:
+                recorder.start_recording(filename=f"{algo}_{obj_name}_{traj_name}.mp4")
             algo_dict[obj_name][traj_name] = {}
             
-            for run_id in range(10):
+            for run_id in range(1):
                 algo_dict[obj_name][traj_name][run_id] = []
                 path_cp = path.tolist()
                 init_pose = path_cp.pop(0)
                 next_pose = path_cp.pop(0)
-                env.traj_reset(init=init_pose, goal=next_pose)
+                env.soft_reset(init=init_pose, goal=next_pose)
                 
                 try_id = 0
                 tries = 1
@@ -98,7 +105,7 @@ def run_test_traj_rb(env_id, sim_len, experiment_data, algo, recorder, config, i
                     env.update_sim(sim_len, recorder)
                     env.set_rl_states(actions, final=True, test_traj=True)
                     dist, reward = env.compute_reward(actions)
-                    # print(f"Algo: {algo}, Obj: {obj_name}, Traj: {traj_name}, Run: {run_id}, Attempt: {try_id}, Reward: {reward}")
+                    print(f"Algo: {algo}, Obj: {obj_name}, Traj: {traj_name}, Run: {run_id}, Attempt: {try_id}, Reward: {reward}")
                     
                     step_data = {
                             'try_id'        : try_id,
@@ -119,83 +126,69 @@ def run_test_traj_rb(env_id, sim_len, experiment_data, algo, recorder, config, i
                     if (reward > 80) or (tries>3):
                         tries = 1
                         next_pose = path_cp.pop(0)
-                        env.traj_reset(goal=next_pose)
+                        env.soft_reset(goal=next_pose)
                     else:
                         tries+=1
-                        env.traj_reset()
+                        env.soft_reset()
+                        
+                if recorder is not None:
+                    recorder.stop_recording()
     
     experiment_data[algo] = algo_dict
         
-###################################################
-# Environment Runner
-###################################################
-
-# def run_env(env_id, sim_len, n_runs, return_dict, config, inference, pipe_conn, lock):
-#     seed = np.random.randint(0, 2**32 - 1)
-#     np.random.seed(seed)
-
-#     if config['obj_name'] == "ALL":
-#         obj_name = OBJ_NAMES[np.random.randint(0, len(OBJ_NAMES))]
-#     else:
-#         obj_name = config['obj_name']
-
-#     if config['save_vid']:
-#         recorder = VideoRecorder(output_dir="./data/videos", fps=120)
-#     else:
-#         recorder = None
         
-#     env = delta_array_mj.DeltaArrayMJ(config, obj_name)
-
-#     try:
-#         run_dict = {}
-#         try:
-#             for nrun in range(n_runs):
-#                 if env.reset():
-#                     # grasp_states = { 'states': env.init_grasp_state[:env.n_idxs].tolist() }
-#                     # env.actions_grasp[:env.n_idxs] = send_request(grasp_states, SA_GET_ACTION)['actions']
-#                     env.actions_grasp[:env.n_idxs] = env.init_nn_bd_pts - env.raw_rb_pos
-#                     env.set_rl_states(grasp=True)
+def run_test_traj_rope(env_id, sim_len, experiment_data, algo, recorder, config, inference, pipe_conn, lock):
+    print(algo)
+    algo_dict = {}
+    # send_request(lock, pipe_conn, TOGGLE_PUSHING_AGENT, algo)
+    print(f"Running Test Trajectories for {algo}")
+    env = delta_array_mj.DeltaArrayRope(config, obj_name="rope")
+        
+    for run_id in range(50):
+        algo_dict[run_id] = []
+        env.reset()
+        
+        for try_no in range(10):
+            env.apply_action(env.actions_grasp[:env.n_idxs])
+            env.update_sim(sim_len, recorder)
+            
+            push_states = (algo, env.init_state[:env.n_idxs], env.pos[:env.n_idxs], inference)
+            if algo == "Vis Servo":
+                actions = env.vs_action(random=False)
+            elif algo == "Random":
+                actions = env.vs_action(random=True)
+            else:
+                actions = send_request(lock, pipe_conn, TT_GET_ACTION, push_states)
+                env.final_state[:env.n_idxs, 4:6] = actions
+                
+            env.apply_action(actions)
+            env.update_sim(sim_len, recorder)
+            env.set_rl_states(actions, final=True, test_traj=True)
+            (init_dist, final_dist), reward = env.compute_reward()
+            print(reward)
+            # print(f"Algo: {algo}, Obj: {obj_name}, Traj: {traj_name}, Run: {run_id}, Attempt: {try_id}, Reward: {reward}")
+            
+            step_data = {
+                    'try_id'        : try_no,
+                    'init_qpos'     : env.init_rope_pose,
+                    'goal_qpos'     : env.goal_rope_pose,
+                    'final_qpos'    : env.final_rope_pose,
+                    'reward'        : reward,
+                    'init_dist'     : init_dist,
+                    'final_dist'    : final_dist,
+                    'robot_indices' : (env.active_idxs.copy()),
+                    'actions'       : actions.tolist(),
+                    'robot_count'   : (env.n_idxs),
+                }   
+            
+            algo_dict[run_id].append(step_data)
+            if (reward > 30) :
+                break
+            else:
+                env.soft_reset()
+            
                     
-#                     # APPLY GRASP ACTIONS
-#                     env.apply_action(env.actions_grasp[:env.n_idxs])
-#                     env.update_sim(sim_len)
-
-#                     push_states = (env.init_state[:env.n_idxs], env.pos[:env.n_idxs], inference)
-#                     # APPLY PUSH ACTIONS
-#                     if (config['vis_servo']) or (np.random.rand() < config['vsd']):
-#                         actions = env.vs_action()
-#                         env.apply_action(actions)
-#                     else:
-#                         actions = send_request(lock, pipe_conn, MA_GET_ACTION, push_states)
-#                         env.final_state[:env.n_idxs, 4:6] = actions
-#                         env.apply_action(actions)
-                        
-#                     env.update_sim(sim_len, recorder)
-#                     env.set_rl_states(final=True)
-#                     reward = env.compute_reward()
-
-#                     run_dict[nrun] = {
-#                         "s0": push_states[0],
-#                         "a": env.actions[:env.n_idxs],
-#                         "p": push_states[1],
-#                         "r": reward,
-#                         "s1": env.final_state[:env.n_idxs],
-#                         "d": True if reward > 0.8 else False,
-#                         "N": env.n_idxs,
-#                     }
-#                 else:
-#                     print("Gandlela Env")
-#                     continue
-#         finally:
-#             if recorder is not None:
-#                 recorder.save_video()
-#             return_dict[env_id] = run_dict
-#     finally:
-#         # Clean up resources
-#         env.close()
-#         del env
-#         gc.collect()
-
+    experiment_data[algo] = algo_dict
 
 ###################################################
 # Main
@@ -225,20 +218,17 @@ if __name__ == "__main__":
 
     outer_loops = 0
     if config['test_traj']:
-        if config['save_vid']:
-            recorder = VideoRecorder(output_dir="./data/videos", fps=240)
-        else:
-            recorder = None
             
         if config['gui']:
             algos = ['Vis Servo']
         else:
-            algos = ["Vis Servo", "MABC Finetuned", "MATSAC", 'MABC']
+            # algos = ["Random", "Vis Servo", "MATSAC", "MABC Finetuned", 'MABC']
+            algos = ["MABC Finetuned"]
         
         experiment_data = manager.dict()
         processes = []
         for i in range(len(algos)):
-            p = Process(target=run_test_traj_rb, args=(0, config['simlen'], experiment_data, algos[i], recorder, config, True, parent_conn, lock))
+            p = Process(target=run_test_traj_rb if config['obj_name']!="rope" else run_test_traj_rope, args=(0, config['simlen'], experiment_data, algos[i], VideoRecorder, config, True, parent_conn, lock))
             processes.append(p)
             p.start()
         for p in processes:
@@ -248,11 +238,9 @@ if __name__ == "__main__":
         #     run_test_traj_rb(0, config['simlen'], {}, config, True, parent_conn, lock)
             
         final_expt_data = dict(experiment_data)
-        save_path = f"./data/test_traj/test_traj_data_new.pkl"
-        pkl.dump(final_expt_data, open(save_path, "wb"))
-        print(f"Saved Test Trajectory Data at {save_path}")
-        if recorder is not None:
-            recorder.save_video()
+        # save_path = f"./data/test_traj/test_traj_data_rope.pkl"
+        # pkl.dump(final_expt_data, open(save_path, "wb"))
+        # print(f"Saved Test Trajectory Data at {save_path}")
             
     elif config['gui']:
         while True:

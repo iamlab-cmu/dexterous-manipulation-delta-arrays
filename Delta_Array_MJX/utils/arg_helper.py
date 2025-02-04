@@ -11,6 +11,8 @@ def parse_args():
     
     # Basic Arguments
     parser.add_argument("-n", "--name", type=str, default="HAKUNA", help="Expt Name")
+    parser.add_argument("-n2", "--mabc_name", type=str, default="HAKUNA", help="Expt Name")
+    parser.add_argument("-real", "--real", action="store_true", help="Real World?")
     parser.add_argument('-env', '--env_name', type=str, default="humanoid", help='Name of the environment')
     parser.add_argument('-nenv', '--nenv', type=int, default=1, help='Number of parallel envs')
     parser.add_argument('-nruns', '--nruns', type=int, default=20, help='Number of episodes in each parallel env')
@@ -33,6 +35,7 @@ def parse_args():
     parser.add_argument("-test_traj", "--test_traj", action="store_true", help="Test on trajectories")
     parser.add_argument('-simlen', '--simlen', type=int, default=600, help='Number of steps to run sim')
     parser.add_argument('-obj', "--obj_name", type=str, default="ALL", help="Object to manipulate in sim")
+    parser.add_argument('-traj', "--traj_name", type=str, default="snek", help="Traj to manipulate obj over")
     parser.add_argument('-nrb', '--num_rope_bodies', type=int, default=30, help='Number of cylinders in the rope')
     parser.add_argument("-v", "--vis_servo", action="store_true", help="True for Visual Servoing")
     parser.add_argument("-vsd", "--vsd", type=float, default=0, help="[0 to 1] ratio of data to use for visual servoing")
@@ -40,7 +43,18 @@ def parse_args():
     parser.add_argument("-compa", "--compa", action="store_true", help="cost for Actions in reward function")
     parser.add_argument("-rs", "--reward_scale", type=float, default=0.01, help="Scale reward function by this value")
     parser.add_argument("-cd", "--collect_data", action="store_true", help="Collect data to be stored in RB")
-    parser.add_argument("-newr", "--new_rew", action="store_true", help="New Gaussian reward function")
+    
+    parser.add_argument("-newr", "--new_rew", action="store_true", help="New Gaussian reward function - Smooth gradient")
+    parser.add_argument("-trad", "--traditional", action="store_true", help="Traditional Pipeline for Vis Servo")
+    parser.add_argument("-lewr", "--long_rew", action="store_true", help="Long Horizon reward function - Smooth gradient")
+    
+    # PPO Specific Args
+    parser.add_argument("-ppo", "--ppo", action="store_true", help="Use PPO instead of SAC")
+    parser.add_argument('-mel', '--max_ep_len', type=int, default=20, help='Max # of steps till terminate')
+    parser.add_argument('-clip', '--ppo_clip', type=float, default=0.2, help='PPO Epsilon')
+    parser.add_argument('-hcoef', '--H_coef', type=float, default=0.01, help='Entropy Coefficient')
+    parser.add_argument('-vcoef', '--V_coef', type=float, default=1, help='Value Function Coefficient')
+    parser.add_argument('-gae', '--gae_lambda', type=float, default=0.95, help='GAE Lambda')
     
     # Required arguments
     parser.add_argument("-algo", "--algo", type=str, required=True,  help="Choose RL Algorithm: [SAC]")
@@ -109,7 +123,7 @@ def create_sac_config():
     config['path'] = f"./models/{config['algo']}/{config['env_name']}/{config['name']}"
     os.makedirs(config['path'], exist_ok=True)
         
-    assert config['algo'] in ['SAC', "MATSAC", "MABC_Finetune", "MABC"]
+    assert config['algo'] in ['SAC', "MATSAC", "MABC_Finetune", "MABC", "MATPPO"]
     assert config['arch'] in ['MLP', 'TF']
     assert config['attn_mech'] in ['SA', 'CA', 'AdaLN']
     

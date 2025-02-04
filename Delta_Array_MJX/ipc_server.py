@@ -38,9 +38,10 @@ class DeltaArrayServer():
             'algo'              : config['algo'],
             'data_type'         : config['data_type'],
             "dont_log"          : config['dont_log'],
-            "replay_size"       : 500001,
+            "rblen"             : config['rblen'],
             'seed'              : 69420,
             "data_dir"          : "./data/rl_data",
+            "real"              : config['real'],
             
             # RL params
             "tau"               : 0.005,
@@ -74,10 +75,11 @@ class DeltaArrayServer():
             'learned_alpha'     : config['la'],
             'ca'                : config['compa'],
             'test_traj'         : config['test_traj'],
-            'test_algos'        : ['MABC', 'Random', 'Vis Servo', 'MATSAC', 'MABC Finetuned'],
+            'test_algos'        : ['MABC', 'Random', 'Vis Servo', 'MATSAC', 'MABC_Finetune'],
             'resume'            : config['resume'] != "No",
             'attn_mech'         : config['attn_mech'],
             'pos_embed'         : config['pos_embed'],
+            'rope'              : config['obj_name'] == "rope",
         }
 
         self.grasping_agent = sac.SAC(single_agent_env_dict, self.hp_dict, ma=False, train_or_test="test")
@@ -89,11 +91,18 @@ class DeltaArrayServer():
                 "Vis Servo" : None,
                 "MATSAC" : matsac.MATSAC(ma_env_dict, self.hp_dict, train_or_test="test"),
                 "MABC" : mabc.MABC(self.hp_dict),
-                "MABC Finetuned" : mabc_finetune.MABC_Finetune(self.hp_dict),
+                "MABC_Finetune" : mabc_finetune.MABC_Finetune(self.hp_dict),
             }
-            self.pushing_agents["MATSAC"].load_saved_policy("./models/trained_models/matsac.pt")
-            self.pushing_agents["MABC"].load_saved_policy("./models/trained_models/mabc.pt")
-            self.pushing_agents["MABC Finetuned"].load_saved_policy("./models/trained_models/mabc_finetuned.pt")
+            # if not self.hp_dict['real']:
+            if not self.hp_dict['rope']:
+                self.pushing_agents["MATSAC"].load_saved_policy("./models/trained_models/matsac.pt")
+                self.pushing_agents["MABC"].load_saved_policy("./models/trained_models/mabc.pt")
+                self.pushing_agents["MABC_Finetune"].load_saved_policy("./models/trained_models/mabc_finetuned.pt")
+            else:
+                pass
+                # self.pushing_agents["MATSAC"].load_saved_policy("./models/trained_models/matsac_rope.pt")
+                # self.pushing_agents["MABC"].load_saved_policy("./models/trained_models/mabc_rope.pt")
+                # self.pushing_agents["MABC Finetuned"].load_saved_policy("./models/trained_models/mabc_finetuned_rope.pt")
         else:
             if config['algo']=="MATSAC":
                 self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, train_or_test="train")
@@ -118,23 +127,27 @@ class DeltaArrayServer():
             elif (self.train_or_test=="test") and (config['algo'] in ["MADP", "MABC", "MABC_Finetune"]):
                 self.pushing_agent.load_saved_policy(f'./utils/MABC/{config['name']}.pth')
         
-        if (self.train_or_test=="train") and (not self.hp_dict["dont_log"]):
-            if config['resume'] != "No":
-                wandb.init(project="MARL_Dexterous_Manipulation",
-                        config=self.hp_dict,
-                        name = self.hp_dict['exp_name'],
-                        id=config['wb_resume'],
-                        resume=True)
-            else:
-                wandb.init(project="MARL_Dexterous_Manipulation",
-                        config=self.hp_dict,
-                        name = self.hp_dict['exp_name'])
+            if (self.train_or_test=="train") and (not self.hp_dict["dont_log"]):
+                if config['resume'] != "No":
+                    wandb.init(project="MARL_Dexterous_Manipulation",
+                            config=self.hp_dict,
+                            name = self.hp_dict['exp_name'],
+                            id=config['wb_resume'],
+                            resume=True)
+                else:
+                    wandb.init(project="MARL_Dexterous_Manipulation",
+                            config=self.hp_dict,
+                            name = self.hp_dict['exp_name'])
                     
     # def toggle_pushing_agent(self, algo):
-    #     if algo in self.pushing_agents:
-    #         self.pushing_agent = self.pushing_agents[algo]
-    #     else:
-    #         print(f"Invalid algo: {algo}")
+        # # model.to('cpu')  # Move model back to CPU
+        # # del model  # Delete the model variable
+        # # torch.cuda.empty_cache()  # Clear GPU memory
+        # # gc.collect()  # Run garbage collection (optional but recommended)
+        # if algo in self.pushing_agents:
+        #     self.pushing_agent = self.pushing_agents[algo]
+        # else:
+        #     print(f"Invalid algo: {algo}")
 
 def server_process_main(pipe_conn, config):
     """

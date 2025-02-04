@@ -1,20 +1,20 @@
+import numpy as np
 from copy import deepcopy
 import itertools
-import numpy as np
+import wandb
+import scipy.signal
+
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
-import wandb
 
-import baselines.mat_network as core
-import Delta_Array_MJX.baselines.multi_agent_ppo_replay_buffer as MARB
-import baselines.utils as utils
-def count_vars(module):
-    return sum([np.prod(p.shape) for p in module.parameters()])
+import baselines.gpt_ppo as core
+import baselines.multi_agent_ppo_replay_buffer as MARB
+from baselines.utils import ValueNorm, huber_loss
 
 class MATPPO:
-    def __init__(self, env_dict, hp_dict, logger_kwargs=dict(), train_or_test="train"):
+    def __init__(self, env_dict, hp_dict, train_or_test="train"):
         self.train_or_test = train_or_test
         self.hp_dict = hp_dict
         self.env_dict = env_dict
@@ -24,187 +24,172 @@ class MATPPO:
         self.device = self.hp_dict['dev_rl']
         self.gauss = hp_dict['gauss']
         self.log_dict = {
-            'Q loss': [],
+            'V loss': [],
             'Pi loss': [],
-            'alpha': [],
-            'mu': [],
-            'std': [],
+            'KL Div': [],
+            'adv': [],
+            'entropy': [],
+            'Reward': []
         }
         self.max_avg_rew = 0
+        self.batch_size = hp_dict['batch_size']
+        self.epsilon = hp_dict['ppo_clip']
+        self.H_coeff = hp_dict['H_coef']
+        self.gamma = hp_dict['gamma']
+        self.gae_lambda = hp_dict['gae_lambda']
 
-        if self.hp_dict['data_type'] == "image":
-            self.ma_replay_buffer = MARB.MultiAgentImageReplayBuffer(act_dim=self.act_dim, size=hp_dict['replay_size'], max_agents=self.tf.max_agents)
-            # TODO: In future add ViT here as an option
-        else:
-            # self.tf = core.Transformer(self.obs_dim, self.act_dim, self.act_limit, self.hp_dict["model_dim"], self.hp_dict["num_heads"], self.hp_dict["dim_ff"], self.hp_dict["n_layers_dict"], self.hp_dict["dropout"], self.device, self.hp_dict["delta_array_size"], self.hp_dict["adaln"], self.hp_dict['masked'])
-            self.tf = core.Transformer(self.hp_dict)
-            self.tf_target = deepcopy(self.tf)
+        self.tf = core.Transformer(self.hp_dict).to(self.device)
+        self.ma_replay_buffer = MARB.MultiAgentReplayBuffer(hp_dict['nenv'], self.obs_dim, self.act_dim, hp_dict['rblen'], self.tf.max_agents)
 
-            self.tf = self.tf.to(self.device)
-            self.tf_target = self.tf_target.to(self.device)
-
-            # Freeze target networks with respect to optimizers (only update via polyak averaging)
-            for p in self.tf_target.parameters():
-                p.requires_grad = False
-            self.ma_replay_buffer = MARB.MultiAgentReplayBuffer(obs_dim=self.obs_dim, act_dim=self.act_dim, size=hp_dict['replay_size'], max_agents=self.tf.max_agents)
-
-        # Count variables (protip: try to get a feel for how different size networks behave!)
-        var_counts = tuple(core.count_vars(module) for module in [self.tf.decoder_actor, self.tf.decoder_critic])
+        var_counts = tuple(core.count_vars(module) for module in [self.tf])
         if self.train_or_test == "train":
             print(f"\nNumber of parameters: {np.sum(var_counts)}\n")
 
         if self.hp_dict['optim']=="adam":
-            self.optimizer_actor = optim.Adam(filter(lambda p: p.requires_grad, self.tf.decoder_actor.parameters()), lr=hp_dict['pi_lr'])
-            self.optimizer_critic = optim.Adam(filter(lambda p: p.requires_grad, self.tf.decoder_critic.parameters()), lr=hp_dict['q_lr'])
+            self.optimizer = optim.Adam(filter(lambda p: p.requires_grad, self.tf.parameters()), lr=hp_dict['pi_lr'])
         elif self.hp_dict['optim']=="adamW":
-            self.optimizer_actor = optim.AdamW(filter(lambda p: p.requires_grad, self.tf.decoder_actor.parameters()), lr=hp_dict['pi_lr'])
-            self.optimizer_critic = optim.AdamW(filter(lambda p: p.requires_grad, self.tf.decoder_critic.parameters()), lr=hp_dict['q_lr'])
+            self.optimizer = optim.AdamW(filter(lambda p: p.requires_grad, self.tf.parameters()), lr=hp_dict['pi_lr'])
         elif self.hp_dict['optim']=="sgd":
-            self.optimizer_actor = optim.SGD(filter(lambda p: p.requires_grad, self.tf.decoder_actor.parameters()), lr=hp_dict['pi_lr'])
-            self.optimizer_critic = optim.SGD(filter(lambda p: p.requires_grad, self.tf.decoder_critic.parameters()), lr=hp_dict['q_lr'])
+            self.optimizer = optim.SGD(filter(lambda p: p.requires_grad, self.tf.parameters()), lr=hp_dict['pi_lr'])
 
-        self.scheduler_actor = CosineAnnealingWarmRestarts(self.optimizer_actor, T_0=10, T_mult=2, eta_min=hp_dict['eta_min'])
-        self.scheduler_critic = CosineAnnealingWarmRestarts(self.optimizer_critic, T_0=10, T_mult=2, eta_min=hp_dict['eta_min'])
+        self.scheduler = CosineAnnealingWarmRestarts(self.optimizer, T_0=10, T_mult=2, eta_min=hp_dict['eta_min'])
         
-        self.q_loss = None
         self.internal_updates_counter = 0
         
-        self.q_loss_scaler = torch.amp.GradScaler('cuda')
         self.pi_loss_scaler = torch.amp.GradScaler('cuda')
-
-        if self.gauss:
-            if self.hp_dict['learned_alpha']:
-                self.log_alpha = torch.tensor([-1.6094], requires_grad=True, device=self.device)
-                self.alpha = self.log_alpha.exp()
-                self.alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=hp_dict['pi_lr'])
-            else:
-                self.alpha = torch.tensor([self.hp_dict['alpha']], requires_grad=False, device=self.device)
-
-    def compute_q_loss(self, s1, a, s2, r, d, pos):
         
+        self.value_normalizer = ValueNorm(1, device=self.device)
+
+    def compute_v_loss(self, val_gt, val, returns):
+        val_gt_clip = val_gt + (val - val_gt).clamp(-self.epsilon, self.epsilon)
+        self.value_normalizer.update(returns)
+        err_clipped = self.value_normalizer.normalize(returns) - val_gt_clip
+        err_unclipped = self.value_normalizer.normalize(returns) - val
+        val_loss_clipped = huber_loss(err_clipped, 10.0)
+        val_loss_original = huber_loss(err_unclipped, 10.0)
+        v_loss = torch.max(val_loss_original, val_loss_clipped).mean()
+        return v_loss
+
+    def compute_pi_loss(self, s1, val_gt, a, logp, adv_tgt, returns, pos):
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-            q = self.tf.decoder_critic(s1, a, pos).squeeze().mean(dim=1)
-            with torch.no_grad():
-                q_next = r
-            q_loss = F.mse_loss(q, q_next)
+            val, log_probs, H = self.tf(s1, a, pos)
+            val = val.view(-1, 1)
             
-        self.q_loss_scaler.scale(q_loss).backward()
-        
-        self.q_loss_scaler.unscale_(self.optimizer_critic)
-        torch.nn.utils.clip_grad_norm_(self.tf.decoder_critic.parameters(), self.hp_dict['max_grad_norm'])
-        
-        self.q_loss_scaler.step(self.optimizer_critic)
-        self.q_loss_scaler.update()
-        
-        self.log_dict['Q loss'].append(q_loss.item())
-
-    def compute_pi_loss(self, s1, pos):
-        for p in self.tf.decoder_critic.parameters():
-            p.requires_grad = False
-        
-        with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-            _, n_agents, _ = s1.size()
-            if self.gauss:
-                actions, log_probs, mu, std = self.tf(s1, pos)
-            else:
-                actions = self.tf(s1, pos)
-                
-            q_pi = self.tf.decoder_critic(s1, actions, pos).squeeze()
+            log_probs = log_probs.reshape(-1, self.act_dim)
+            imp_weights = torch.exp(log_probs - logp)
             
-            if self.gauss:
-                pi_loss = (self.alpha * log_probs - q_pi).mean()
-            else:
-                pi_loss = -q_pi.mean()
+            surr1 = imp_weights * adv_tgt
+            surr2 = torch.clamp(imp_weights, 1.0 - self.epsilon, 1.0 + self.epsilon) * adv_tgt
+            policy_loss = -torch.sum(torch.min(surr1, surr2), dim=-1, keepdim=True).mean()
             
-        self.pi_loss_scaler.scale(pi_loss).backward()
-        self.pi_loss_scaler.unscale_(self.optimizer_actor)
+            v_loss = self.compute_v_loss(val_gt, val, returns)
+            loss = policy_loss - self.H_coeff * H + v_loss
+            
+        self.pi_loss_scaler.scale(loss).backward()
+        self.pi_loss_scaler.unscale_(self.optimizer)
         # pi_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.tf.decoder_actor.parameters(), self.hp_dict['max_grad_norm'])
-        self.pi_loss_scaler.step(self.optimizer_actor)
+        torch.nn.utils.clip_grad_norm_(self.tf.parameters(), self.hp_dict['max_grad_norm'])
+        self.pi_loss_scaler.step(self.optimizer)
         self.pi_loss_scaler.update()
         
-        # Update alpha
-        if self.hp_dict['learned_alpha']:
-            self.alpha_optimizer.zero_grad()
-            alpha_loss = -(self.log_alpha * (log_probs - self.act_dim*n_agents).detach()).mean() # Target entropy is -act_dim
-            alpha_loss.backward()
-            self.alpha_optimizer.step()
-            self.alpha = self.log_alpha.exp()
-        
-        for p in self.tf.decoder_critic.parameters():
-            p.requires_grad = True
-            
-        self.log_dict['Pi loss'].append(pi_loss.item())
-        if self.gauss:
-            self.log_dict['alpha'].append(self.alpha.item())
-            self.log_dict['mu'].append(mu.mean().item())
-            self.log_dict['std'].append(std.mean().item())
+        # Log Values for Wandb
+        self.log_dict['V loss'].append(v_loss.item())
+        self.log_dict['Pi loss'].append(policy_loss.item())
+        self.log_dict['entropy'].append(H.mean().item())
+        self.log_dict['adv'].append(adv_tgt.mean().item())
+        self.log_dict['KL Div'].append((logp - log_probs).mean().item())
 
-    def update(self, batch_size, current_episode, n_updates, logged_rew):
-        wandb.log({'Reward': logged_rew})
+    def discount_cumsum(self, x, discount):
+        """ magic from rllab for computing discounted cumulative sums of vectors. """
+        return scipy.signal.lfilter([1], [1, float(-discount)], x[::-1], axis=0)[::-1]
+
+    def compute_returns(self, rew, val_gt):
+        val_t_next = self.value_normalizer.denormalize(val_gt[1:])
+        val_t = self.value_normalizer.denormalize(val_gt[:-1])
+        
+        deltas = rew + self.gamma * val_t_next - val_t
+        adv = self.discount_cumsum(deltas, self.gamma * self.gae_lambda)
+        returns = self.discount_cumsum(rew, self.gamma)
+        
+        adv = torch.as_tensor(adv.copy(), dtype=torch.float32).view(-1, 1).to(self.device)
+        returns = torch.as_tensor(returns.copy(), dtype=torch.float32).view(-1, 1).to(self.device)
+        val_gts = torch.as_tensor(val_gt[:-1], dtype=torch.float32).reshape(-1, 1).to(self.device)
+        return adv, returns, val_gts
+        # gae = 0
+        # for i in reversed(range(rew.shape[0])):
+        #     rew_t = rew[i]
+        #     mean_v_t = torch.mean(val[i], axis=-2, keepdim=True)
+        #     mean_v_t_next = torch.mean(val[i+1], axis=-2, keepdim=True)
+        #     delta = rew + self.gamma * mean_v_t_next - mean_v_t
+            
+        #     gae = 
+
+    def update(self, env_id, current_episode, reward, n_updates, good_terminate=False):
+        self.log_dict['Reward'].append(reward)
         for j in range(n_updates):
             self.internal_updates_counter += 1
-            self.scheduler_actor.step()
-            self.scheduler_critic.step()
+            self.scheduler.step()
 
-            data = self.ma_replay_buffer.sample_batch(batch_size)
+            data = self.ma_replay_buffer.sample_rb(env_id)
             n_agents = int(torch.max(data['num_agents']))
             states = data['obs'][:,:n_agents].to(self.device)
             actions = data['act'][:,:n_agents].to(self.device)
-            rews = data['rew'].to(self.device)
-            new_states = data['obs2'][:,:n_agents].to(self.device)
-            dones = data['done'].to(self.device)
+            logp = data['logp'][:,:n_agents].reshape(-1, self.act_dim).to(self.device)
+            val_gts = data['val'][:,:n_agents]
+            rews = data['rew'][:,:n_agents]
+            if good_terminate:
+                with torch.no_grad():
+                    val_gts[-1] = self.tf.get_val(data['obs2'][-1,:n_agents].to(self.device), data['pos'][-1,:n_agents].to(self.device)).squeeze().cpu().numpy()
+            adv, returns, val_gts = self.compute_returns(rews, val_gts)
+            
             pos = data['pos'][:,:n_agents].to(self.device)
-
-            for param in self.tf.decoder_critic.parameters():
-                param.grad = None
-            self.compute_q_loss(states, actions, new_states, rews, dones, pos)
-
+            # self.log_dict['Reward'].append(rews.mean())
+            
             for param in self.tf.decoder_actor.parameters():
                 param.grad = None
-            self.compute_pi_loss(states, pos)
-
-            # Target Update
-            with torch.no_grad():
-                for p, p_target in zip(self.tf.parameters(), self.tf_target.parameters()):
-                    p_target.data.mul_(self.hp_dict['tau'])
-                    p_target.data.add_((1 - self.hp_dict['tau']) * p.data)
-
-            if (self.train_or_test == "train") and (self.internal_updates_counter % 5000) == 0:
-                if self.max_avg_rew < logged_rew:
+            self.compute_pi_loss(states, val_gts, actions, logp, adv, returns, pos)
+                        
+            if (self.train_or_test == "train") and (self.internal_updates_counter % 5000 == 0):
                     print("ckpt saved @ ", current_episode, self.internal_updates_counter)
-                    self.max_avg_rew = logged_rew
                     dicc = {
                         'model': self.tf.state_dict(),
-                        'actor_optimizer': self.optimizer_actor.state_dict(),
-                        'critic_optimizer': self.optimizer_critic.state_dict(),
-                        'uuid': self.uuid
+                        'optimizer': self.optimizer.state_dict(),
                     }
                     torch.save(dicc, f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
         
-            if (not self.hp_dict["dont_log"]) and (self.internal_updates_counter % 100) == 0:
-                wandb.log({k: np.mean(v) if isinstance(v, list) and len(v) > 0 else v for k, v in self.log_dict.items()})
-                self.log_dict = {
-                    'Q loss': [],
-                    'Pi loss': [],
-                    'alpha': [],
-                    'mu': [],
-                    'std': [],
-                }
+        if (not self.hp_dict["dont_log"]) and (self.internal_updates_counter % 50 == 0):
+            wandb.log({k: np.mean(v) if isinstance(v, list) and len(v) > 0 else v for k, v in self.log_dict.items()})
+            self.log_dict = {
+                'V loss': [],
+                'Pi loss': [],
+                'adv': [],
+                'entropy': [],
+                'Reward': [],
+                'KL Div': []
+            }
+        
+        self.ma_replay_buffer.reset_rb(env_id)
                 
     @torch.no_grad()
     def get_actions(self, obs, pos, deterministic=False):
         obs = torch.as_tensor(obs, dtype=torch.float32).unsqueeze(0).to(self.device)
         pos = torch.as_tensor(pos, dtype=torch.int32).unsqueeze(0).to(self.device)
         
-        actions = self.tf.get_actions(obs, pos, deterministic=deterministic)
-        return actions.tolist()
+        actions, logp_pi, val = self.tf.get_actions(obs, pos, deterministic=deterministic)
+        if not deterministic:
+            return actions.detach().cpu().numpy()[0], logp_pi.detach().cpu().numpy(), val.detach().cpu().numpy()
+        else:
+            return actions.detach().cpu().numpy()[0], None, val.detach().cpu().numpy()
+    
+    def save_policy(self):
+        dicc = {
+            'model': self.tf.state_dict(),
+            'optimizer': self.optimizer.state_dict(),
+        }
+        torch.save(dicc, f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
         
     def load_saved_policy(self, path='./data/rl_data/backup/matsac_expt_grasp/pyt_save/model.pt'):
         dicc = torch.load(path, map_location=self.hp_dict['dev_rl'])
         
         self.tf.load_state_dict(dicc['model'])
-        # self.optimizer_actor.load_state_dict(dicc['actor_optimizer'])
-        # self.optimizer_critic.load_state_dict(dicc['critic_optimizer'])
-        self.uuid = dicc['uuid']
-        self.tf_target = deepcopy(self.tf)
+        self.optimizer.load_state_dict(dicc['optimizer'])

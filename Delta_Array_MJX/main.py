@@ -15,13 +15,13 @@ import src.delta_array_mj as delta_array_mj
 ###################################################
 # Action / Endpoint Mappings
 ###################################################
-MA_GET_ACTION       = 1
-MA_UPDATE_POLICY    = 2
-MARB_STORE          = 3
-MARB_SAVE           = 4
-SAVE_MODEL          = 5
-LOAD_MODEL          = 6
-LOG_INFERENCE       = 7
+MA_GET_ACTION        = 1
+MA_UPDATE_POLICY     = 2
+MARB_STORE           = 3
+MARB_SAVE            = 4
+SAVE_MODEL           = 5
+LOAD_MODEL           = 6
+LOG_INFERENCE        = 7
 TOGGLE_PUSHING_AGENT = 8
 
 OBJ_NAMES = ["block", 'cross', 'diamond', 'hexagon', 'star', 'triangle', 'parallelogram', 'semicircle', "trapezium", 'disc'] #'crescent',
@@ -131,7 +131,7 @@ if __name__ == "__main__":
 
     manager = Manager()
     lock = manager.Lock()
-        
+    
     current_episode = 0
     n_updates = config['nenv']
     avg_reward = 0
