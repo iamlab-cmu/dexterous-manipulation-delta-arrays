@@ -1,14 +1,14 @@
 class TrainingSchedule:
-    def __init__(self, max_nenvs, max_nruns, max_warmup_episodes):
+    def __init__(self, max_nenvs, max_nruns, max_warmup_episodes, max_nupdates):
         self.nenvs_stage_1 = int(max_nenvs//2.5)
         self.nenvs_stage_2 = max_nenvs
         
         self.nruns_stage_1 = max_nruns//2
         self.nruns_stage_2 = max_nruns
         
-        self.nupdates_stage_1 = self.nenvs_stage_1*self.nruns_stage_1//30
-        self.nupdates_stage_2 = self.nenvs_stage_1*self.nruns_stage_2//10
-        self.nupdates_stage_3 = self.nenvs_stage_2*self.nruns_stage_2//5
+        self.nupdates_stage_1 = max_nupdates//200
+        self.nupdates_stage_2 = max_nupdates//50
+        self.nupdates_stage_3 = max_nupdates//5
         
         self.warmup_stage_1 = max_warmup_episodes // 5
         self.warmup_stage_2 = max_warmup_episodes

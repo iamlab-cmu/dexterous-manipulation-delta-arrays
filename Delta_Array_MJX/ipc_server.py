@@ -6,12 +6,14 @@ import multiprocessing
 from threading import Lock
 import os
 
+from utils.logger import MetricLogger
 import utils.SAC.sac as sac
 import utils.MATSAC.matsac_no_autoreg as matsac
 # import utils.MABC.madptest as madp_test
 import utils.MABC.mabc_test as mabc
 import utils.MABC.mabc_finetune as mabc_finetune
 import utils.multi_agent_replay_buffer as MARB
+import utils.MADPTD3.madptd3 as madp_finetune
 
 update_lock = Lock()
 
@@ -35,6 +37,7 @@ class DeltaArrayServer():
         self.hp_dict = {
             # Env Params
             "exp_name"          : config['name'],
+            "diff_exp_name"     : "expt_1",
             'algo'              : config['algo'],
             'data_type'         : config['data_type'],
             "dont_log"          : config['dont_log'],
@@ -56,6 +59,7 @@ class DeltaArrayServer():
             'epsilon'           : 1.0,
             "batch_size"        : config['bs'],
             "warmup_epochs"     : config['warmup'],
+            "policy_delay"      : config['policy_delay'],
             'act_limit'         : 0.03,
 
             # Multi Agent Part Below:
@@ -80,7 +84,24 @@ class DeltaArrayServer():
             'attn_mech'         : config['attn_mech'],
             'pos_embed'         : config['pos_embed'],
             'rope'              : config['obj_name'] == "rope",
+            'idx_embed_loc'     : './utils/MADPTD3/idx_embedding_new.pth',
+            'k_thresh'          : config['k_thresh'],
+            'natc'              : config['natc'],
+            'w_k'               : config['w_k'],
+            "exp_noise"         : config['exp_noise'],
+            "ppo_clip"          : config['ppo_clip'],
+            "denoising_params"  :{
+                'n_diff_steps'      : 100,
+                'beta_start'        : 0.0001,
+                'beta_end'          : 0.02,
+                'beta_schedule'     : 'linear',
+                'variance_type'     : 'fixed_small_log',
+                'clip_sample'       : True ,
+                'prediction_type'   : 'epsilon',
+            },
         }
+        
+        self.logger = MetricLogger(dontlog=self.hp_dict["dont_log"])
 
         self.grasping_agent = sac.SAC(single_agent_env_dict, self.hp_dict, ma=False, train_or_test="test")
         self.grasping_agent.load_saved_policy('./models/trained_models/SAC_1_agent_stochastic/pyt_save/model.pt')
@@ -99,10 +120,9 @@ class DeltaArrayServer():
                 self.pushing_agents["MABC"].load_saved_policy("./models/trained_models/mabc.pt")
                 self.pushing_agents["MABC_Finetune"].load_saved_policy("./models/trained_models/mabc_finetuned.pt")
             else:
-                pass
-                # self.pushing_agents["MATSAC"].load_saved_policy("./models/trained_models/matsac_rope.pt")
-                # self.pushing_agents["MABC"].load_saved_policy("./models/trained_models/mabc_rope.pt")
-                # self.pushing_agents["MABC Finetuned"].load_saved_policy("./models/trained_models/mabc_finetuned_rope.pt")
+                self.pushing_agents["MATSAC"].load_saved_policy("./models/trained_models/matsac_rope.pt")
+                self.pushing_agents["MABC"].load_saved_policy("./models/trained_models/mabc_rope.pt")
+                self.pushing_agents["MABC_Finetune"].load_saved_policy("./models/trained_models/mabc_finetuned_rope.pt")
         else:
             if config['algo']=="MATSAC":
                 self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, train_or_test="train")
@@ -116,7 +136,11 @@ class DeltaArrayServer():
                 self.pushing_agent = mabc.MABC()
             elif config['algo']=="MABC_Finetune":
                 self.pushing_agent = mabc_finetune.MABC_Finetune(self.hp_dict)
-                self.pushing_agent.load_saved_policy(f'./utils/MABC/{config['mabc_name']}.pt')
+                self.pushing_agent.load_saved_policy(f'./utils/MABC/{config['finetune_name']}.pt')
+            elif config['algo']=="MADP_Finetune":
+                self.pushing_agent = madp_finetune.MADPTD3(ma_env_dict, self.hp_dict, self.logger)
+                if config['finetune_name'] != "HAKUNA":
+                    self.pushing_agent.load_saved_policy(f'./utils/MADPTD3/{config['finetune_name']}.pt')
 
             if (self.train_or_test=="test") and (config['algo']=="MATSAC"):
                 # self.pushing_agent.load_saved_policy(f'./data/rl_data/{config['name']}/{config['name']}_s69420/pyt_save/model.pt')
@@ -149,7 +173,7 @@ class DeltaArrayServer():
         # else:
         #     print(f"Invalid algo: {algo}")
 
-def server_process_main(pipe_conn, config):
+def server_process_main(pipe_conn, batched_queue, response_dict, config):
     """
     Runs in the child process:
         1) Creates the DeltaArrayServer instance
@@ -175,6 +199,9 @@ def server_process_main(pipe_conn, config):
     LOG_INFERENCE        = 7
     TOGGLE_PUSHING_AGENT = 8
     TT_GET_ACTION        = 9
+    SET_BATCH_SIZE       = 10
+    
+    global_batch_size = 1
     
     np.random.seed(config['seed'])
     torch.manual_seed(config['seed'])
@@ -182,26 +209,29 @@ def server_process_main(pipe_conn, config):
     server = DeltaArrayServer(config)
 
     while True:
-        try:
-            request = pipe_conn.recv()
+        
+        if pipe_conn.poll(0.005):
+            try:
+                request = pipe_conn.recv()
+            except EOFError:
+                break
+            
             endpoint, data = request
             response = {}
 
             # Handle "-1" or "exit" request: time to shut down
-            if endpoint == -1:
-                response = {"status" : True}
-                pipe_conn.send(response)
+            if (endpoint == -1) or (endpoint is None):
+                pipe_conn.send({"status": True})
                 break
-
+            
+            elif endpoint == SET_BATCH_SIZE:
+                print(f"Set Batch Size: {data}")
+                global_batch_size = data
+                
             elif endpoint == TT_GET_ACTION:
                 algo, data = data[0], data[1:]
                 with update_lock:
                     action = server.pushing_agents[algo].get_actions(*data)
-                response = action
-                
-            elif endpoint == MA_GET_ACTION:
-                with update_lock:
-                    action = server.pushing_agent.get_actions(*data)
                 response = action
 
             elif endpoint == MA_UPDATE_POLICY:
@@ -222,7 +252,8 @@ def server_process_main(pipe_conn, config):
             elif endpoint == LOG_INFERENCE:
                 if not server.hp_dict["dont_log"]:
                     for reward in data:
-                        wandb.log({"Inference Reward": reward})
+                        server.logger.add_data("Inference Reward", reward)
+                        # wandb.log({"Inference Reward": reward})
 
             elif endpoint == TOGGLE_PUSHING_AGENT:
                 server.toggle_pushing_agent(data)
@@ -231,9 +262,54 @@ def server_process_main(pipe_conn, config):
                 print(f"[Child] Invalid endpoint: {endpoint}")
 
             pipe_conn.send(response)
+        
+        if not batched_queue.empty():
+            batched_requests = []
+            try:
+                # Block to get the first request.
+                req = batched_queue.get(timeout=5)
+                if req[0] == MA_GET_ACTION:
+                    batched_requests.append(req)
+            except Exception as e:
+                print("Error", e)
+                pass
+            
+            while len(batched_requests) < global_batch_size:
+                try:
+                    req = batched_queue.get(timeout=5)
+                    if req[0] == MA_GET_ACTION:
+                        batched_requests.append(req)
+                except Exception as e:
+                    print("TIMEOUT", e)
+                    break
+                    
+            if len(batched_requests) == global_batch_size:
+                # Each request is a tuple: (MA_GET_ACTION, data, response_queue)
+                batch_size = len(batched_requests)
+                max_agents = max(req[1][0].shape[0] for req in batched_requests)
+                obs_dim = batched_requests[0][1][0].shape[1]
 
-        except EOFError:
-            break
+                # Create padded arrays.
+                batched_obs = np.zeros((batch_size, max_agents, obs_dim), dtype=np.float32)
+                batched_pos = np.zeros((batch_size, max_agents, 1), dtype=np.int32)
+
+                # Fill in each batch element.
+                for i, (_, data, _) in enumerate(batched_requests):
+                    obs_i, pos_i, _ = data
+                    n_agents = obs_i.shape[0]
+                    batched_obs[i, :n_agents, :] = obs_i
+                    pos_i = np.array(pos_i)
+                    if pos_i.ndim == 1:
+                        pos_i = pos_i.reshape(-1, 1)
+                    batched_pos[i, :n_agents, :] = pos_i
+
+                with update_lock:
+                    actions, a_ks, log_ps = server.pushing_agent.get_actions(batched_obs, batched_pos)
+                    
+                # Send each individual action back via its corresponding response Queue.
+                for i, (_, _, req_id) in enumerate(batched_requests):
+                    response_dict[req_id] = (actions[i], a_ks[i], log_ps[i])
+
 
     # Cleanup
     pipe_conn.close()

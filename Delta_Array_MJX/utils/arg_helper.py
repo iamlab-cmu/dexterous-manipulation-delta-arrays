@@ -11,7 +11,7 @@ def parse_args():
     
     # Basic Arguments
     parser.add_argument("-n", "--name", type=str, default="HAKUNA", help="Expt Name")
-    parser.add_argument("-n2", "--mabc_name", type=str, default="HAKUNA", help="Expt Name")
+    parser.add_argument("-n2", "--finetune_name", type=str, default="HAKUNA", help="Expt Name")
     parser.add_argument("-real", "--real", action="store_true", help="Real World?")
     parser.add_argument('-env', '--env_name', type=str, default="humanoid", help='Name of the environment')
     parser.add_argument('-nenv', '--nenv', type=int, default=1, help='Number of parallel envs')
@@ -29,6 +29,7 @@ def parse_args():
     parser.add_argument("-d2u", "--d2u", type=int, default=1, help="Data to Update Ratio")
     parser.add_argument("-savevid", "--save_vid", action="store_true", help="Save Videos at inference")
     parser.add_argument("-cam", "--use_cam", action="store_true", help="Use camera?")
+    parser.add_argument("-pd", "--policy_delay", type=int, default=2, help="Policy Update Delay")
     
     # Delta Array Specific Args
     parser.add_argument("-data", "--data_type", type=str, default=None, help="Use Image or State-based RL")
@@ -55,6 +56,12 @@ def parse_args():
     parser.add_argument('-hcoef', '--H_coef', type=float, default=0.01, help='Entropy Coefficient')
     parser.add_argument('-vcoef', '--V_coef', type=float, default=1, help='Value Function Coefficient')
     parser.add_argument('-gae', '--gae_lambda', type=float, default=0.95, help='GAE Lambda')
+    
+    # Diffusion TD3 Specific Args
+    parser.add_argument('-k_t', '--k_thresh', type=int, default=20, help='final k steps to train DiffPi')
+    parser.add_argument("-w_k", "--w_k", type=float, default=1, help="Use exponentially debuffed k values (0.2739 reference value)")
+    parser.add_argument('-exp_n', '--exp_noise', type=float, default=0.0, help='Exploration Noise std; mu=0')
+    parser.add_argument("-natc", "--natc", action="store_true", help="Expt 1 with noisy actions to critic")
     
     # Required arguments
     parser.add_argument("-algo", "--algo", type=str, required=True,  help="Choose RL Algorithm: [SAC]")
@@ -123,7 +130,7 @@ def create_sac_config():
     config['path'] = f"./models/{config['algo']}/{config['env_name']}/{config['name']}"
     os.makedirs(config['path'], exist_ok=True)
         
-    assert config['algo'] in ['SAC', "MATSAC", "MABC_Finetune", "MABC", "MATPPO"]
+    assert config['algo'] in ['SAC', "MATSAC", "MABC_Finetune", "MABC", "MATPPO", "MADP_Finetune"]
     assert config['arch'] in ['MLP', 'TF']
     assert config['attn_mech'] in ['SA', 'CA', 'AdaLN']
     

@@ -137,9 +137,12 @@ def run_test_traj_rb(env_id, sim_len, experiment_data, algo, VideoRecorder, conf
     experiment_data[algo] = algo_dict
         
         
-def run_test_traj_rope(env_id, sim_len, experiment_data, algo, recorder, config, inference, pipe_conn, lock):
-    print(algo)
+def run_test_traj_rope(env_id, sim_len, experiment_data, algo, VideoRecorder, config, inference, pipe_conn, lock):
     algo_dict = {}
+    if config['save_vid']:
+        recorder = VideoRecorder(output_dir="./data/videos", fps=30)
+    else:
+        recorder = None
     # send_request(lock, pipe_conn, TOGGLE_PUSHING_AGENT, algo)
     print(f"Running Test Trajectories for {algo}")
     env = delta_array_mj.DeltaArrayRope(config, obj_name="rope")
@@ -148,7 +151,7 @@ def run_test_traj_rope(env_id, sim_len, experiment_data, algo, recorder, config,
         algo_dict[run_id] = []
         env.reset()
         
-        for try_no in range(10):
+        for try_no in range(5):
             env.apply_action(env.actions_grasp[:env.n_idxs])
             env.update_sim(sim_len, recorder)
             
@@ -164,8 +167,8 @@ def run_test_traj_rope(env_id, sim_len, experiment_data, algo, recorder, config,
             env.apply_action(actions)
             env.update_sim(sim_len, recorder)
             env.set_rl_states(actions, final=True, test_traj=True)
-            (init_dist, final_dist), reward = env.compute_reward()
-            print(reward)
+            dist, reward = env.compute_reward_long_horizon()
+            # print(dist, reward)
             # print(f"Algo: {algo}, Obj: {obj_name}, Traj: {traj_name}, Run: {run_id}, Attempt: {try_id}, Reward: {reward}")
             
             step_data = {
@@ -174,15 +177,14 @@ def run_test_traj_rope(env_id, sim_len, experiment_data, algo, recorder, config,
                     'goal_qpos'     : env.goal_rope_pose,
                     'final_qpos'    : env.final_rope_pose,
                     'reward'        : reward,
-                    'init_dist'     : init_dist,
-                    'final_dist'    : final_dist,
+                    'dist'          : dist,
                     'robot_indices' : (env.active_idxs.copy()),
                     'actions'       : actions.tolist(),
                     'robot_count'   : (env.n_idxs),
                 }   
             
             algo_dict[run_id].append(step_data)
-            if (reward > 30) :
+            if (reward > 40) :
                 break
             else:
                 env.soft_reset()
@@ -222,13 +224,13 @@ if __name__ == "__main__":
         if config['gui']:
             algos = ['Vis Servo']
         else:
-            # algos = ["Random", "Vis Servo", "MATSAC", "MABC Finetuned", 'MABC']
-            algos = ["MABC Finetuned"]
+            algos = ["Random", "Vis Servo", "MATSAC", "MABC_Finetune", 'MABC']
+            # algos = ["MABC Finetuned"]
         
         experiment_data = manager.dict()
         processes = []
         for i in range(len(algos)):
-            p = Process(target=run_test_traj_rb if config['obj_name']!="rope" else run_test_traj_rope, args=(0, config['simlen'], experiment_data, algos[i], VideoRecorder, config, True, parent_conn, lock))
+            p = Process(target=run_test_traj_rb if config['obj_name']!="rope" else run_test_traj_rope, args=(i, config['simlen'], experiment_data, algos[i], VideoRecorder, config, True, parent_conn, lock))
             processes.append(p)
             p.start()
         for p in processes:
@@ -238,8 +240,8 @@ if __name__ == "__main__":
         #     run_test_traj_rb(0, config['simlen'], {}, config, True, parent_conn, lock)
             
         final_expt_data = dict(experiment_data)
-        # save_path = f"./data/test_traj/test_traj_data_rope.pkl"
-        # pkl.dump(final_expt_data, open(save_path, "wb"))
+        save_path = f"./data/test_traj/test_traj_data_rope.pkl"
+        pkl.dump(final_expt_data, open(save_path, "wb"))
         # print(f"Saved Test Trajectory Data at {save_path}")
             
     elif config['gui']:

@@ -124,7 +124,7 @@ class DeltaArrayServer():
                 self.pushing_agent = mabc.MABC()
             elif args.algo=="MABC_Finetune":
                 self.pushing_agent = mabc_finetune.MABC_Finetune(self.hp_dict)
-                self.pushing_agent.load_saved_policy(f'./utils/MABC/{args.mabc_name}.pt')
+                self.pushing_agent.load_saved_policy(f'./utils/MABC/{args.finetune_name}.pt')
 
             if (self.train_or_test=="test") and (args.algo=="MATSAC"):
                 # self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/{args.name}_s69420/pyt_save/model.pt')
@@ -245,7 +245,7 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--test", action="store_true", help="True for Test")
     parser.add_argument("-t_path", "--t_path", type=str, default=None, help="Path to test model")
     parser.add_argument("-n", "--name", type=str, default="HAKUNA", help="Expt Name")
-    parser.add_argument("-n2", "--mabc_name", type=str, default="HAKUNA", help="MABC pretrained Expt Name")
+    parser.add_argument("-n2", "--finetune_name", type=str, default="HAKUNA", help="MABC pretrained Expt Name")
     parser.add_argument("-data", "--data_type", type=str, default=None, help="Use simplified setup with only 4 fingers?")
     parser.add_argument('-detstr', "--detection_string", type=str, default="green block", help="Input to detect obj of interest")
     parser.add_argument("-dontlog", "--dont_log", action="store_true", help="Don't Log Experiment")

@@ -69,7 +69,7 @@ if __name__ == "__main__":
     from_NN = False
     if algo in ['MATSAC', "MABC", "MABC_Finetune"]:
         from_NN = True
-    # algo = 'Vis Servo'
+    algo = 'Vis Servo'
     obj_name = config['obj_name']
     if obj_name == "ALL":
         obj_name = OBJ_NAMES[np.random.randint(0, len(OBJ_NAMES))]

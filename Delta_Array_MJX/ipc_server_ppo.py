@@ -118,7 +118,7 @@ class DeltaArrayServer():
                 self.pushing_agent = mabc.MABC()
             elif config['algo']=="MABC_Finetune":
                 self.pushing_agent = mabc_finetune.MABC_Finetune(self.hp_dict)
-                self.pushing_agent.load_saved_policy(f'./utils/MABC/{config['mabc_name']}.pt')
+                self.pushing_agent.load_saved_policy(f'./utils/MABC/{config['finetune_name']}.pt')
 
             if (self.train_or_test=="test") and (config['algo']=="MATSAC"):
                 # self.pushing_agent.load_saved_policy(f'./data/rl_data/{config['name']}/{config['name']}_s69420/pyt_save/model.pt')

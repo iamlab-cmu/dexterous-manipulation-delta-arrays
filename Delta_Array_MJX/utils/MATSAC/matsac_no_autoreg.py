@@ -91,7 +91,7 @@ class MATSAC:
             with torch.no_grad():
                 # if self.gauss:
                 #     next_actions, log_probs, _, _= self.tf(s2, pos)
-                # else:
+                # else:z
                 #     next_actions = self.tf(s2, pos)
                 
                 # next_q1 = self.tf_target.decoder_critic1(s2, next_actions, pos).squeeze()

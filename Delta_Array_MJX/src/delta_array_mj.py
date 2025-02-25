@@ -199,13 +199,14 @@ class DeltaArrayBase(BaseMJEnv):
         self.init_grasp_state = np.zeros((64, 4))
         self.pos = np.zeros(64)
         
-        if self.set_init_and_goal_pose(long_horizon):
-            self.get_active_idxs()
-            self.set_goal_nn_bd_pts()
-            self.set_rl_states()
-            return True
-        else:
-            return False
+        self.set_init_and_goal_pose(long_horizon)
+        while not self.get_active_idxs():
+            self.set_init_and_goal_pose(long_horizon)
+            
+        self.get_active_idxs()
+        self.set_goal_nn_bd_pts()
+        self.set_rl_states()
+        return True
         
     def close(self):
         self.renderer.close()
@@ -241,6 +242,9 @@ class DeltaArrayRB(DeltaArrayBase):
     def get_active_idxs(self):
         idxs, self.init_nn_bd_pts, _ = self.nn_helper.get_nn_robots_objs(self.init_bd_pts, world=True)
         self.active_idxs = list(idxs)
+        if len(self.init_nn_bd_pts) == 0:
+            return False
+        return True
         
     def set_init_and_goal_pose(self, long_horizon=False):
         tx = (np.random.uniform(0.011, 0.24), np.random.uniform(0.007, 0.27), 1.002)
@@ -368,6 +372,9 @@ class DeltaArrayRope(DeltaArrayBase):
         
     def get_active_idxs(self):
         self.active_idxs, self.init_nn_bd_pts, self.bd_idxs = self.nn_helper.get_nn_robots_rope(self.init_bd_pts)
+        if len(self.init_nn_bd_pts) == 0:
+            return False
+        return True
 
     def set_init_and_goal_pose(self, long_horizon=False):
         for _ in range(1000):
@@ -399,6 +406,12 @@ class DeltaArrayRope(DeltaArrayBase):
         delta = 10*(init_dist - final_dist)
         return (init_dist, final_dist), delta/self.args['reward_scale']
     
+    def compute_reward_long_horizon(self):
+        self.final_rope_pose = rope_utils.get_rope_positions(self.data, self.rope_body_ids)
+        dist = np.mean(np.linalg.norm(self.goal_nn_bd_pts - self.final_nn_bd_pts, axis=1))
+        rew = 1 / (10000 * dist**3 + 0.01)
+        return dist, rew
+    
     def soft_reset(self, init=None, goal=None):
         self.set_z_positions(active_idxs=None, low=False)
         self.data.qpos[:128] = np.zeros(128)
@@ -417,7 +430,11 @@ class DeltaArrayRope(DeltaArrayBase):
         self.init_grasp_state = np.zeros((64, 4))
         self.pos = np.zeros(64)
         
-        self.init_bd_pts = self.get_bdpts_traditional()
-        self.get_active_idxs()
+        img = self.get_image()
+        init_rope_coords = self.convert_pix_2_world(rope_utils.get_skeleton_from_img(img))
+        self.init_bd_pts = rope_utils.get_aligned_smol_rope(init_rope_coords, self.goal_bd_pts.copy(), N=self.rope_chunks) 
+        while not self.get_active_idxs():
+            self.set_init_and_goal_pose()
+            
         self.set_goal_nn_bd_pts()
         self.set_rl_states()

@@ -305,8 +305,8 @@ class NNHelper:
                 nearest_neighbors[r_idx] = b_idx
 
         # Prepare return values
-        robot_indices = np.array(list(nearest_neighbors.keys()))
-        boundary_indices = np.array(list(nearest_neighbors.values()))
+        robot_indices = np.array(list(nearest_neighbors.keys()), dtype=np.int32)
+        boundary_indices = np.array(list(nearest_neighbors.values()), dtype=np.int32)
         matched_boundary_points = boundary_pts[boundary_indices]
 
         return robot_indices, matched_boundary_points, boundary_indices
