@@ -45,6 +45,7 @@ class DeltaArrayServer():
             'seed'              : 69420,
             "data_dir"          : "./data/rl_data",
             "real"              : config['real'],
+            "infer_every"       : config['infer_every'],
             
             # RL params
             "tau"               : 0.005,
@@ -90,6 +91,7 @@ class DeltaArrayServer():
             'w_k'               : config['w_k'],
             "exp_noise"         : config['exp_noise'],
             "ppo_clip"          : config['ppo_clip'],
+            "entropy"           : config['entropy'],
             "denoising_params"  :{
                 'n_diff_steps'      : 100,
                 'beta_start'        : 0.0001,
@@ -304,11 +306,11 @@ def server_process_main(pipe_conn, batched_queue, response_dict, config):
                     batched_pos[i, :n_agents, :] = pos_i
 
                 with update_lock:
-                    actions, a_ks, log_ps = server.pushing_agent.get_actions(batched_obs, batched_pos)
+                    actions, a_ks, log_ps, ents = server.pushing_agent.get_actions(batched_obs, batched_pos)
                     
                 # Send each individual action back via its corresponding response Queue.
                 for i, (_, _, req_id) in enumerate(batched_requests):
-                    response_dict[req_id] = (actions[i], a_ks[i], log_ps[i])
+                    response_dict[req_id] = (actions[i], a_ks[i], log_ps[i], ents[i])
 
 
     # Cleanup

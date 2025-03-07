@@ -16,6 +16,7 @@ def parse_args():
     parser.add_argument('-env', '--env_name', type=str, default="humanoid", help='Name of the environment')
     parser.add_argument('-nenv', '--nenv', type=int, default=1, help='Number of parallel envs')
     parser.add_argument('-nruns', '--nruns', type=int, default=20, help='Number of episodes in each parallel env')
+    parser.add_argument("-ie", "--infer_every", type=int, default=10, help="Infer Every n Rollouts")
     parser.add_argument("-t", "--test", action="store_true", help="True for Test")
     parser.add_argument("-wu", "--warmup", type=int, default=100000, help="Exploration Cutoff")
     parser.add_argument('-rb', '--rblen', type=int, default=500000, help='Maximum replay buffer size (default: 10,000)')
@@ -62,6 +63,7 @@ def parse_args():
     parser.add_argument("-w_k", "--w_k", type=float, default=1, help="Use exponentially debuffed k values (0.2739 reference value)")
     parser.add_argument('-exp_n', '--exp_noise', type=float, default=0.0, help='Exploration Noise std; mu=0')
     parser.add_argument("-natc", "--natc", action="store_true", help="Expt 1 with noisy actions to critic")
+    parser.add_argument("-entropy", "--entropy", type=float, default=0.0, help="Consider Entropy?")
     
     # Required arguments
     parser.add_argument("-algo", "--algo", type=str, required=True,  help="Choose RL Algorithm: [SAC]")

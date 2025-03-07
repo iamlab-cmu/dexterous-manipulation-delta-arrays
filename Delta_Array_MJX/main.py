@@ -108,7 +108,7 @@ def run_env(env_id, sim_len, n_runs, return_dict, config, inference, pipe_conn, 
                 actions = env.vs_action(random=False)
                 env.apply_action(actions)
             else:
-                actions, a_ks, log_ps = send_request(pipe_conn, MA_GET_ACTION, push_states,
+                actions, a_ks, log_ps, ents = send_request(pipe_conn, MA_GET_ACTION, push_states,
                                        lock=lock, batched_queue=batched_queue, response_dict=response_dict)
                 # ** the following 3 lines are imp cos they are sampled with the max N among all threads at server side
                 actions = actions[:env.n_idxs]
@@ -163,6 +163,7 @@ if __name__ == "__main__":
     
     current_episode = 0
     n_updates = config['nenv']
+    infer_every = config['infer_every']
     avg_reward = 0
     warmup_scheduler = TrainingSchedule(max_nenvs=config['nenv'], max_nruns=config['nruns'], max_warmup_episodes=config['warmup'], max_nupdates=config['n_updates'])
     
@@ -181,7 +182,7 @@ if __name__ == "__main__":
         while True:
             if not config['vis_servo']:
                 n_threads, n_runs, n_updates = warmup_scheduler.training_schedule(current_episode)
-                if outer_loops % 10 == 0:
+                if outer_loops % infer_every == 0:
                     inference = True
                     n_threads = 40
                     n_runs = 10

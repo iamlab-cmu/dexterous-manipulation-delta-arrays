@@ -303,6 +303,7 @@ class DiffusionTransformer(nn.Module):
         self.pos_embedding.load_state_dict(torch.load(hp_dict['idx_embed_loc'], map_location=self.device, weights_only=True))
         for param in self.pos_embedding.parameters():
             param.requires_grad = False
+        self.entropy = hp_dict['entropy']
 
         self.denoising_params = hp_dict['denoising_params']
         self.diff_timesteps = self.denoising_params['n_diff_steps']
@@ -339,10 +340,33 @@ class DiffusionTransformer(nn.Module):
             self.decoder_critic1 = DiTCritic(hp_dict['state_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'])
             self.decoder_critic2 = DiTCritic(hp_dict['state_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'])
 
-    def get_log_probability(self, a_k, model_mean, model_variance):
-        normal_dist = Normal(model_mean, torch.sqrt(model_variance + 1e-8))
-        log_prob = normal_dist.log_prob(a_k)
-        return log_prob
+    def compute_log_prob_and_entropy(self, actions_k, actions_k_minus_1, mean, var, log_var):
+        shape = actions_k.shape
+        
+        # Compute log probability of actions_k_minus_1 under this Gaussian distribution
+        # For a multivariate Gaussian with diagonal covariance:
+        # log p(x) = -0.5 * (log(2π) + log(det(Σ)) + (x-μ)ᵀΣ⁻¹(x-μ))
+        mean_diff = actions_k_minus_1 - mean
+        
+        # Compute mahalanobis distance (x-μ)ᵀΣ⁻¹(x-μ)
+        inv_variance = 1.0 / var
+        mahalanobis = mean_diff.pow(2) * inv_variance
+        
+        # Sum over all dimensions except batch
+        dims_to_sum = tuple(range(1, len(shape)))
+        
+        # Compute log prob: -0.5 * (n_dims * log(2π) + sum(log(σ²)) + sum((x-μ)²/σ²))
+        n_dims = np.prod(shape[1:])  # Total dimensions per batch element
+        log_prob = -0.5 * (n_dims * np.log(2 * np.pi) + 
+                            log_var.sum(dim = -1) + 
+                            mahalanobis.sum(dim = -1))
+        
+        # Compute entropy: For Gaussian with diagonal covariance: 
+        # H = 0.5 * (n_dims * (1 + log(2π)) + sum(log(σ²)))
+        entropy = 0.5 * (n_dims * (1.0 + np.log(2 * np.pi)) + 
+                        log_var.sum(dim=dims_to_sum))
+        
+        return log_prob, entropy
 
     def sample_q(self, x_0, k, noise):
         return (_extract_into_tensor(self.sqrt_alphas_cumprod, k, x_0.shape) * x_0
@@ -354,14 +378,16 @@ class DiffusionTransformer(nn.Module):
         actions = x_K
         with torch.no_grad():
             if get_low_level:
-                log_ps = np.zeros((x_K.shape[0], self.diff_timesteps, *x_K.shape[1:]))
+                log_ps = np.zeros((x_K.shape[0], self.diff_timesteps, x_K.shape[1]))
                 a_ks = np.zeros((x_K.shape[0], self.diff_timesteps, *x_K.shape[1:]))
+                ents = np.zeros((x_K.shape[0], self.diff_timesteps, 1))
                 for k in reversed(range(self.diff_timesteps)):
-                    actions, log_p = self.get_actions_k_minus_1(k, actions, states, pos, get_low_level)
-                    log_ps[:, k, :, :] = log_p.detach().cpu().numpy()
-                    a_ks[:, k, :, :] = actions.detach().cpu().numpy()
+                    actions, log_p, H = self.get_actions_k_minus_1(k, actions, states, pos, get_low_level)
+                    log_ps[:, k, :] = log_p.detach().cpu().numpy() # bs, N
+                    a_ks[:, k, :, :] = actions.detach().cpu().numpy() # bs, N, act_dim
+                    ents[:, k] = H.detach().cpu().numpy()[:, None] # bs, 1
                     
-                return actions.detach().cpu().numpy(), np.array(a_ks), np.array(log_ps)
+                return actions.detach().cpu().numpy(), np.array(a_ks), np.array(log_ps), np.array(ents)
             else:
                 for k in reversed(range(self.diff_timesteps)):
                     actions = self.get_actions_k_minus_1(k, actions, states, pos, get_low_level)
@@ -372,25 +398,29 @@ class DiffusionTransformer(nn.Module):
             
         k = torch.tensor([k]*shape[0], device=self.device)
         pred_noise = self.decoder_actor(states, actions, pos)
-
-        model_variance = _extract_into_tensor(self.posterior_variance, k, shape)
+        denoised_actions, mean, var, log_var = self.denoising_core(k, shape, actions, pred_noise)
         
-        pred_x_start = _extract_into_tensor(self.sqrt_recip_alphas_cumprod, k, shape) * actions\
+        if get_low_level:
+            log_p, entropy = self.compute_log_prob_and_entropy(actions, denoised_actions, mean, var, log_var)
+            return denoised_actions, log_p, entropy
+        else:
+            return denoised_actions
+        
+    def denoising_core(self, k, shape, inputs, pred_noise):
+        model_variance = _extract_into_tensor(self.posterior_variance, k, shape)
+        model_log_variance = _extract_into_tensor(self.posterior_log_variance_clipped, k, shape)
+        
+        pred_x_start = _extract_into_tensor(self.sqrt_recip_alphas_cumprod, k, shape) * inputs\
                     - _extract_into_tensor(self.sqrt_recipm1_alphas_cumprod, k, shape) * pred_noise
         
         model_mean = _extract_into_tensor(self.posterior_mean_coef1, k, shape) * pred_x_start\
-                    + _extract_into_tensor(self.posterior_mean_coef2, k, shape) * actions
+                    + _extract_into_tensor(self.posterior_mean_coef2, k, shape) * inputs
         
         noise = torch.randn(shape, device=self.device)
         nonzero_mask = ((k != 0).float().view(-1, *([1] * (len(shape) - 1))))
         
-        denoised_actions = model_mean + nonzero_mask * model_variance * noise
-        
-        if get_low_level:
-            log_p = self.get_log_probability(denoised_actions, model_mean, model_variance)
-            return denoised_actions, log_p
-        else:
-            return denoised_actions
+        denoised_inputs = model_mean + nonzero_mask * model_variance * noise
+        return denoised_inputs, model_mean, model_variance, model_log_variance
     
     def get_q_values(self, critic, x_T, states, actions, pos):
         q_values = x_T
@@ -423,18 +453,24 @@ class DiffusionTransformer(nn.Module):
         return q_values
     
     def compute_pi_loss(self, actions, states, pos):
+        shape = actions.shape
         bs, n_agents, _ = states.size()
-        noise = torch.randn(actions.shape, device=self.device)
-        t_steps = torch.randint(0, self.diff_timesteps, (bs,), device=self.device)
+        noise = torch.randn(shape, device=self.device)
+        ks = torch.randint(0, self.diff_timesteps, (bs,), device=self.device)
 
         # denoising transition mean calculation
-        noisy_actions = self.sample_q(actions, t_steps, noise)
-
+        noisy_actions = self.sample_q(actions, ks, noise)
         pred_noise = self.decoder_actor(states, noisy_actions, pos)
+        
+        #** For Entropy Experiment. Can delete later. ###################################################
+        denoised_actions, mean, var, log_var = self.denoising_core(ks, shape, actions, pred_noise)
+        log_p, entropy = self.compute_log_prob_and_entropy(actions, denoised_actions, mean, var, log_var)
+        #**##############################################################################################
+        
         loss = F.mse_loss(noise, pred_noise, reduction='none')
         loss = reduce(loss, 'b ... -> b(...)', 'mean')
         loss = loss.mean()
-        return loss
+        return loss, entropy, ks
     
     def compute_q_loss(self, critic, states, actions, pos, rewards):
         bs, n_agents, _ = states.size()

@@ -22,6 +22,7 @@ class MADPTD3:
         self.act_dim = self.env_dict['action_space']['dim']
         self.act_limit = self.env_dict['action_space']['high']
         self.device = self.hp_dict['dev_rl']
+        self.infer_every = hp_dict['infer_every']
         self.gamma = hp_dict['gamma']
         self.alpha = hp_dict['alpha']
         self.max_avg_rew = 0
@@ -112,22 +113,24 @@ class MADPTD3:
             p.requires_grad = False
         
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-            a_k_minus_1, log_p = self.tf.get_actions_k_minus_1(k, a_k, s1, pos)
+            a_k_minus_1, log_p, H = self.tf.get_actions_k_minus_1(k, a_k, s1, pos)
             
-            q1_pi = self.tf.decoder_critic1(s1, a_0, pos).squeeze().mean(dim=1)
-            q2_pi = self.tf.decoder_critic2(s1, a_0, pos).squeeze().mean(dim=1)
+            q1_pi = self.tf_target.decoder_critic1(s1, a_0, pos).squeeze() #.mean(dim=1)
+            q2_pi = self.tf_target.decoder_critic2(s1, a_0, pos).squeeze() #.mean(dim=1)
             q_pi = torch.minimum(q1_pi, q2_pi)
             
-            log_p = log_p.sum(dim=(-2, -1))   #reshape(-1, self.act_dim)
-            log_p_old = log_p_old.sum(dim=(-2, -1))   #reshape(-1, self.act_dim)
+            log_p = log_p #.sum(dim=(-2, -1))
+            log_p_old = log_p_old #.sum(dim=(-2, -1))
             imp_weights = torch.exp(log_p - log_p_old)
             
-            surr1 = imp_weights * q_pi
+            # TODO: measure the ratio value and see if it is improving over time
+            
+            surr1 = imp_weights * q_pi * self.w_k_decay(k)
             surr2 = torch.clamp(imp_weights, 1.0 - self.ppo_clip, 1.0 + self.ppo_clip) * q_pi
             policy_loss = -torch.sum(torch.min(surr1, surr2), dim=-1, keepdim=True).mean()
             
             # !! No entropy term for now. If we just add this, we'll get SAC! :D
-            pi_loss = policy_loss * self.w_k_decay(k) # + self.H_coeff * H 
+            pi_loss = policy_loss # + self.H_coeff * H 
             
         self.pi_loss_scaler.scale(pi_loss).backward()
         self.pi_loss_scaler.unscale_(self.optimizer_actor)
@@ -136,6 +139,7 @@ class MADPTD3:
         self.pi_loss_scaler.update()
         
         self.logger.add_data('Pi loss', pi_loss.item())
+        self.logger.add_data('Log Prob Ratio', imp_weights.mean().item())
             
         for p in self.critic_params:
             p.requires_grad = True
@@ -146,7 +150,7 @@ class MADPTD3:
             bs, N, _ = states.size()
             a_k = torch.randn((bs, N, self.act_dim), device=self.device)
             for k in range(self.diff_timesteps-1, 0, -1):
-                a_k, log_p_k = self.tf.get_actions_k_minus_1(k, a_k, states, pos)
+                a_k, log_p_k, H = self.tf.get_actions_k_minus_1(k, a_k, states, pos)
                 rb_low_level.append([deepcopy(a_k), deepcopy(log_p_k), k])
         return rb_low_level
             
@@ -203,7 +207,7 @@ class MADPTD3:
                         k = shuffled_indices[i]
                         for param in self.actor_params:
                             param.grad = None
-                        self.update_pi(k, states, actions, a_ks[:,k,:,:], old_log_ps[:,k,:,:], pos)
+                        self.update_pi(k, states, actions, a_ks[:,k,:,:], old_log_ps[:,k,:], pos)
                         
                 # Target Update
                 with torch.no_grad():
@@ -220,8 +224,9 @@ class MADPTD3:
                 }
                 torch.save(dicc, f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
 
-            if self.internal_updates_counter % 100 == 0:
-                self.logger.log_metrics(max_length=100)
+        self.ma_replay_buffer.update_sample_ptr()
+        if self.internal_updates_counter % self.infer_every == 0:
+            self.logger.log_metrics(max_length=500)
                 
     @torch.no_grad()
     def get_actions(self, obs, pos):
@@ -230,8 +235,8 @@ class MADPTD3:
         bs, N, _ = obs.size()
         a_K = torch.randn((bs, N, self.act_dim), device=self.device)
         
-        actions, a_ks, log_ps = self.tf.get_actions(a_K, obs, pos, get_low_level=True)
-        return actions, a_ks, log_ps
+        actions, a_ks, log_ps, ents = self.tf.get_actions(a_K, obs, pos, get_low_level=True)
+        return actions, a_ks, log_ps, ents
         
     def load_saved_policy(self, path):
         dicc = torch.load(path, map_location=self.hp_dict['dev_rl'])

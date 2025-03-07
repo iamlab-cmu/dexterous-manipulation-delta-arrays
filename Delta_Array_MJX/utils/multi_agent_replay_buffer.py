@@ -114,10 +114,10 @@ class MADiffTD3ReplayBuffer:
         self.rew_buf = np.zeros(size, dtype=np.float32)
         self.done_buf = np.zeros(size, dtype=np.float32)
         self.num_agents_buf = np.zeros(size, dtype=np.int32)
-        self.low_level_mdp_logps = np.zeros((size, diff_steps, max_agents, act_dim), dtype=np.float32)
+        self.low_level_mdp_logps = np.zeros((size, diff_steps, max_agents), dtype=np.float32)
         self.low_level_mdp_a_ks = np.zeros((size, diff_steps, max_agents, act_dim), dtype=np.float32)
         
-        self.ptr, self.size, self.max_size = 0, 0, size
+        self.ptr, self.sample_ptr,  self.size, self.max_size = 0, 0, 0, size
 
     def store(self, replay_data):
         for (obs, act, log_ps, a_ks, pos, rew, next_obs, done, n_agents) in replay_data:
@@ -129,13 +129,14 @@ class MADiffTD3ReplayBuffer:
             self.done_buf[self.ptr] = done
             self.num_agents_buf[self.ptr] = n_agents
             self.low_level_mdp_logps[self.ptr, :, :n_agents] = log_ps
-            self.low_level_mdp_a_ks[self.ptr, :, :n_agents] = a_ks
+            self.low_level_mdp_a_ks[self.ptr, :, :n_agents] = a_ks #: represents 100 denoising steps (k)
             
             self.ptr = (self.ptr+1) % self.max_size
             self.size = min(self.size+1, self.max_size)
 
-    def sample_batch(self, batch_size=32):
+    def sample_batch(self, batch_size=256):
         idxs = np.random.randint(0, self.size, size=batch_size)
+        ppo_idxs = np.random.randint(self.sample_ptr, self.ptr, size=batch_size)
         batch = dict(obs=self.obs_buf[idxs],
                     obs2=self.obs2_buf[idxs],
                     act=self.act_buf[idxs],
@@ -143,11 +144,14 @@ class MADiffTD3ReplayBuffer:
                     rew=self.rew_buf[idxs],
                     done=self.done_buf[idxs],
                     num_agents=self.num_agents_buf[idxs],
-                    log_ps=self.low_level_mdp_logps[self.ptr - batch_size:self.ptr],
-                    a_ks=self.low_level_mdp_a_ks[self.ptr - batch_size:self.ptr],
+                    log_ps=self.low_level_mdp_logps[ppo_idxs],
+                    a_ks=self.low_level_mdp_a_ks[ppo_idxs],
                 )
         
         return {k: torch.as_tensor(v) for k,v in batch.items()}
+    
+    def update_sample_ptr(self):
+        self.sample_ptr = self.ptr
 
     def save_RB(self):
         dic = { "obs":self.obs_buf,
@@ -156,5 +160,7 @@ class MADiffTD3ReplayBuffer:
                 "pos":self.pos_buf,
                 "rew":self.rew_buf,
                 "done":self.done_buf,
-                "num_agents":self.num_agents_buf,}
+                "num_agents":self.num_agents_buf,
+                "log_ps":self.low_level_mdp_logps,
+                "a_ks":self.low_level_mdp_a_ks,}
         pkl.dump(dic, open("./data/replay_buffer_mixed.pkl", "wb"))
