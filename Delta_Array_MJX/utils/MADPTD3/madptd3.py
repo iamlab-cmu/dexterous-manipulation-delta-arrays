@@ -68,7 +68,7 @@ class MADPTD3:
             self.q_loss_fn = loss_utils.matsac_q_loss_diff
             
         self.q_loss = None
-        self.internal_updates_counter = 0
+        self.update_counter = 0
         
         self.q_loss_scaler = torch.amp.GradScaler('cuda')
         self.pi_loss_scaler = torch.amp.GradScaler('cuda')
@@ -158,7 +158,6 @@ class MADPTD3:
         for reward in log_reward:
             self.logger.add_data('Reward', reward)
         for j in range(n_updates):
-            self.internal_updates_counter += 1
             # if self.internal_updates_counter == 1:
             #     for param_group in self.optimizer_critic.param_groups:
             #         param_group['lr'] = 1e-6
@@ -196,7 +195,7 @@ class MADPTD3:
 
             # Actor Update
             # self.optimizer_actor.zero_grad()
-            if self.internal_updates_counter % self.policy_delay == 0:
+            if j % self.policy_delay == 0:
                 self.scheduler_actor.step()
                 # for a_k, log_p, k in random.sample(rb_low_level, self.diff_timesteps//5):
                 
@@ -215,18 +214,22 @@ class MADPTD3:
                         p_target.data.mul_(self.hp_dict['tau'])
                         p_target.data.add_((1 - self.hp_dict['tau']) * p.data)
                         
-            if self.internal_updates_counter % 1000 == 0:
-                print("ckpt saved @ ", current_episode, self.internal_updates_counter)
-                dicc = {
-                    'model': self.tf.state_dict(),
-                    'actor_optimizer': self.optimizer_actor.state_dict(),
-                    'critic_optimizer': self.optimizer_critic.state_dict(),
-                }
-                torch.save(dicc, f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
-
         self.ma_replay_buffer.update_sample_ptr()
-        if self.internal_updates_counter % self.infer_every == 0:
-            self.logger.log_metrics(max_length=500)
+        self.logger.add_data('Num Episodes Run', current_episode)
+        
+        if self.update_counter % self.infer_every == 0:
+            self.logger.log_metrics(max_length=1000)
+            
+        if self.update_counter % 100 == 0:
+            print("ckpt saved @ ", current_episode, self.update_counter)
+            dicc = {
+                'model': self.tf.state_dict(),
+                'actor_optimizer': self.optimizer_actor.state_dict(),
+                'critic_optimizer': self.optimizer_critic.state_dict(),
+            }
+            torch.save(dicc, f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
+
+        self.update_counter += 1
                 
     @torch.no_grad()
     def get_actions(self, obs, pos):
@@ -242,7 +245,6 @@ class MADPTD3:
         dicc = torch.load(path, map_location=self.hp_dict['dev_rl'])
         
         self.tf.load_state_dict(dicc['model'])
-        # self.optimizer_actor.load_state_dict(dicc['actor_optimizer'])
-        # self.optimizer_critic.load_state_dict(dicc['critic_optimizer'])
-        # self.uuid = dicc['uuid']
+        self.optimizer_actor.load_state_dict(dicc['actor_optimizer'])
+        self.optimizer_critic.load_state_dict(dicc['critic_optimizer'])
         self.tf_target = deepcopy(self.tf)
