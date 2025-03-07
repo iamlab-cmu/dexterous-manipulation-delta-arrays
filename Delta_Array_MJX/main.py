@@ -111,7 +111,7 @@ def run_env(env_id, sim_len, n_runs, return_dict, config, inference, pipe_conn, 
                 actions, a_ks, log_ps, ents = send_request(pipe_conn, MA_GET_ACTION, push_states,
                                        lock=lock, batched_queue=batched_queue, response_dict=response_dict)
                 # ** the following 3 lines are imp cos they are sampled with the max N among all threads at server side
-                actions = actions[:env.n_idxs]
+                actions = env.clip_actions_to_ws(actions[:env.n_idxs])
                 a_ks = a_ks[:, :env.n_idxs]
                 log_ps = log_ps[:, :env.n_idxs]
                 env.final_state[:env.n_idxs, 4:6] = actions

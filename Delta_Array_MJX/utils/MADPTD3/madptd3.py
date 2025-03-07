@@ -14,13 +14,11 @@ import utils.multi_agent_replay_buffer as MARB
 import utils.loss_utils as loss_utils
 
 class MADPTD3:
-    def __init__(self, env_dict, hp_dict, logger):
+    def __init__(self, hp_dict, logger):
         self.logger = logger
         self.hp_dict = hp_dict
-        self.env_dict = env_dict
-        self.obs_dim = self.env_dict['pi_obs_space']['dim']
-        self.act_dim = self.env_dict['action_space']['dim']
-        self.act_limit = self.env_dict['action_space']['high']
+        self.obs_dim = self.hp_dict['env_dict']['pi_obs_space']['dim']
+        self.act_dim = self.hp_dict['env_dict']['action_space']['dim']
         self.device = self.hp_dict['dev_rl']
         self.infer_every = hp_dict['infer_every']
         self.gamma = hp_dict['gamma']
@@ -113,7 +111,7 @@ class MADPTD3:
             p.requires_grad = False
         
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-            a_k_minus_1, log_p, H = self.tf.get_actions_k_minus_1(k, a_k, s1, pos)
+            a_k_minus_1, log_p, H, diff_loss = self.tf.get_actions_k_minus_1(k, a_k, s1, pos)
             
             q1_pi = self.tf_target.decoder_critic1(s1, a_0, pos).squeeze() #.mean(dim=1)
             q2_pi = self.tf_target.decoder_critic2(s1, a_0, pos).squeeze() #.mean(dim=1)
@@ -130,7 +128,7 @@ class MADPTD3:
             policy_loss = -torch.sum(torch.min(surr1, surr2), dim=-1, keepdim=True).mean()
             
             # !! No entropy term for now. If we just add this, we'll get SAC! :D
-            pi_loss = policy_loss # + self.H_coeff * H 
+            pi_loss = diff_loss + policy_loss # + self.H_coeff * H 
             
         self.pi_loss_scaler.scale(pi_loss).backward()
         self.pi_loss_scaler.unscale_(self.optimizer_actor)

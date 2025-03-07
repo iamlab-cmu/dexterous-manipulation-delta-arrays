@@ -299,6 +299,8 @@ class DiffusionTransformer(nn.Module):
         self.device = hp_dict['dev_rl']
         self.max_agents = delta_array_size[0] * delta_array_size[1]
         self.action_dim = hp_dict['action_dim']
+        self.act_lim_low = hp_dict['env_dict']['action_space']['low']
+        self.act_lim_high = hp_dict['env_dict']['action_space']['high']
         self.pos_embedding = IntegerEmbeddingModel(self.max_agents, hp_dict['model_dim'])
         self.pos_embedding.load_state_dict(torch.load(hp_dict['idx_embed_loc'], map_location=self.device, weights_only=True))
         for param in self.pos_embedding.parameters():
@@ -382,16 +384,19 @@ class DiffusionTransformer(nn.Module):
                 a_ks = np.zeros((x_K.shape[0], self.diff_timesteps, *x_K.shape[1:]))
                 ents = np.zeros((x_K.shape[0], self.diff_timesteps, 1))
                 for k in reversed(range(self.diff_timesteps)):
-                    actions, log_p, H = self.get_actions_k_minus_1(k, actions, states, pos, get_low_level)
+                    actions, log_p, H, _ = self.get_actions_k_minus_1(k, actions, states, pos, get_low_level)
                     log_ps[:, k, :] = log_p.detach().cpu().numpy() # bs, N
                     a_ks[:, k, :, :] = actions.detach().cpu().numpy() # bs, N, act_dim
                     ents[:, k] = H.detach().cpu().numpy()[:, None] # bs, 1
                     
-                return actions.detach().cpu().numpy(), np.array(a_ks), np.array(log_ps), np.array(ents)
+                actions = actions.detach().cpu().numpy()
+                # return np.clip(actions.detach().cpu().numpy(), self.act_lim_low, self.act_lim_high), a_ks, log_ps, ents
             else:
+                a_ks, log_ps, ents = None, None, None
                 for k in reversed(range(self.diff_timesteps)):
                     actions = self.get_actions_k_minus_1(k, actions, states, pos, get_low_level)
-                return actions
+                    
+        return actions, a_ks, log_ps, ents
     
     def get_actions_k_minus_1(self, k, actions, states, pos, get_low_level=True):
         shape = actions.shape
@@ -400,11 +405,19 @@ class DiffusionTransformer(nn.Module):
         pred_noise = self.decoder_actor(states, actions, pos)
         denoised_actions, mean, var, log_var = self.denoising_core(k, shape, actions, pred_noise)
         
+        # Compute the noise from noisy actions as target for pred_noise
+        sqrt_alphas_cumprod = _extract_into_tensor(self.sqrt_alphas_cumprod, k, shape)
+        sqrt_one_minus_alphas_cumprod = _extract_into_tensor(self.sqrt_one_minus_alphas_cumprod, k, shape)
+        noise_target = (actions - sqrt_alphas_cumprod * denoised_actions) / sqrt_one_minus_alphas_cumprod
+        
+        mse_loss = F.mse_loss(pred_noise, noise_target, reduction='none')
+        mse_loss = reduce(mse_loss, 'b ... -> b(...)', 'mean')
+        
         if get_low_level:
             log_p, entropy = self.compute_log_prob_and_entropy(actions, denoised_actions, mean, var, log_var)
-            return denoised_actions, log_p, entropy
+            return denoised_actions, log_p, entropy, mse_loss.mean()
         else:
-            return denoised_actions
+            return denoised_actions, mse_loss
         
     def denoising_core(self, k, shape, inputs, pred_noise):
         model_variance = _extract_into_tensor(self.posterior_variance, k, shape)
@@ -452,7 +465,7 @@ class DiffusionTransformer(nn.Module):
         q_values = model_mean + nonzero_mask * model_variance * noise
         return q_values
     
-    def compute_pi_loss(self, actions, states, pos):
+    def compute_pi_loss(self, actions, states, pos, ent_ret=False):
         shape = actions.shape
         bs, n_agents, _ = states.size()
         noise = torch.randn(shape, device=self.device)
@@ -463,8 +476,11 @@ class DiffusionTransformer(nn.Module):
         pred_noise = self.decoder_actor(states, noisy_actions, pos)
         
         #** For Entropy Experiment. Can delete later. ###################################################
-        denoised_actions, mean, var, log_var = self.denoising_core(ks, shape, actions, pred_noise)
-        log_p, entropy = self.compute_log_prob_and_entropy(actions, denoised_actions, mean, var, log_var)
+        if ent_ret:
+            denoised_actions, mean, var, log_var = self.denoising_core(ks, shape, actions, pred_noise)
+            log_p, entropy = self.compute_log_prob_and_entropy(actions, denoised_actions, mean, var, log_var)
+        else:
+            entropy = None
         #**##############################################################################################
         
         loss = F.mse_loss(noise, pred_noise, reduction='none')

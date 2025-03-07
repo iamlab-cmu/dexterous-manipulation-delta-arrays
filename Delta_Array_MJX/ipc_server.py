@@ -36,6 +36,10 @@ class DeltaArrayServer():
         
         self.hp_dict = {
             # Env Params
+            "env_dict"          : {'action_space': {'low': -0.03, 'high': 0.03, 'dim': 2},
+                                    'pi_obs_space'  : {'dim': 6},
+                                    'q_obs_space'   : {'dim': 6},
+                                    "max_agents"    : 64,},
             "exp_name"          : config['name'],
             "diff_exp_name"     : "expt_1",
             'algo'              : config['algo'],
@@ -140,7 +144,7 @@ class DeltaArrayServer():
                 self.pushing_agent = mabc_finetune.MABC_Finetune(self.hp_dict)
                 self.pushing_agent.load_saved_policy(f'./utils/MABC/{config['finetune_name']}.pt')
             elif config['algo']=="MADP_Finetune":
-                self.pushing_agent = madp_finetune.MADPTD3(ma_env_dict, self.hp_dict, self.logger)
+                self.pushing_agent = madp_finetune.MADPTD3(self.hp_dict, self.logger)
                 if config['finetune_name'] != "HAKUNA":
                     self.pushing_agent.load_saved_policy(f'./utils/MADPTD3/{config['finetune_name']}.pt')
 
