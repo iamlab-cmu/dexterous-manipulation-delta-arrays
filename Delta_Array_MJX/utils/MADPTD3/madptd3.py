@@ -117,7 +117,7 @@ class MADPTD3:
             
             q1_pi = self.tf_target.decoder_critic1(s1, a_0, pos).squeeze() #.mean(dim=1)
             q2_pi = self.tf_target.decoder_critic2(s1, a_0, pos).squeeze() #.mean(dim=1)
-            q_pi = torch.minimum(q1_pi, q2_pi)
+            q_pi = torch.minimum(q1_pi, q2_pi) * self.w_k_decay(k)
             
             log_p = log_p #.sum(dim=(-2, -1))
             log_p_old = log_p_old #.sum(dim=(-2, -1))
@@ -125,7 +125,7 @@ class MADPTD3:
             
             # TODO: measure the ratio value and see if it is improving over time
             
-            surr1 = imp_weights * q_pi * self.w_k_decay(k)
+            surr1 = imp_weights * q_pi
             surr2 = torch.clamp(imp_weights, 1.0 - self.ppo_clip, 1.0 + self.ppo_clip) * q_pi
             policy_loss = -torch.sum(torch.min(surr1, surr2), dim=-1, keepdim=True).mean()
             
