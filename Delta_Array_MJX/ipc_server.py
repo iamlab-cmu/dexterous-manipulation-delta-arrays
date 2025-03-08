@@ -146,7 +146,7 @@ class DeltaArrayServer():
             elif config['algo']=="MADP_Finetune":
                 self.pushing_agent = madp_finetune.MADPTD3(self.hp_dict, self.logger)
                 if config['finetune_name'] != "HAKUNA":
-                    self.pushing_agent.load_saved_policy(f'./utils/MADPTD3/{config['finetune_name']}.pt')
+                    self.pushing_agent.load_saved_policy(f'{self.hp_dict['data_dir']}/{config['finetune_name']}/pyt_save/model.pt')
 
             if (self.train_or_test=="test") and (config['algo']=="MATSAC"):
                 # self.pushing_agent.load_saved_policy(f'./data/rl_data/{config['name']}/{config['name']}_s69420/pyt_save/model.pt')

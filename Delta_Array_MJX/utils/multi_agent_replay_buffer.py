@@ -132,6 +132,8 @@ class MADiffTD3ReplayBuffer:
             self.low_level_mdp_a_ks[self.ptr, :, :n_agents] = a_ks #: represents 100 denoising steps (k)
             
             self.ptr = (self.ptr+1) % self.max_size
+            if self.ptr == 0:
+                self.sample_ptr = 0
             self.size = min(self.size+1, self.max_size)
 
     def sample_batch(self, batch_size=256):
