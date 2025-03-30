@@ -146,7 +146,7 @@ class FF_MLP(nn.Module):
         super(FF_MLP, self).__init__()
         self.fc1 = wt_init_(nn.Linear(model_dim, dim_ff))
         self.fc2 = wt_init_(nn.Linear(dim_ff, model_dim))
-        self.activation = nn.GELU()
+        self.activation = nn.SiLU()
 
     def forward(self, x):
         return self.fc2(self.activation(self.fc1(x)))
@@ -224,7 +224,7 @@ class DiTActor(nn.Module):
         self.decoder_layers = nn.ModuleList([DiTBlock(model_dim, num_heads, max_agents, dim_ff, dropout) for _ in range(n_layers)])
             
         self.final_layer = FinalLayer(model_dim, action_dim)
-        self.activation = nn.GELU()
+        self.activation = nn.SiLU()
         
     def forward(self, state, actions, pos):
         state_enc = self.state_enc(state)
@@ -247,7 +247,7 @@ class DiTCritic(nn.Module):
         self.decoder_layers = nn.ModuleList([DiTBlock(model_dim, num_heads, max_agents, dim_ff, dropout) for _ in range(n_layers)])
             
         self.final_layer = FinalLayer(model_dim, 1)
-        self.activation = nn.GELU()
+        self.activation = nn.SiLU()
         
     def forward(self, states, actions, pos, q_values=None):
         SA = torch.cat((states, actions), dim=-1)
@@ -270,7 +270,7 @@ class OGCritic(nn.Module):
         self.decoder_layers = nn.ModuleList([DiTBlock(model_dim, num_heads, max_agents, dim_ff, dropout) for _ in range(n_layers)])
             
         self.final_layer = FinalLayer(model_dim, 1)
-        self.activation = nn.GELU()
+        self.activation = nn.SiLU()
         
     def forward(self, states, actions, pos, q_values=None):
         SA = torch.cat((states, actions), dim=-1)

@@ -34,7 +34,7 @@ for i in range(8):
         kdtree_positions_world[i*8 + j, :] = rb_pos_world[i,j]
 
 class MABC_Finetune:
-    def __init__(self, parent_hp_dict):
+    def __init__(self, parent_hp_dict, logger):
         self.hp_dict = {
             "exp_name"          : parent_hp_dict['exp_name'],
             "data_dir"          : "./data/rl_data",
@@ -54,7 +54,7 @@ class MABC_Finetune:
             # DiT Params:
             'state_dim'         : 6,
             'obj_name_enc_dim'  : 9,
-            'action_dim'        : 2,
+            'action_dim'        : 3,
             'act_limit'         : 0.03,
             "device"            : parent_hp_dict['dev_rl'],
             "dev_rl"            : parent_hp_dict['dev_rl'],
@@ -71,6 +71,7 @@ class MABC_Finetune:
             'gauss'             : parent_hp_dict['gauss'],
             'learned_alpha'     : parent_hp_dict['learned_alpha'],
         }
+        self.logger = logger
         self.device = self.hp_dict['device']
         self.tf = Transformer(self.hp_dict)
         self.gauss = self.hp_dict['gauss']
@@ -135,7 +136,8 @@ class MABC_Finetune:
         torch.nn.utils.clip_grad_norm_(self.tf.decoder_critic.parameters(), self.hp_dict['max_grad_norm'])
         self.optimizer_critic.step()
         
-        self.log_dict['Q loss'].append(q_loss.item())
+        self.logger.add_data('Q loss', q_loss.item())
+        self.logger.add_data('Q', q.mean().item())
 
     def compute_pi_loss(self, s1, pos):
         for p in self.tf.decoder_critic.parameters():
@@ -144,16 +146,13 @@ class MABC_Finetune:
         _, n_agents, _ = s1.size()
         if self.gauss:
             actions, log_probs, mu, std = self.tf(s1, pos)
-        else:
-            actions = self.tf(s1, pos)
-        
-        q_pi = self.tf.decoder_critic(s1, actions, pos).squeeze()
-        
-        if self.gauss:
+            q_pi = self.tf.decoder_critic(s1, actions, pos).squeeze()
             pi_loss = (self.alpha * log_probs - q_pi).mean()
         else:
+            actions = self.tf(s1, pos)
+            q_pi = self.tf.decoder_critic(s1, actions, pos).squeeze()
             pi_loss = -q_pi.mean()
-
+        
         pi_loss.backward()
         torch.nn.utils.clip_grad_norm_(self.tf.decoder_actor.parameters(), self.hp_dict['max_grad_norm'])
         self.optimizer_actor.step()
@@ -168,16 +167,15 @@ class MABC_Finetune:
         
         for p in self.tf.decoder_critic.parameters():
             p.requires_grad = True
-            
-        self.log_dict['Pi loss'].append(pi_loss.item())
+                      
+        self.logger.add_data('Pi loss', pi_loss.item())
         if self.gauss:
-            self.log_dict['alpha'].append(self.alpha.item())
-            self.log_dict['mu'].append(mu.mean().item())
-            self.log_dict['std'].append(std.mean().item())
+            self.logger.add_data('Log Probs', log_probs.mean().item())
 
-    def update(self, current_episode, n_envs, avg_reward):
-        self.log_dict['Reward'].append(avg_reward)
-        for j in range(n_envs):
+    def update(self, current_episode, n_updates, log_reward):
+        for rew in log_reward:
+            self.logger.add_data('Reward', rew)
+        for j in range(n_updates):
             self.internal_updates_counter += 1
             if self.internal_updates_counter == 1:
                 for param_group in self.optimizer_critic.param_groups:
@@ -215,10 +213,10 @@ class MABC_Finetune:
                     p_target.data.mul_(self.hp_dict['tau'])
                     p_target.data.add_((1 - self.hp_dict['tau']) * p.data)
 
-            if self.internal_updates_counter % 500 == 0:
-                if self.max_avg_rew < avg_reward:
+            if self.internal_updates_counter % 1000 == 0:
+                if self.max_avg_rew < np.mean(log_reward):
                     print("ckpt saved @ ", current_episode, self.internal_updates_counter)
-                    self.max_avg_rew = avg_reward
+                    self.max_avg_rew = np.mean(log_reward)
                     dicc = {
                         'model': self.tf.state_dict(),
                         'actor_optimizer': self.optimizer_actor.state_dict(),
@@ -226,24 +224,17 @@ class MABC_Finetune:
                     }
                     torch.save(dicc, f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
         
+        self.logger.add_data('Num Episodes Run', current_episode)
         if not self.hp_dict["dont_log"]:
-            wandb.log({k: np.mean(v) if isinstance(v, list) and len(v) > 0 else v for k, v in self.log_dict.items()})
-            self.log_dict = {
-                'Q loss': [],
-                'Pi loss': [],
-                'alpha': [],
-                'mu': [],
-                'std': [],
-                'Reward': []
-            }
+            self.logger.log_metrics(max_length=n_updates)
     
     @torch.no_grad()
     def get_actions(self, obs, pos, deterministic=False):
-        obs = torch.as_tensor(obs, dtype=torch.float32).unsqueeze(0).to(self.device)
-        pos = torch.as_tensor(pos, dtype=torch.int32).unsqueeze(0).to(self.device)
+        obs = torch.as_tensor(obs, dtype=torch.float32).to(self.device)    # .unsqueeze(0)
+        pos = torch.as_tensor(pos, dtype=torch.int32).to(self.device)   # .unsqueeze(0)
         
         actions = self.tf.get_actions(obs, pos, deterministic=deterministic)
-        return actions.detach().cpu().numpy()[0]
+        return actions.detach().cpu().numpy()
     
     def save_model(self):
         dicc = {
@@ -257,8 +248,8 @@ class MABC_Finetune:
         print(path)
         nn_dicts = torch.load(path, map_location=self.hp_dict['dev_rl'], weights_only=False)
         self.tf.load_state_dict(nn_dicts['model'])
-        self.optimizer_actor.load_state_dict(nn_dicts['actor_optimizer'])
-        self.optimizer_critic.load_state_dict(nn_dicts['critic_optimizer'])
-        # self.optimizer_actor.load_state_dict(nn_dicts['optimizer_actor'])
-        # self.optimizer_critic.load_state_dict(nn_dicts['optimizer_critic'])
+        # self.optimizer_actor.load_state_dict(nn_dicts['actor_optimizer'])
+        # self.optimizer_critic.load_state_dict(nn_dicts['critic_optimizer'])
+        self.optimizer_actor.load_state_dict(nn_dicts['optimizer_actor'])
+        self.optimizer_critic.load_state_dict(nn_dicts['optimizer_critic'])
         self.tf_target = deepcopy(self.tf)

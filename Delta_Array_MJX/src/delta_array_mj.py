@@ -56,6 +56,7 @@ class DeltaArrayBase(BaseMJEnv):
         self.max_reward = 10000.0
         self.new_rew = args['new_rew']
         self.long_rew = args['long_rew']
+        self.diff_rew = args['diffrew']
                 
     def convert_world_2_pix(self, vecs):
         result = np.zeros((vecs.shape[0], 2))
@@ -107,7 +108,7 @@ class DeltaArrayBase(BaseMJEnv):
             n_idxs = len(self.robot_ids)
         else:
             body_ids = self.robot_ids[active_idxs]
-            xy = self.nn_helper.kdtree_positions_world[self.active_idxs]
+            xy = self.nn_helper.kdtree_positions_world[active_idxs]
             n_idxs = len(active_idxs)
         
         pos = np.hstack((xy, self.low_Z[:n_idxs, None] if low else self.high_Z[:n_idxs, None]))
@@ -137,10 +138,10 @@ class DeltaArrayBase(BaseMJEnv):
             self.final_bd_pts, self.final_nn_bd_pts = self.get_current_bd_pts()
             if not self.rope:
                 x, y = self.data.qpos[self.obj_id: self.obj_id+2]
-                if (not((0.009 < x < 0.242) and (0.034 < y < 0.376))) or (self.final_bd_pts is None):
-                    self.final_bd_pts, self.final_nn_bd_pts = self.get_current_bd_pts()
+                if (not((0.009 < x < 0.242) and (0.034 < y < 0.376))) or (self.final_bd_pts is None) or (self.final_nn_bd_pts is None):
                     self.data.qpos[self.obj_id:self.obj_id+7] = self.init_qpos.copy()
                     self.update_sim(1)
+                    self.final_bd_pts, self.final_nn_bd_pts = self.get_current_bd_pts()
                     
                 # self.visualizer.vis_bd_points(self.final_nn_bd_pts, self.goal_nn_bd_pts, final_bd_pts, self.goal_bd_pts)
                 self.final_state[:self.n_idxs, :2] = self.final_nn_bd_pts - self.raw_rb_pos
@@ -242,7 +243,7 @@ class DeltaArrayRB(DeltaArrayBase):
     def get_active_idxs(self):
         idxs, self.init_nn_bd_pts, _ = self.nn_helper.get_nn_robots_objs(self.init_bd_pts, world=True)
         self.active_idxs = list(idxs)
-        if len(self.init_nn_bd_pts) == 0:
+        if (len(self.init_nn_bd_pts) == 0) or (len(self.active_idxs) == 0):
             return False
         return True
         
@@ -287,7 +288,10 @@ class DeltaArrayRB(DeltaArrayBase):
         return dist<0.004, ep_reward*self.args['reward_scale']
     
     def new_reward(self, dist):
-        return 100 * (np.exp(-(dist**2 + 1e-7) / (0.00016199999)))
+        if self.diff_rew:
+            return -1 + 1 / (1000000 * dist**3 + 1)
+        else:
+            return 1 / (10000 * dist**3 + 0.01)
             
     def soft_reset(self, init=None, goal=None):
         self.set_z_positions(active_idxs=None, low=False)

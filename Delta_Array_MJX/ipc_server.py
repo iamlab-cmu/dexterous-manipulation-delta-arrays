@@ -25,7 +25,7 @@ class DeltaArrayServer():
         single_agent_env_dict = {'action_space': {'low': -0.03, 'high': 0.03, 'dim': 2},
                     'observation_space': {'dim': 4},}
         
-        ma_env_dict = {'action_space': {'low': -0.03, 'high': 0.03, 'dim': 2},
+        ma_env_dict = {'action_space': {'low': -0.03, 'high': 0.03, 'dim': 3},
                     'pi_obs_space'  : {'dim': 6},
                     'q_obs_space'   : {'dim': 6},
                     "max_agents"    : 64,}
@@ -69,7 +69,7 @@ class DeltaArrayServer():
 
             # Multi Agent Part Below:
             'state_dim'         : 6,
-            'action_dim'        : 2,
+            'action_dim'        : 3,
             "dev_rl"            : config['dev_rl'],
             "model_dim"         : 256,
             "num_heads"         : 8,
@@ -109,8 +109,8 @@ class DeltaArrayServer():
         
         self.logger = MetricLogger(dontlog=self.hp_dict["dont_log"])
 
-        self.grasping_agent = sac.SAC(single_agent_env_dict, self.hp_dict, ma=False, train_or_test="test")
-        self.grasping_agent.load_saved_policy('./models/trained_models/SAC_1_agent_stochastic/pyt_save/model.pt')
+        # self.grasping_agent = sac.SAC(single_agent_env_dict, self.hp_dict, ma=False, train_or_test="test")
+        # self.grasping_agent.load_saved_policy('./models/trained_models/SAC_1_agent_stochastic/pyt_save/model.pt')
 
         if self.hp_dict['test_traj']:
             self.pushing_agents = {
@@ -141,7 +141,7 @@ class DeltaArrayServer():
             elif config['algo']=="MABC":
                 self.pushing_agent = mabc.MABC()
             elif config['algo']=="MABC_Finetune":
-                self.pushing_agent = mabc_finetune.MABC_Finetune(self.hp_dict)
+                self.pushing_agent = mabc_finetune.MABC_Finetune(self.hp_dict, self.logger)
                 self.pushing_agent.load_saved_policy(f'./utils/MABC/{config['finetune_name']}.pt')
             elif config['algo']=="MADP_Finetune":
                 self.pushing_agent = madp_finetune.MADPTD3(self.hp_dict, self.logger)
@@ -215,12 +215,11 @@ def server_process_main(pipe_conn, batched_queue, response_dict, config):
     server = DeltaArrayServer(config)
 
     while True:
-        
-        if pipe_conn.poll(0.005):
+        if pipe_conn.poll(0):
             try:
                 request = pipe_conn.recv()
             except EOFError:
-                break
+                continue
             
             endpoint, data = request
             response = {}
@@ -310,11 +309,21 @@ def server_process_main(pipe_conn, batched_queue, response_dict, config):
                     batched_pos[i, :n_agents, :] = pos_i
 
                 with update_lock:
-                    actions, a_ks, log_ps, ents = server.pushing_agent.get_actions(batched_obs, batched_pos)
+                    
+                    outputs = server.pushing_agent.get_actions(batched_obs, batched_pos)
+                    if outputs.shape[0] == 4:
+                        a_kNone = False
+                        actions, a_ks, log_ps, ents = outputs
+                    else:
+                        a_kNone = True
+                        actions, a_ks, log_ps, ents = outputs, None, None, None
                     
                 # Send each individual action back via its corresponding response Queue.
                 for i, (_, _, req_id) in enumerate(batched_requests):
-                    response_dict[req_id] = (actions[i], a_ks[i], log_ps[i], ents[i])
+                    if a_kNone:
+                        response_dict[req_id] = (actions[i], None, None, None)
+                    else:
+                        response_dict[req_id] = (actions[i], a_ks[i], log_ps[i], ents[i])
 
 
     # Cleanup

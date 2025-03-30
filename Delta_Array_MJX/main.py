@@ -111,28 +111,42 @@ def run_env(env_id, sim_len, n_runs, return_dict, config, inference, pipe_conn, 
                 actions, a_ks, log_ps, ents = send_request(pipe_conn, MA_GET_ACTION, push_states,
                                        lock=lock, batched_queue=batched_queue, response_dict=response_dict)
                 # ** the following 3 lines are imp cos they are sampled with the max N among all threads at server side
-                actions = env.clip_actions_to_ws(actions[:env.n_idxs])
-                a_ks = a_ks[:, :env.n_idxs]
-                log_ps = log_ps[:, :env.n_idxs]
-                env.final_state[:env.n_idxs, 4:6] = actions
-                env.apply_action(actions)
+                actions = actions[:env.n_idxs]
+                if actions.shape[-1] == 3:
+                    # inactive_mask = actions[:, 2] >= 0
+                    # print(inactive_mask, env.active_idxs)
+                    # new_active_idxs = env.active_idxs[active_mask]
+                    active_idxs = np.array(env.active_idxs)
+                    inactive_idxs = active_idxs[actions[:, 2] > 0]
+
+                    if len(inactive_idxs) > 0:
+                        env.set_z_positions(active_idxs=list(inactive_idxs), low=False)  # Set to high
+                    execute_actions = env.clip_actions_to_ws(actions[:, :2])
+                else:
+                    execute_actions = env.clip_actions_to_ws(actions)
+                    
+                if a_ks is not None:
+                    a_ks = a_ks[:, :env.n_idxs]
+                    log_ps = log_ps[:, :env.n_idxs]
+                env.final_state[:env.n_idxs, 4:6] = execute_actions
+                env.apply_action(execute_actions)
                 
             env.update_sim(sim_len, recorder)
-            env.set_rl_states(actions, final=True)
-            dist, reward = env.compute_reward(actions)
+            env.set_rl_states(execute_actions, final=True)
+            dist, reward = env.compute_reward(execute_actions)
             if env.gui:
                 print(reward)
 
             run_dict[nrun] = {
                 "s0": env.init_state[:env.n_idxs],
-                "a": actions,
+                "a": actions.copy(),
                 "p": env.pos[:env.n_idxs],
                 "r": reward,
                 "s1": env.final_state[:env.n_idxs],
-                "d": True if reward > 0.8 else False,
+                "d": True if reward <0.08 else False,
                 "N": env.n_idxs,
-                "a_ks": a_ks,
-                "log_ps": log_ps
+                "a_ks": a_ks if a_ks is not None else None,
+                "log_ps": log_ps if log_ps is not None else None
             }
             nrun += 1
         else:
@@ -207,12 +221,9 @@ if __name__ == "__main__":
             if inference:
                 rewards = []
                 for env_id, run_dict in return_dict.items():
-                    rew = 0
                     for n, (nrun, data) in enumerate(run_dict.items()):
-                        rew += data['r']
-                    if n > 0:
-                        rewards.append(rew / n)
-                        print(f"Inference Avg Reward: {rew / n}")
+                        rewards.append(data['r'])
+                print(f"Inference Avg Reward: {np.mean(rewards)}")
                 send_request(parent_conn, LOG_INFERENCE, rewards, lock=manager_lock)
             else:
                 log_reward = []

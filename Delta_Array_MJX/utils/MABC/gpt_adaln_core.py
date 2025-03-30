@@ -238,6 +238,32 @@ class GPT_AdaLN(nn.Module):
         else:
             act_mean = self.final_layer(act_enc, conditional_enc)
             return act_mean
+        
+    @torch.no_grad()
+    def forward_visualization(self, state, actions, pos, idx=None):
+        """
+        Input: state (bs, n_agents, state_dim)
+               actions (bs, n_agents, action_dim)
+        Output: decoder_output (bs, n_agents, model_dim)
+        """
+        # act_enc = self.dropout(self.positional_encoding(F.ReLU(self.action_embedding(actions))))
+        state_enc = self.state_enc(state)
+        pos_embed = self.pos_embedding(pos)
+                                            
+        conditional_enc = pos_embed.squeeze(2) + state_enc
+        act_enc = self.activation(self.action_embedding(actions))
+        
+        means, stds = [], []
+        for layer in self.decoder_layers:
+            act_enc = layer(act_enc, conditional_enc)
+            
+            act_mean = self.mu(act_enc, conditional_enc)
+            act_std = self.log_std(act_enc, conditional_enc)
+            act_std = torch.clamp(act_std, LOG_STD_MIN, LOG_STD_MAX)
+            std = torch.exp(act_std)
+            means.append(act_mean)
+            stds.append(std)
+        return means, stds
 
 class Transformer(nn.Module):
     def __init__(self, hp_dict, delta_array_size = (8, 8)):
@@ -326,3 +352,52 @@ class Transformer(nn.Module):
             return torch.tanh(actions) * self.act_limit
         else:
             return self.act_limit * torch.tanh(self.decoder_actor(state, actions, pos))
+        
+    @torch.no_grad()
+    def get_actions_visualize(self, state,  pos, deterministic=False):
+        bs, n_agents, _ = state.size()
+        actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
+        mus, stds = self.decoder_actor.forward_visualization(state, actions, pos)
+        print(len(mus))
+        actions = []
+        for mu, std in zip(mus, stds):
+            if deterministic:
+                actions.append(torch.tanh(mu) * self.act_limit)
+                # return torch.tanh(mu) * self.act_limit
+            else:    
+                gauss_dist = torch.distributions.Normal(mu, std)
+                actions = gauss_dist.rsample()
+                actions.append(torch.tanh(actions) * self.act_limit)
+        return actions
+    
+    @torch.no_grad()
+    def get_actions_roundrobin(self, state,  pos, deterministic=False):
+        bs, n_agents, state_dim = state.size()
+        all_actions = []
+        
+        # Generate actions for each possible rotation of agents
+        for rotation in range(n_agents):
+            # Create rotated versions of state and pos
+            rotated_state = torch.roll(state, shifts=rotation, dims=1)
+            rotated_pos = torch.roll(pos, shifts=rotation, dims=1)
+            
+            # Initialize actions tensor
+            actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
+            
+            # Generate actions using the rotated inputs
+            if self.gauss:
+                mu, std = self.decoder_actor(rotated_state, actions, rotated_pos)
+                if deterministic:
+                    actions_result = torch.tanh(mu) * self.act_limit
+                else:
+                    gauss_dist = torch.distributions.Normal(mu, std)
+                    actions_sample = gauss_dist.rsample()
+                    actions_result = torch.tanh(actions_sample) * self.act_limit
+            else:
+                actions_result = self.act_limit * torch.tanh(self.decoder_actor(rotated_state, actions, rotated_pos))
+            
+            # Roll back the actions to match the original agent ordering
+            actions_original_order = torch.roll(actions_result, shifts=-rotation, dims=1)
+            all_actions.append(actions_original_order)
+        
+        return all_actions

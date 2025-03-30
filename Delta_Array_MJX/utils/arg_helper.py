@@ -59,6 +59,7 @@ def parse_args():
     parser.add_argument('-gae', '--gae_lambda', type=float, default=0.95, help='GAE Lambda')
     
     # Diffusion TD3 Specific Args
+    parser.add_argument("-diffr", "--diffrew", action="store_true", help="Use Diffusion 'Reward'")
     parser.add_argument('-k_t', '--k_thresh', type=int, default=20, help='final k steps to train DiffPi')
     parser.add_argument("-w_k", "--w_k", type=float, default=1, help="Use exponentially debuffed k values (0.2739 reference value)")
     parser.add_argument('-exp_n', '--exp_noise', type=float, default=0.0, help='Exploration Noise std; mu=0')
@@ -105,7 +106,7 @@ def parse_args():
     # Add any additional config params here
     parser.add_argument('-mac', '--mac', action="store_true", help='Working on Mac?')
     parser.add_argument('-devrl', '--rl_device', type=int, default=1, help='Device on which to run RL policies')
-    parser.add_argument('-seed', '--seed', type=int, default=69420, help='Random seed')
+    parser.add_argument('-seed', '--seed', type=int, default=-1, help='Random seed')
     
     return parser.parse_args()
 
@@ -120,6 +121,8 @@ def get_activation(activation_name: str) -> nn.Module:
 def create_sac_config():
     args = parse_args()
     config = vars(args)
+    if config['seed'] == -1:
+        config['seed'] = np.random.randint(0, 100000)
     # config['activation'] = get_activation(config['activation'])
     if config['mac']:
         config['dev_rl'] = torch.device("mps")
