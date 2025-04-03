@@ -85,6 +85,8 @@ class MABC_Finetune:
         }
         self.max_avg_rew = 0
         self.batch_size = parent_hp_dict['batch_size']
+        self.obs_dim = self.hp_dict['state_dim']
+        self.act_dim = self.hp_dict['action_dim']
         # self.tf.to(self.hp_dict['device'])
         # self.optimizer = optim.AdamW(self.tf.parameters(), lr=self.hp_dict['pi_lr'], weight_decay=0)
         # self.tf.load_state_dict(torch.load(self.hp_dict['ckpt_loc'], weights_only=False)['tf'])
@@ -232,6 +234,9 @@ class MABC_Finetune:
     def get_actions(self, obs, pos, deterministic=False):
         obs = torch.as_tensor(obs, dtype=torch.float32).to(self.device)    # .unsqueeze(0)
         pos = torch.as_tensor(pos, dtype=torch.int32).to(self.device)   # .unsqueeze(0)
+        if len(obs.shape) == 1:
+            obs = obs.unsqueeze(0)
+            pos = pos.unsqueeze(0)
         
         actions = self.tf.get_actions(obs, pos, deterministic=deterministic)
         return actions.detach().cpu().numpy()

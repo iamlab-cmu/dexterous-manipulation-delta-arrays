@@ -224,6 +224,8 @@ class DeltaArrayRB(DeltaArrayBase):
         self.obj_id = self.model.jnt_qposadr[obj_joint_id]
         self.obj_body_id = self.model.body(self.obj_name).id
         self.rope = False
+        self.compensate_for_actions = self.args['compa']
+        self.parsimony_bonus = self.args['parsimony_bonus']
         
     def set_body_pose_and_get_bd_pts(self, tx, rot):
         self.data.qpos[self.obj_id:self.obj_id+7] = [*tx, *rot.as_quat(scalar_first=True)]
@@ -264,15 +266,19 @@ class DeltaArrayRB(DeltaArrayBase):
             return False
         return True
     
-    def compute_reward(self, actions):
+    def compute_reward(self, actions, inference):
         dist = np.mean(np.linalg.norm(self.goal_nn_bd_pts - self.final_nn_bd_pts, axis=1))
         if self.new_rew:
-            return dist, self.new_reward(dist)
-        
-        ep_reward = np.clip(self.scaling_factor / (dist**2 + self.epsilon), 0, self.max_reward)
-        if self.args['compa']:
-            ep_reward -= 10000*np.sum(abs(actions[:self.n_idxs] - self.actions_grasp[:self.n_idxs]))
-        return dist, ep_reward*self.args['reward_scale']
+            ep_reward = self.new_reward(dist)
+        else:
+            ep_reward = np.clip(self.scaling_factor / (dist**2 + self.epsilon), 0, self.max_reward)*self.args['reward_scale']
+            
+        if not inference:
+            if self.compensate_for_actions:
+                ep_reward -= 200*np.sum(abs(actions[:self.n_idxs, :2]))
+            elif self.parsimony_bonus:
+                ep_reward += 20 * (1 - (np.sum(actions[:self.n_idxs, 2]<0)/self.n_idxs))
+        return dist, ep_reward
     
     def compute_reward_ppo(self, actions):
         dist = np.mean(np.linalg.norm(self.goal_nn_bd_pts - self.final_nn_bd_pts, axis=1))

@@ -61,7 +61,7 @@ def send_request(pipe_conn, action_code, data=None, lock=None, batched_queue=Non
         batched_queue.put(request)
         # Wait (poll) until the server writes our response.
         while req_id not in response_dict:
-            time.sleep(0.001)  # short sleep to avoid busy waiting
+            time.sleep(0.00001)  # short sleep to avoid busy waiting
         response = response_dict.pop(req_id)
         return response
     else:
@@ -133,7 +133,7 @@ def run_env(env_id, sim_len, n_runs, return_dict, config, inference, pipe_conn, 
                 
             env.update_sim(sim_len, recorder)
             env.set_rl_states(execute_actions, final=True)
-            dist, reward = env.compute_reward(execute_actions)
+            dist, reward = env.compute_reward(actions, inference)
             if env.gui:
                 print(reward)
 

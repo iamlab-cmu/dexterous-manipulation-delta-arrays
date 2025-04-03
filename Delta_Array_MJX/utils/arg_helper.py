@@ -42,11 +42,12 @@ def parse_args():
     parser.add_argument("-v", "--vis_servo", action="store_true", help="True for Visual Servoing")
     parser.add_argument("-vsd", "--vsd", type=float, default=0, help="[0 to 1] ratio of data to use for visual servoing")
     parser.add_argument('-rc', '--rope_chunks', type=int, default=50, help='Number of visual rope chunks')
-    parser.add_argument("-compa", "--compa", action="store_true", help="cost for Actions in reward function")
+    parser.add_argument("-compa", "--compa", action="store_true", help="cost for more Actions in reward function")
+    parser.add_argument("-pb", "--parsimony_bonus", action="store_true", help="reward for fewer Actions in reward function")
     parser.add_argument("-rs", "--reward_scale", type=float, default=0.01, help="Scale reward function by this value")
     parser.add_argument("-cd", "--collect_data", action="store_true", help="Collect data to be stored in RB")
     
-    parser.add_argument("-newr", "--new_rew", action="store_true", help="New Gaussian reward function - Smooth gradient")
+    parser.add_argument("-nrew", "--new_rew", action="store_true", help="New Gaussian reward function - Smooth gradient")
     parser.add_argument("-trad", "--traditional", action="store_true", help="Traditional Pipeline for Vis Servo")
     parser.add_argument("-lewr", "--long_rew", action="store_true", help="Long Horizon reward function - Smooth gradient")
     

@@ -5,6 +5,7 @@ import numpy as np
 import multiprocessing
 from threading import Lock
 import os
+import time
 
 from utils.logger import MetricLogger
 import utils.SAC.sac as sac
@@ -214,8 +215,11 @@ def server_process_main(pipe_conn, batched_queue, response_dict, config):
     
     server = DeltaArrayServer(config)
 
+    collecting_batch = False
+    batch_start_time = None
+    max_batch_wait = 5
     while True:
-        if pipe_conn.poll(0):
+        if pipe_conn.poll(0.00005):
             try:
                 request = pipe_conn.recv()
             except EOFError:
@@ -230,7 +234,6 @@ def server_process_main(pipe_conn, batched_queue, response_dict, config):
                 break
             
             elif endpoint == SET_BATCH_SIZE:
-                print(f"Set Batch Size: {data}")
                 global_batch_size = data
                 
             elif endpoint == TT_GET_ACTION:
@@ -268,49 +271,50 @@ def server_process_main(pipe_conn, batched_queue, response_dict, config):
 
             pipe_conn.send(response)
         
-        if not batched_queue.empty():
-            batched_requests = []
-            try:
-                # Block to get the first request.
-                req = batched_queue.get(timeout=5)
-                if req[0] == MA_GET_ACTION:
-                    batched_requests.append(req)
-            except Exception as e:
-                print("Error", e)
-                pass
+        
+        if (not batched_queue.empty()) and (global_batch_size > 1):
+            if not collecting_batch:
+                collecting_batch = True
+                batched_states = []
+                batched_poses = []
+                req_ids = []
+                batch_start_time = time.time()
             
-            while len(batched_requests) < global_batch_size:
+            while len(batched_states) < global_batch_size:
                 try:
-                    req = batched_queue.get(timeout=5)
-                    if req[0] == MA_GET_ACTION:
-                        batched_requests.append(req)
+                    if not batched_queue.empty():
+                        req = batched_queue.get_nowait()  # Non-blocking get
+                        endpoint, data, req_id = req
+                    if endpoint == MA_GET_ACTION:
+                        batched_states.append(data[0])
+                        batched_poses.append(data[1])
+                        inference = data[2] # All data[1]s should have same value for inference or not
+                        req_ids.append(req_id)
+                    else:
+                        break  # No more requests in queue
                 except Exception as e:
-                    print("TIMEOUT", e)
+                    print(f"Error in batch collection: {e}")
                     break
                     
-            if len(batched_requests) == global_batch_size:
-                # Each request is a tuple: (MA_GET_ACTION, data, response_queue)
-                batch_size = len(batched_requests)
-                max_agents = max(req[1][0].shape[0] for req in batched_requests)
-                obs_dim = batched_requests[0][1][0].shape[1]
-
-                # Create padded arrays.
-                batched_obs = np.zeros((batch_size, max_agents, obs_dim), dtype=np.float32)
-                batched_pos = np.zeros((batch_size, max_agents, 1), dtype=np.int32)
-
-                # Fill in each batch element.
-                for i, (_, data, _) in enumerate(batched_requests):
-                    obs_i, pos_i, _ = data
-                    n_agents = obs_i.shape[0]
-                    batched_obs[i, :n_agents, :] = obs_i
-                    pos_i = np.array(pos_i)
-                    if pos_i.ndim == 1:
-                        pos_i = pos_i.reshape(-1, 1)
-                    batched_pos[i, :n_agents, :] = pos_i
+                if (time.time() - batch_start_time) > max_batch_wait:
+                    break
+                
+            if len(batched_states) > 0:
+                # print(f"Num Batches received in {max_batch_wait}: ",len(batched_states))
+                bs = len(batched_states)
+                max_agents = max([len(s) for s in batched_states])
+                
+                states = np.zeros((bs, max_agents, server.pushing_agent.obs_dim), dtype=np.float32)
+                poses = np.zeros((bs, max_agents, 1), dtype=np.float32)
+                
+                # For loop cos states and pos dims are inhomogeneous
+                for i, (state_batch, pose_batch) in enumerate(zip(batched_states, batched_poses)):
+                    states[i, :len(state_batch)] = state_batch
+                    poses[i, :len(pose_batch)] = pose_batch[:, None]
 
                 with update_lock:
                     
-                    outputs = server.pushing_agent.get_actions(batched_obs, batched_pos)
+                    outputs = server.pushing_agent.get_actions(states, poses, inference)
                     if outputs.shape[0] == 4:
                         a_kNone = False
                         actions, a_ks, log_ps, ents = outputs
@@ -319,12 +323,13 @@ def server_process_main(pipe_conn, batched_queue, response_dict, config):
                         actions, a_ks, log_ps, ents = outputs, None, None, None
                     
                 # Send each individual action back via its corresponding response Queue.
-                for i, (_, _, req_id) in enumerate(batched_requests):
+                for i, req_id in enumerate(req_ids):
                     if a_kNone:
                         response_dict[req_id] = (actions[i], None, None, None)
                     else:
                         response_dict[req_id] = (actions[i], a_ks[i], log_ps[i], ents[i])
 
+                collecting_batch = False
 
     # Cleanup
     pipe_conn.close()
