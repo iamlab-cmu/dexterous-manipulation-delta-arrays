@@ -36,29 +36,48 @@ OBJ_NAMES = ['star', "block", 'hexagon', 'disc', 'cross', 'diamond', 'triangle',
 def create_server_process():
     config = arg_helper.create_sac_config()
     parent_conn, child_conn = multiprocessing.Pipe()
+    manager = Manager()
+    # Use the manager to create a shared Queue and a shared response dictionary.
+    batched_queue = manager.Queue()
+    response_dict = manager.dict()
     child_proc = multiprocessing.Process(
         target=server_process_main,
-        args=(child_conn, config),
+        args=(child_conn, batched_queue, response_dict, config),
         daemon=True
     )
     child_proc.start()
-    return parent_conn, child_proc, config
+    return parent_conn, batched_queue, response_dict, child_proc, config, manager
 
-def send_request(lock, pipe_conn, action_code, data=None):
-    with lock:
-        request = (action_code, data)
-        pipe_conn.send(request)
-        response = pipe_conn.recv()
+def send_request(pipe_conn, action_code, data=None, lock=None, batched_queue=None, response_dict=None):
+    """
+    For non-batched endpoints, use the Pipe (with lock).
+    For MA_GET_ACTION, put a request (with unique id) in the batched_queue and wait for its response in response_dict.
+    """
+    if action_code == MA_GET_ACTION:
+        req_id = str(uuid.uuid4())
+        # Request structure: (endpoint, data, req_id)
+        request = (action_code, data, req_id)
+        batched_queue.put(request)
+        # Wait (poll) until the server writes our response.
+        while req_id not in response_dict:
+            time.sleep(0.001)  # short sleep to avoid busy waiting
+        response = response_dict.pop(req_id)
         return response
-    
+    else:
+        with lock:
+            request = (action_code, data)
+            pipe_conn.send(request)
+            response = pipe_conn.recv()
+        return response
 ###################################################
 # Test Trajectory
 ###################################################
 def run_test_traj_rb(env_id, sim_len, experiment_data, algo, VideoRecorder, config, inference, pipe_conn, lock):
     print(algo)
     algo_dict = {}
+    os.makedirs(f"./data/videos/{config['name']}", exist_ok=True)
     if config['save_vid']:
-        recorder = VideoRecorder(output_dir="./data/videos", fps=30)
+        recorder = VideoRecorder(output_dir=f"./data/videos/{config['name']}", fps=120)
     else:
         recorder = None
         
@@ -98,13 +117,25 @@ def run_test_traj_rb(env_id, sim_len, experiment_data, algo, VideoRecorder, conf
                     elif algo == "Random":
                         actions = env.vs_action(random=True)
                     else:
-                        actions = send_request(lock, pipe_conn, TT_GET_ACTION, push_states)
-                        env.final_state[:env.n_idxs, 4:6] = actions
+                        actions = send_request(pipe_conn, TT_GET_ACTION, push_states, lock)
                         
-                    env.apply_action(actions)
+                        actions = actions[:env.n_idxs]
+                        if actions.shape[-1] == 3:
+                            active_idxs = np.array(env.active_idxs)
+                            inactive_idxs = active_idxs[actions[:, 2] > 0]
+
+                            if len(inactive_idxs) > 0:
+                                env.set_z_positions(active_idxs=list(inactive_idxs), low=False)  # Set to high
+                            execute_actions = env.clip_actions_to_ws(actions[:, :2])
+                        else:
+                            execute_actions = env.clip_actions_to_ws(actions)
+                            
+                        env.final_state[:env.n_idxs, 4:6] = execute_actions
+                        
+                    env.apply_action(execute_actions)
                     env.update_sim(sim_len, recorder)
-                    env.set_rl_states(actions, final=True, test_traj=True)
-                    dist, reward = env.compute_reward(actions)
+                    env.set_rl_states(execute_actions, final=True, test_traj=True)
+                    dist, reward = env.compute_reward(actions, inference)
                     print(f"Algo: {algo}, Obj: {obj_name}, Traj: {traj_name}, Run: {run_id}, Attempt: {try_id}, Reward: {reward}")
                     
                     step_data = {
@@ -161,7 +192,7 @@ def run_test_traj_rope(env_id, sim_len, experiment_data, algo, VideoRecorder, co
             elif algo == "Random":
                 actions = env.vs_action(random=True)
             else:
-                actions = send_request(lock, pipe_conn, TT_GET_ACTION, push_states)
+                actions = send_request(pipe_conn, TT_GET_ACTION, push_states, lock)
                 env.final_state[:env.n_idxs, 4:6] = actions
                 
             env.apply_action(actions)
@@ -200,7 +231,7 @@ if __name__ == "__main__":
     from utils.training_helper import TrainingSchedule
     from utils.video_utils import VideoRecorder
     
-    parent_conn, child_proc, config = create_server_process()
+    parent_conn, batched_queue, response_dict, child_proc, config, manager = create_server_process()
     if config['gui'] and config['nenv'] > 1:
         raise ValueError("Cannot run multiple environments with GUI")
 
@@ -210,10 +241,9 @@ if __name__ == "__main__":
     current_episode = 0
     n_updates = config['nenv']
     avg_reward = 0
-    warmup_scheduler = TrainingSchedule(max_nenvs=config['nenv'], max_nruns=config['nruns'], max_warmup_episodes=config['warmup'])
     
     if config['test']:
-        send_request(lock, parent_conn, LOAD_MODEL)
+        send_request(parent_conn, LOAD_MODEL, lock=lock)
         inference = True
     else:
         inference = False
@@ -224,13 +254,15 @@ if __name__ == "__main__":
         if config['gui']:
             algos = ['Vis Servo']
         else:
-            algos = ["Random", "Vis Servo", "MATSAC", "MABC_Finetune", 'MABC']
-            # algos = ["MABC Finetuned"]
+            # algos = ["Random", "Vis Servo", "MATSAC", "MABC_Finetune", 'MABC']
+            algos = ["MABC_Finetune_Bin","MABC_Finetune_PB","MABC_Finetune_CA"]
         
         experiment_data = manager.dict()
         processes = []
         for i in range(len(algos)):
-            p = Process(target=run_test_traj_rb if config['obj_name']!="rope" else run_test_traj_rope, args=(i, config['simlen'], experiment_data, algos[i], VideoRecorder, config, True, parent_conn, lock))
+            p = Process(target=run_test_traj_rb if config['obj_name']!="rope" else run_test_traj_rope, 
+                        args=(i, config['simlen'], experiment_data, algos[i], 
+                              VideoRecorder, config, True, parent_conn, lock))
             processes.append(p)
             p.start()
         for p in processes:
@@ -243,73 +275,10 @@ if __name__ == "__main__":
         save_path = f"./data/test_traj/test_traj_data_rope.pkl"
         pkl.dump(final_expt_data, open(save_path, "wb"))
         # print(f"Saved Test Trajectory Data at {save_path}")
-            
-    elif config['gui']:
-        while True:
-            run_env(0, config['simlen'], config['nruns'], {}, config, inference, parent_conn, lock)
     else:
-        while True:
-            n_threads, n_runs, n_updates = warmup_scheduler.training_schedule(current_episode)
-            return_dict = manager.dict()
-            
-            if outer_loops%10 == 0:
-                inference = True
-                n_threads = 50
-                nruns = 20
-            else:
-                inference = False
+        print("Why are you running test.py?")
+        
 
-            processes = []
-            for i in range(n_threads):
-                p = Process(target=run_env, args=(i, config['simlen'], n_runs, return_dict, config, inference, parent_conn, lock))
-                processes.append(p)
-                p.start()
-            for p in processes:
-                p.join()
-
-            if inference:
-                rewards = []
-                for env_id, run_dict in return_dict.items():
-                    rew = 0
-                    for n, (nrun, data) in enumerate(run_dict.items()):
-                        rew += data['r']
-                    if n > 0:
-                        rewards.append(rew/n)
-                        print(f"Inference Avg Reward: {rew/n}")
-                send_request(lock, parent_conn, LOG_INFERENCE, rewards)
-            else:
-                avg_reward = 0
-                replay_data = []
-                
-                iters = 0
-                for env_id, run_dict in return_dict.items():
-                    for nrun, data in run_dict.items():
-                        iters += 1
-                        avg_reward += data['r']
-                        replay_data.append((data['s0'], data['a'], data['p'], data['r'], data['s1'], data['d'], data['N']))
-                    
-                current_episode += iters
-                avg_reward /= iters 
-                print(f"Episode: {current_episode}, Avg Reward: {avg_reward}")
-                
-                if not config['test']:
-                    send_request(lock, parent_conn, MARB_STORE, replay_data)
-                    
-                    if not config['vis_servo']:
-                        send_request(lock, parent_conn, MA_UPDATE_POLICY, (current_episode, n_updates, avg_reward))
-                        
-                    if config['collect_data']:
-                        if current_episode >= config['rblen']:
-                            send_request(lock, parent_conn, MARB_SAVE, {})
-                            break
-            
-            if current_episode >= config['explen']:
-                send_request(lock, parent_conn, SAVE_MODEL, {})
-                break
-            outer_loops += 1
-            
-        gc.collect()
-
-    send_request(lock, parent_conn, action_code=None, data={"endpoint": "exit"})
+    send_request(parent_conn, action_code=None, data={"endpoint": "exit"}, lock=lock)
     child_proc.join()
     print("[Main] Done.")
