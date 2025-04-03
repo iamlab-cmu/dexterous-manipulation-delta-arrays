@@ -274,10 +274,12 @@ class DeltaArrayRB(DeltaArrayBase):
             ep_reward = np.clip(self.scaling_factor / (dist**2 + self.epsilon), 0, self.max_reward)*self.args['reward_scale']
             
         if not inference:
-            if self.compensate_for_actions:
-                ep_reward -= 200*np.sum(abs(actions[:self.n_idxs, :2]))
+            if self.compensate_for_actions and self.parsimony_bonus:
+                ep_reward -= 200*np.sum(abs(actions[actions[:, 2]<0][:, :2])) + 20*(np.sum(actions[:, 2]<0)/self.n_idxs)
+            elif self.compensate_for_actions:
+                ep_reward -= 200*np.sum(abs(actions[actions[:, 2]<0][:, :2]))
             elif self.parsimony_bonus:
-                ep_reward += 20 * (1 - (np.sum(actions[:self.n_idxs, 2]<0)/self.n_idxs))
+                ep_reward += 20 * (1 - (np.sum(actions[:, 2]<0)/self.n_idxs))
         return dist, ep_reward
     
     def compute_reward_ppo(self, actions):
