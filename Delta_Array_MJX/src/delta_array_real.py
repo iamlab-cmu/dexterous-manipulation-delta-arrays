@@ -37,7 +37,7 @@ current_frame = None
 global_bd_pts, global_yaw, global_com = None, None, None
 # lock = threading.Lock()
 
-def capture_and_convert(stop_event, current_traj, lock, rl_device, trad, plane_size, save_vid, vid_name=None):
+def capture_and_convert(stop_event, current_traj, lock, rl_device, trad, plane_size, save_vid, vid_name=None, n_obj=1):
     global current_frame, global_bd_pts, global_yaw, global_com
     
     vis_utils = VisUtils(obj_detection_model="IDEA-Research/grounding-dino-tiny", 
@@ -67,7 +67,7 @@ def capture_and_convert(stop_event, current_traj, lock, rl_device, trad, plane_s
     
     video_recorder = None
     if save_vid:
-        video_recorder = VideoRecorder(output_dir="./data/videos/real", fps=30, resolution=(1920, 1080))
+        video_recorder = VideoRecorder(output_dir="./data/videos/real", fps=120, resolution=(1920, 1080))
         video_recorder.start_recording(vid_name)
 
     
@@ -90,7 +90,7 @@ def capture_and_convert(stop_event, current_traj, lock, rl_device, trad, plane_s
             print("Failed to grab frame")
             continue
 
-        bd_pts_world = vis_utils.get_bdpts(frame)
+        bd_pts_world = vis_utils.get_bd_pts(frame, total_pts=400)
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         corners, ids, rejected = detector.detectMarkers(gray)
 
@@ -105,15 +105,15 @@ def capture_and_convert(stop_event, current_traj, lock, rl_device, trad, plane_s
             yaw = math.atan2(R[1, 0], R[0, 0])
             
             frame = cv2.aruco.drawDetectedMarkers(frame, corners, ids)
-            marker_corners_2d = corners[0][0]
-            com_pix = np.mean(marker_corners_2d, axis=0, dtype=int)
+            com_world = np.mean(bd_pts_world, axis=0)
+            # marker_corners_2d = corners[0][0]
+            # com_pix = np.mean(marker_corners_2d, axis=0, dtype=int)
             
             # line_length = 100
             # arrow_x = int(com_pix[0] + line_length * math.cos(yaw0 - np.pi/2))
             # arrow_y = int(com_pix[1] + line_length * math.sin(yaw0 - np.pi/2))
             # cv2.arrowedLine( frame, [*com_pix], (arrow_x, arrow_y), color=(0, 0, 255), thickness=3, tipLength=0.2)
             
-            com_world = np.mean(bd_pts_world, axis=0)
             # cv2.polylines(frame, [traj_pixels], isClosed=False, color=(0, 100, 255), 
             #                                     thickness=2, lineType=cv2.LINE_AA)
             # cv2.arrowedLine(frame, tuple(traj_pixels[-2]), tuple(traj_pixels[-1]), 
@@ -133,7 +133,7 @@ def capture_and_convert(stop_event, current_traj, lock, rl_device, trad, plane_s
                 cv2.imshow('Stream', current_frame)
 
             if video_recorder is not None:
-                video_recorder.add_frame(current_frame)
+                video_recorder.add_frame(cv2.cvtColor(current_frame, cv2.COLOR_BGR2RGB))
                 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
@@ -144,7 +144,7 @@ def capture_and_convert(stop_event, current_traj, lock, rl_device, trad, plane_s
         video_recorder.stop_recording()
     print("[Child] Exiting child process safely.")
     
-def start_capture_thread(current_traj, lock, rl_device, trad, plane_size, save_vid, vid_name=None):
+def start_capture_thread(current_traj, lock, rl_device, trad, plane_size, save_vid, vid_name=None, n_obj=1):
     # Create an Event to signal the capture thread to stop
     stop_event = threading.Event()
 
@@ -158,7 +158,8 @@ def start_capture_thread(current_traj, lock, rl_device, trad, plane_size, save_v
             trad,
             plane_size,
             save_vid,
-            vid_name
+            vid_name,
+            n_obj
         ),
         daemon=True  # so it won’t block your main thread from exiting if you forget to join
     )
@@ -195,6 +196,7 @@ class DeltaArrayReal:
         self.n_idxs = 0
         # self.all_robots = np.stack(np.meshgrid(np.arange(8), np.arange(8)), 2).reshape(-1, 2)
         self.all_robots = np.arange(64)
+        self.prev_robot_pos = np.zeros((64, 2))
         
         self.traditional = config['traditional']
         
@@ -245,16 +247,100 @@ class DeltaArrayReal:
                 print("Error at robot ID: ", i)
                 raise e
         self.reset()
+    
+    
+    # def practicalize_traj(self, actions, z_level, push, idx=0):
+    #     y_mult = -1  # Multiplier for y-coordinate, potentially for coordinate system conversion
+    #     traj_len = 20
+    #     traj = np.zeros((traj_len, 3))
+
+    #     target_xy = np.array([actions[0], y_mult * actions[1]])
+    #     if z_level == HIGH_Z:
+    #         traj[0] = [0, 0, HIGH_Z] # Start point
+    #         target_pos_high = np.array([target_xy[0], target_xy[1], HIGH_Z])
+    #         traj[1:] = target_pos_high 
+
+    #     elif push:
+    #         start_pos = np.array([*self.prev_robot_pos[idx][:2], LOW_Z])
+    #         end_pos = np.array([target_xy[0], target_xy[1], LOW_Z])
+    #         traj[0] = start_pos
+
+    #         n_interp_steps = traj_len - 1
+
+    #         if n_interp_steps > 0:
+    #             interpolated_segment = np.linspace(start_pos, end_pos, num=n_interp_steps + 1)
+    #             traj[1:] = interpolated_segment[1:]
+    #         elif n_interp_steps == 0:
+    #             traj[0] = end_pos
+            
+    #         traj[-1] = [0, 0, 0]
+    #         self.prev_robot_pos[idx] = target_xy
+
+    #     else:
+    #         start_pos = np.array([0, 0, LOW_Z])
+    #         end_pos = np.array([target_xy[0], target_xy[1], LOW_Z])
+
+    #         hold_steps = 3
+    #         traj[0:hold_steps] = start_pos
+    #         n_interp_steps = traj_len - hold_steps
+    #         if n_interp_steps > 0:
+    #             interpolated_segment = np.linspace(start_pos, end_pos, num=n_interp_steps + 1)
+    #             traj[hold_steps:] = interpolated_segment[1:]
+    #         elif (n_interp_steps == 0 )and (traj_len >= hold_steps):
+    #              traj[-1] = end_pos
+    #         self.prev_robot_pos[idx] = target_xy
+
+    #     return traj.tolist()
+    
+    def pract_grasp(self, actions, y_mult, idx):
+        # ** Robot starts at prev position in x and y, z
+        start_pos = np.array([0, 0, LOW_Z])
+        mid_pos = np.array([-0.6 * actions[0], -0.6*y_mult*actions[1], LOW_Z])
+        mid_pos2 = np.array([0, 0, LOW_Z])
+        end_pos = np.array([0.95*actions[0], 0.95*y_mult * actions[1], LOW_Z])
+        traj = np.zeros((20, 3))
         
-    def move_robots(self, active_idxs, actions, z_level, from_NN=False, practicalize=False):
-        print(from_NN, actions.shape)
+        # Robot goes slightly away along normal from boundary point at zlow
+        traj[0] = mid_pos #np.linspace(start_pos, mid_pos, num=5)
+        traj[1] = mid_pos2
+        # Robot interpolates a trajectory to the actual action i.e. near the bd pt
+        traj[2:] = np.linspace(mid_pos2, end_pos, num=18)
+        self.prev_robot_pos[idx] = end_pos[:2]
+        return traj.tolist()
         
-        actions = self.clip_actions_to_ws(100*actions.copy())
+    def pract_push(self, actions, y_mult, idx):
+        # !! Robot starts 0 0 zhigh
+        start_pos = np.array([*self.prev_robot_pos[idx][:2], LOW_Z])
+        push_pos = np.array([0.99*actions[0], 0.99*y_mult*actions[1], LOW_Z])
+        mid_pos = np.array([0.99*actions[0], 0.99*y_mult*actions[1], MID_Z])
+        mid_pos_2 = np.array([0, 0, MID_Z])
+        end_pos = np.array([0, 0, HIGH_Z])
+        traj = np.zeros((20, 3))
+        
+        # Robot goes slightly away along normal from boundary point at zlow
+        traj[:17] = np.linspace(start_pos, push_pos, num=17)
+        
+        # Robot interpolates a trajectory to the actual action i.e. near the bd pt
+        traj[17] = mid_pos
+        traj[18] = mid_pos_2
+        traj[19:] = end_pos
+        return traj.tolist()
+        
+    def move_robots(self, active_idxs, actions, z_level, push=False, practicalize=False):
+        actions = self.clip_actions_to_ws(95*actions.copy())
         for i, idx in enumerate(active_idxs):
             y_mult = -1 # if from_NN else -1
-            traj = [[actions[i][0], y_mult*actions[i][1], z_level] for _ in range(20)]
-            # if practicalize:
-            #     traj = self.practicalize_traj(traj)
+            
+            if practicalize:
+                if push:
+                    traj = self.pract_push(actions[i], y_mult, idx)
+                else:
+                    traj = self.pract_grasp(actions[i], y_mult, idx)
+                # traj = self.practicalize_traj(actions[i], z_level, push, idx)
+            else:
+                traj = [[actions[i][0], y_mult*actions[i][1], z_level] for _ in range(20)]
+                
+            # self.prev_robot_pos[idx] = actions[i][:2].copy()
             idx2 = (idx//8, idx%8)
             self.delta_agents[self.RC.robo_dict_inv[idx2] - 1].save_joint_positions(idx2, traj)
             self.active_IDs.add(self.RC.robo_dict_inv[idx2])
@@ -263,16 +349,15 @@ class DeltaArrayReal:
             self.delta_agents[i - 1].move_useful()
             self.to_be_moved.append(self.delta_agents[i - 1])
 
-        print("Moving Delta Robots...")
+        # print("Moving Delta Robots...")
         self.wait_until_done()
-        print("Done!")
+        # print("Done!")
 
     def reset(self):
         self.raw_rb_pos = None
         self.init_state = np.zeros((64, 6))
         self.final_state = np.zeros((64, 6))
         self.actions = np.zeros((64, 2))
-        self.actions_grasp = np.zeros((64, 2))
         self.pos = np.zeros(64)
         self.active_idxs = []
         self.n_idxs = 0
@@ -281,9 +366,9 @@ class DeltaArrayReal:
             self.delta_agents[i-1].reset()
             self.to_be_moved.append(self.delta_agents[i-1])
 
-        print("Resetting Delta Robots...")
+        # print("Resetting Delta Robots...")
         self.wait_until_done()
-        print("Done!")
+        # print("Done!")
     
     def wait_until_done(self, topandbottom=False):
         done_moving = False
@@ -318,18 +403,18 @@ class DeltaArrayReal:
         actions = []
         for idx in active_idxs:
             actions.append([0, 0])
-        self.move_robots(active_idxs, np.array(actions), LOW_Z if low else HIGH_Z, practicalize=False)
+        self.move_robots(active_idxs, np.array(actions), LOW_Z if low else HIGH_Z, practicalize=True)
         
     def clip_actions_to_ws(self, actions):
         return self.Delta.clip_points_to_workspace(actions)
     
-    def vs_action(self, random=False):
+    def vs_action(self, act_grasp, random=False):
         if random:
             actions = np.random.uniform(-0.03, 0.03, size=(self.n_idxs, 2))
         else:
             self.sf_bd_pts, self.sf_nn_bd_pts = self.get_current_bd_pts()
             displacement_vectors = self.goal_nn_bd_pts - self.sf_nn_bd_pts
-            actions = self.actions_grasp[:self.n_idxs] + displacement_vectors
+            actions = act_grasp + displacement_vectors
         return actions
     
     def set_rl_states(self, actions=None, final=False, test_traj=False):
@@ -355,11 +440,9 @@ class DeltaArrayReal:
             
             acts = self.clip_actions_to_ws(self.init_nn_bd_pts - self.raw_rb_pos)
             self.init_state[:self.n_idxs, 4:6] = acts
-            self.actions_grasp[:self.n_idxs] = acts
-            
             self.final_state[:self.n_idxs, 2:4] = self.init_state[:self.n_idxs, 2:4].copy()
-            self.set_z_positions(self.active_idxs, low=True)
             
+            return acts.copy()
             # plt.scatter(self.init_state[:self.n_idxs, 0], self.init_state[:self.n_idxs, 1], color='red')
             # plt.scatter(self.init_state[:self.n_idxs, 2], self.init_state[:self.n_idxs, 3], color='blue')
             # plt.quiver(self.init_state[:self.n_idxs, 0], self.init_state[:self.n_idxs, 1], self.init_state[:self.n_idxs, 4], self.init_state[:self.n_idxs, 5], color='green')
@@ -384,7 +467,7 @@ class DeltaArrayReal:
         self.goal_nn_bd_pts = geom_helper.transform_boundary_points(self.init_bd_pts.copy(), self.goal_bd_pts.copy(), self.init_nn_bd_pts.copy())
     
     def get_active_idxs(self):
-        idxs, self.init_nn_bd_pts, _ = self.nn_helper.get_nn_robots_objs(self.init_bd_pts, world=True)
+        idxs, self.init_nn_bd_pts, _ = self.nn_helper.find_robots_outside_non_convex(self.init_bd_pts)
         self.active_idxs = list(idxs)
         
     def compute_reward(self, actions):
@@ -396,7 +479,8 @@ class DeltaArrayReal:
     
     def soft_reset(self, init_2Dpose=None, goal_2Dpose=None):
         if goal_2Dpose is None:
-            self.set_z_positions(self.active_idxs, low=False)
+            # self.set_z_positions(self.active_idxs, low=False)
+            pass
         else:
             self.reconnect_delta_agents()
             
@@ -404,7 +488,6 @@ class DeltaArrayReal:
         self.init_state = np.zeros((64, 6))
         self.final_state = np.zeros((64, 6))
         self.actions = np.zeros((64, 2))
-        self.actions_grasp = np.zeros((64, 2))
         self.pos = np.zeros(64)
         self.active_idxs = []
         self.n_idxs = 0
@@ -432,7 +515,29 @@ class DeltaArrayReal:
             self.goal_bd_pts = geom_helper.get_tfed_2Dpts(self.init_bd_pts, self.init_qpos, goal_2Dpose)
         
         self.set_goal_nn_bd_pts()
-        self.set_rl_states()
+        act_grasp = self.set_rl_states()
+        return act_grasp
         
-        # print("Grasp Action: ", self.actions_grasp[:self.n_idxs])
-        self.move_robots(self.active_idxs, self.actions_grasp[:self.n_idxs], LOW_Z, practicalize=False)
+    def rollout(self, act_grasp, actions, from_NN):
+        if actions.shape[-1] == 3:
+            self.final_state[:self.n_idxs, 4:6] = actions[:, :2]
+            active_idxs = np.array(self.active_idxs)
+            sel_idxs = actions[:, 2] < 0
+            # inactive_idxs = active_idxs[actions[:, 2] > 0]
+            active_idxs = active_idxs[sel_idxs]
+            # if len(inactive_idxs) > 0:
+            #     self.set_z_positions(active_idxs=list(inactive_idxs), low=False)  # Set to high
+            execute_actions = actions[sel_idxs, :2]
+            self.move_robots(active_idxs, act_grasp[sel_idxs], LOW_Z, practicalize=True)
+        else:
+            active_idxs = np.array(self.active_idxs)
+            sel_idxs = np.ones_like(actions[:, 0], dtype=bool)
+            execute_actions = actions.copy()
+            self.move_robots(active_idxs, act_grasp, LOW_Z, practicalize=True)
+                
+        # self.set_z_positions(active_idxs, low=True)
+                
+        self.move_robots(active_idxs, execute_actions, LOW_Z, push=True, practicalize=True)
+        self.set_rl_states(actions[:, :2], final=True, test_traj=True)
+        dist, reward = self.compute_reward(actions)
+        return dist, reward

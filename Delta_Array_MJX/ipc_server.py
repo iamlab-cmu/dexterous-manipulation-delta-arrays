@@ -3,9 +3,9 @@ import wandb
 import logging
 import numpy as np
 import multiprocessing
-from threading import Lock
 import os
 import time
+from threading import Lock
 
 from utils.logger import MetricLogger
 import utils.SAC.sac as sac
@@ -90,7 +90,7 @@ class DeltaArrayServer():
             'attn_mech'         : config['attn_mech'],
             'pos_embed'         : config['pos_embed'],
             'rope'              : config['obj_name'] == "rope",
-            'idx_embed_loc'     : './utils/MADPTD3/idx_embedding_new.pth',
+            'idx_embed_loc'     : './utils/MABC/idx_embedding_new.pth',
             'k_thresh'          : config['k_thresh'],
             'natc'              : config['natc'],
             'w_k'               : config['w_k'],
@@ -107,6 +107,9 @@ class DeltaArrayServer():
                 'prediction_type'   : 'epsilon',
             },
         }
+        hp_dict_old = self.hp_dict.copy()
+        hp_dict_old['action_dim'] = 2
+        print("HP dict: ", self.hp_dict['action_dim'])
         
         self.logger = MetricLogger(dontlog=self.hp_dict["dont_log"])
 
@@ -115,26 +118,36 @@ class DeltaArrayServer():
 
         if self.hp_dict['test_traj']:
             self.pushing_agents = {
-                # "Random" : None,
-                # "Vis Servo" : None,
-                # "MATSAC" : matsac.MATSAC(ma_env_dict, self.hp_dict, train_or_test="test"),
-                # "MABC" : mabc.MABC(self.hp_dict),
-                # "MABC_Finetune" : mabc_finetune.MABC_Finetune(self.hp_dict, self.logger),
+                "Random" : None,
+                "Vis Servo" : None,
+                "MATSAC" : matsac.MATSAC(ma_env_dict, self.hp_dict, train_or_test="test"),
+                "MABC" : mabc.MABC(self.hp_dict),
+                "MABC_Finetune" : mabc_finetune.MABC_Finetune(hp_dict_old, self.logger),
                 "MABC_Finetune_Bin" : mabc_finetune.MABC_Finetune(self.hp_dict, self.logger),
                 "MABC_Finetune_PB" : mabc_finetune.MABC_Finetune(self.hp_dict, self.logger),
                 "MABC_Finetune_CA" : mabc_finetune.MABC_Finetune(self.hp_dict, self.logger),
+                "MABC_Finetune_PB_CA" : mabc_finetune.MABC_Finetune(self.hp_dict, self.logger),
             }
             # if not self.hp_dict['real']:
             if not self.hp_dict['rope']:
-                # self.pushing_agents["MATSAC"].load_saved_policy("./models/trained_models/matsac.pt")
-                # self.pushing_agents["MABC"].load_saved_policy("./models/trained_models/mabc.pt")
-                self.pushing_agents["MABC_Finetune_Bin"].load_saved_policy(f"./models/trained_models/mabc_ft_sel_acts.pt")
-                self.pushing_agents["MABC_Finetune_PB"].load_saved_policy(f"./models/trained_models/mabc_ft_sel_acts_pb.pt")
-                self.pushing_agents["MABC_Finetune_CA"].load_saved_policy(f"./models/trained_models/mabc_ft_sel_acts_compa.pt")
+                self.pushing_agents["MATSAC"].load_saved_policy("./models/trained_models/matsac.pt")
+                self.pushing_agents["MABC"].load_saved_policy("./models/trained_models/mabc.pt")
+                self.pushing_agents["MABC_Finetune"].load_saved_policy("./models/trained_models/mabc_finetuned.pt")
+                self.pushing_agents["MABC_Finetune_Bin"].load_saved_policy("./models/trained_models/mabc_ft_sel_acts_bin_new.pt")
+                self.pushing_agents["MABC_Finetune_PB"].load_saved_policy("./models/trained_models/mabc_ft_sel_acts_pb_new.pt")
+                self.pushing_agents["MABC_Finetune_CA"].load_saved_policy("./models/trained_models/mabc_ft_sel_acts_compa_new.pt")
+                self.pushing_agents["MABC_Finetune_PB_CA"].load_saved_policy("./models/trained_models/mabc_ft_sel_acts_pb_compa.pt")
             else:
-                self.pushing_agents["MATSAC"].load_saved_policy("./models/trained_models/matsac_rope.pt")
-                self.pushing_agents["MABC"].load_saved_policy("./models/trained_models/mabc_rope.pt")
-                self.pushing_agents["MABC_Finetune"].load_saved_policy(f"./models/trained_models/{config['name']}.pt")
+                self.pushing_agents["MATSAC"].load_saved_policy("./models/trained_models/matsac.pt")
+                self.pushing_agents["MABC"].load_saved_policy("./models/trained_models/mabc.pt")
+                self.pushing_agents["MABC_Finetune"].load_saved_policy("./models/trained_models/mabc_finetuned.pt")
+                self.pushing_agents["MABC_Finetune_Bin"].load_saved_policy("./models/trained_models/mabc_ft_sel_acts_bin_new.pt")
+                self.pushing_agents["MABC_Finetune_PB"].load_saved_policy("./models/trained_models/mabc_ft_sel_acts_pb_new.pt")
+                self.pushing_agents["MABC_Finetune_CA"].load_saved_policy("./models/trained_models/mabc_ft_sel_acts_compa_new.pt")
+                self.pushing_agents["MABC_Finetune_PB_CA"].load_saved_policy("./models/trained_models/mabc_ft_sel_acts_pb_compa.pt")
+                # self.pushing_agents["MATSAC"].load_saved_policy("./models/trained_models/matsac_rope.pt")
+                # self.pushing_agents["MABC"].load_saved_policy("./models/trained_models/mabc_rope.pt")
+                # self.pushing_agents["MABC_Finetune"].load_saved_policy(f"./models/trained_models/mabc_finetuned_rope.pt")
         else:
             if config['algo']=="MATSAC":
                 self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, train_or_test="train")
@@ -148,7 +161,10 @@ class DeltaArrayServer():
                 self.pushing_agent = mabc.MABC()
             elif config['algo']=="MABC_Finetune":
                 self.pushing_agent = mabc_finetune.MABC_Finetune(self.hp_dict, self.logger)
-                self.pushing_agent.load_saved_policy(f'./utils/MABC/{config['finetune_name']}.pt')
+                if config['resume'] != "No":
+                    self.pushing_agent.load_saved_policy(config['resume'])
+                else:
+                    self.pushing_agent.load_saved_policy(f'./utils/MABC/{config['finetune_name']}.pt')
             elif config['algo']=="MADP_Finetune":
                 self.pushing_agent = madp_finetune.MADPTD3(self.hp_dict, self.logger)
                 if config['finetune_name'] != "HAKUNA":
@@ -244,7 +260,7 @@ def server_process_main(pipe_conn, batched_queue, response_dict, config):
             elif endpoint == TT_GET_ACTION:
                 algo, data = data[0], data[1:]
                 with update_lock:
-                    action = server.pushing_agents[algo].get_actions(*data)[0]
+                    action = server.pushing_agents[algo].get_actions(*data)
                 response = action
 
             elif endpoint == MA_UPDATE_POLICY:

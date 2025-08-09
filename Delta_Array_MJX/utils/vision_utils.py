@@ -2,6 +2,7 @@ import random
 from dataclasses import dataclass
 from typing import Any, List, Dict, Optional, Union, Tuple
 import time
+from skimage import img_as_ubyte
 
 import cv2
 import torch
@@ -12,6 +13,7 @@ import plotly.express as px
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from transformers import AutoModelForMaskGeneration, AutoProcessor, pipeline
+from utils.lang_sam import LangSAM
 
 def normalize_angle(angle):
     return (angle + np.pi) % (2 * np.pi) - np.pi
@@ -46,6 +48,36 @@ def compute_yaw_with_pca(contour, center):
     yaw = np.arctan2(principal_axis[1], principal_axis[0])
     return normalize_angle(yaw + np.pi/2)
 
+def sample_points(ordered_coords, total_points):
+    """
+    Samples `total_points` equidistant points along ordered_coords (y,x).
+    Handles edge cases where skeleton is degenerate or has repeated distances.
+    """
+    n = ordered_coords.shape[0]
+    if n == 0:
+        return np.zeros((total_points, 2))
+    if n == 1:
+        return np.tile(ordered_coords[0], (total_points, 1))
+
+    diffs = np.diff(ordered_coords, axis=0)
+    dists = np.hypot(diffs[:, 0], diffs[:, 1])  # length of each segment
+    cumulative_dist = np.hstack(([0.0], np.cumsum(dists)))
+    total_length = cumulative_dist[-1]
+
+    if total_length == 0:
+        return np.tile(ordered_coords[0], (total_points, 1))
+
+    unique_mask = np.diff(cumulative_dist, prepend=-1) > 0
+    cumdist_unique = cumulative_dist[unique_mask]
+    coords_unique = ordered_coords[unique_mask]
+
+    sample_dists = np.linspace(0, cumdist_unique[-1], total_points)
+    sampled_y = np.interp(sample_dists, cumdist_unique, coords_unique[:, 0])
+    sampled_x = np.interp(sample_dists, cumdist_unique, coords_unique[:, 1])
+    sampled_points = np.column_stack((sampled_y, sampled_x))
+
+    return sampled_points
+
 @dataclass
 class BoundingBox:
     xmin: int
@@ -78,13 +110,15 @@ class VisUtils:
         self.device = device
         
         if not traditional:
-            self.object_detector = pipeline(model=obj_detection_model, task="zero-shot-object-detection", device=device)
-            self.object_segmentor = AutoModelForMaskGeneration.from_pretrained(segmentation_model).to(device)
-            self.processor = AutoProcessor.from_pretrained(segmentation_model)
+            # self.object_detector = pipeline(model=obj_detection_model, task="zero-shot-object-detection", device=device)
+            # self.object_segmentor = AutoModelForMaskGeneration.from_pretrained(segmentation_model).to(device)
+            # self.processor = AutoProcessor.from_pretrained(segmentation_model)
+            self.langsam = LangSAM()
         
+        self.labels = ["green block"]
         self.lower_green_filter = np.array([35, 50, 50])
         self.upper_green_filter = np.array([85, 255, 255])
-        self.kernel = np.ones((11,11), np.uint8)
+        self.kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(17, 17))
         self.lower_red1 = np.array([0, 50, 50])
         self.upper_red1 = np.array([10, 255, 255])
         self.lower_red2 = np.array([170, 50, 50])
@@ -179,7 +213,7 @@ class VisUtils:
     def convert_world_2_pix(self, vecs):
         result = np.zeros((vecs.shape[0], 2))
         result[:, 0] = (vecs[:, 0] - self.plane_size[0][0]) / self.delta_plane_x * 1080
-        result[:, 1] = (vecs[:, 1] - self.plane_size[0][1]) / self.delta_plane_y * 1920 + 1920
+        result[:, 1] = 1920 - (vecs[:, 1] - self.plane_size[0][1]) / self.delta_plane_y * 1920
         return result
     
     def convert_pix_2_world(self, vecs):
@@ -256,25 +290,81 @@ class VisUtils:
 
         masks = self.refine_masks(masks, polygon_refinement)
         return masks
+    
+    def set_label(self, label):
+        self.labels = [label]
+    
+    def return_masks(self, image, n_objs=1):
+        image = Image.fromarray(image)
+        results = self.langsam.predict([image], self.labels)
+        masks = []
+        for i in range(n_objs):
+            m = results[0]['masks'][i]
+            # if m is float in [0,1], scale and cast:
+            m = (m * 255).astype(np.uint8)
+            masks.append(m)
+        return masks
+    
+    def get_object_mask(self, image, n_objs=1, total_pts=150):
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        hsv_mask = cv2.inRange(hsv, self.lower_green_filter, self.upper_green_filter)
+        image = Image.fromarray(image)
         
-    def grounded_obj_segmentation(self, image:np.array, labels:List[str], threshold:float=0.5, polygon_refinement=True) -> List[np.array]:
-        results = self.detect_obj_from_labels(Image.fromarray(image), labels, threshold)
-        masks = self.segment_obj_from_bb(Image.fromarray(image), results, polygon_refinement)
+        results = self.langsam.predict([image], self.labels)
+        mask = results[0]['masks'][0]
+        mask = img_as_ubyte(mask)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self.kernel)
+        h, w = mask.shape
+        flood = mask.copy()
+        bg_mask = np.zeros((h+2, w+2), np.uint8)
+        cv2.floodFill(flood, bg_mask, (0,0), 255)
+        holes = cv2.bitwise_not(flood)
+        filled = cv2.bitwise_or(mask, holes)
+        return filled
+
+    def get_bd_pts(self, image, n_objs=1, total_pts=150):
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        hsv_mask = cv2.inRange(hsv, self.lower_green_filter, self.upper_green_filter)
+        image = Image.fromarray(image)
         
-        og_mask = masks[0]
-        image = cv2.bitwise_and(image, image, mask = og_mask)
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
+        results = self.langsam.predict([image], self.labels)
+        mask = results[0]['masks'][0]
+        mask = img_as_ubyte(mask)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self.kernel)
+        h, w = mask.shape
+        flood = mask.copy()
+        bg_mask = np.zeros((h+2, w+2), np.uint8)
+        cv2.floodFill(flood, bg_mask, (0,0), 255)
+        holes = cv2.bitwise_not(flood)
+        filled = cv2.bitwise_or(mask, holes)
         
-        hsv_mask = cv2.inRange(image, self.lower_green_filter, self.upper_green_filter)
-        og_mask = cv2.bitwise_and(og_mask, og_mask, mask = hsv_mask)
+        contours, hierarchy = cv2.findContours(filled, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        main_contour = max(contours, key=cv2.contourArea)
+        contour_points_xy = main_contour.reshape(-1, 2)
+        contour_points_yx = contour_points_xy[:, ::-1]
+        sampled_points = self.convert_pix_2_world(sample_points(contour_points_yx, total_pts))
+        return sampled_points
+                        
+    def grounded_obj_segmentation(self, image, n_objs=1):
+        # results = self.detect_obj_from_labels(Image.fromarray(image), labels, threshold)
+        # masks = self.segment_obj_from_bb(Image.fromarray(image), results, polygon_refinement)
+        masks = self.return_masks(image, n_objs=n_objs)
         
-        boundary = cv2.Canny(og_mask,100,200)
-        # plt.imshow(boundary)
-        # plt.show()
-        boundary_pts = np.array(np.where(boundary==255)).T
+        for mask in masks:
+            image = cv2.bitwise_and(image, image, mask = mask)
+            image = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
+            
+            hsv_mask = cv2.inRange(image, self.lower_green_filter, self.upper_green_filter)
+            mask = cv2.bitwise_and(mask, mask, mask = hsv_mask)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self.kernel)
+            
+            boundary = cv2.Canny(mask,100,200)
+            # plt.imshow(boundary)
+            # plt.show()
+            boundary_pts = np.array(np.where(boundary==255)).T
         return boundary_pts
     
-    def get_bdpts_and_pose(self, img):
+    def get_bdpts_and_pose(self, img, n_objs=1):
         hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
         if self.traditional:
             mask = cv2.inRange(hsv, self.lower_green, self.upper_green)
@@ -286,19 +376,19 @@ class VisUtils:
             bd_pts = np.array(np.where(boundary==255)).T
         else:
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            bd_pts = self.grounded_obj_segmentation(img, labels=["green block"], threshold=0.3,  polygon_refinement=True)
+            bd_pts = self.grounded_obj_segmentation(img, n_objs=n_objs)
         
         bd_pts = self.convert_pix_2_world(bd_pts)
         
-        mask1 = cv2.inRange(hsv, self.lower_red1, self.upper_red1)
-        mask2 = cv2.inRange(hsv, self.lower_red2, self.upper_red2)
-        mask = mask1 | mask2
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self.kernel)
+        # mask1 = cv2.inRange(hsv, self.lower_red1, self.upper_red1)
+        # mask2 = cv2.inRange(hsv, self.lower_red2, self.upper_red2)
+        # mask = mask1 | mask2
+        # mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self.kernel)
         
         com = np.mean(bd_pts, axis=0)
         return bd_pts, com
 
-    def get_bdpts(self, img):
+    def get_bdpts(self, img, n_objs=1):
         hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
         if self.traditional:
             mask = cv2.inRange(hsv, self.lower_green_filter, self.upper_green_filter)
@@ -309,13 +399,8 @@ class VisUtils:
             boundary = cv2.Canny(seg_map, 100, 200)
             bd_pts_pixel = np.array(np.where(boundary == 255)).T
         else:
-            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            bd_pts_pixel = self.grounded_obj_segmentation(
-                img_rgb, 
-                labels=["green block"], 
-                threshold=0.3, 
-                polygon_refinement=True
-            )
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            bd_pts_pixel = self.grounded_obj_segmentation(img, n_objs=n_objs)
 
         bd_pts = self.convert_pix_2_world(bd_pts_pixel)
         return bd_pts

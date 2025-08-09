@@ -46,6 +46,7 @@ def parse_args():
     parser.add_argument("-pb", "--parsimony_bonus", action="store_true", help="reward for fewer Actions in reward function")
     parser.add_argument("-rs", "--reward_scale", type=float, default=0.01, help="Scale reward function by this value")
     parser.add_argument("-cd", "--collect_data", action="store_true", help="Collect data to be stored in RB")
+    parser.add_argument("-n_obj", "--n_obj", type=int, default=1, help="To use multiple objs or not. ")
     
     parser.add_argument("-nrew", "--new_rew", action="store_true", help="New Gaussian reward function - Smooth gradient")
     parser.add_argument("-trad", "--traditional", action="store_true", help="Traditional Pipeline for Vis Servo")
@@ -136,7 +137,7 @@ def create_sac_config():
     config['path'] = f"./models/{config['algo']}/{config['env_name']}/{config['name']}"
     os.makedirs(config['path'], exist_ok=True)
         
-    assert config['algo'] in ['SAC', "MATSAC", "MABC_Finetune", "MABC", "MATPPO", "MADP_Finetune"]
+    assert config['algo'] in ['Vis Servo', "MATSAC", "MABC_Finetune", "MABC", "MATPPO", "MADP_Finetune", "MABC_Finetune_Bin", "MABC_Finetune_PB", "MABC_Finetune_CA", "MABC_Finetune_PB_CA"]
     assert config['arch'] in ['MLP', 'TF']
     assert config['attn_mech'] in ['SA', 'CA', 'AdaLN']
     

@@ -4,6 +4,7 @@ import gc
 import warnings
 import time
 import os
+import uuid
 warnings.filterwarnings("ignore")
 from scipy.spatial.transform import Rotation as R
 
@@ -28,7 +29,8 @@ LOG_INFERENCE        = 7
 TOGGLE_PUSHING_AGENT = 8
 TT_GET_ACTION        = 9
 
-OBJ_NAMES = ['star', "block", 'hexagon', 'disc', 'cross', 'diamond', 'triangle', 'parallelogram', 'semicircle', "trapezium"]#'crescent', 
+# OBJ_NAMES = ['star', "block", 'hexagon', 'disc', 'cross', 'diamond', 'triangle', 'parallelogram', 'semicircle', "trapezium"]
+OBJ_NAMES = ['star', 'hexagon', "trapezium"]
 
 ###################################################
 # Client <-> Server Communication
@@ -80,6 +82,10 @@ def run_test_traj_rb(env_id, sim_len, experiment_data, algo, VideoRecorder, conf
         recorder = VideoRecorder(output_dir=f"./data/videos/{config['name']}", fps=120)
     else:
         recorder = None
+    if recorder is not None:
+        n_trials = 1
+    else:
+        n_trials = 5
         
     print(f"Running Test Trajectories for {algo}")
     for obj_name in OBJ_NAMES:
@@ -96,7 +102,7 @@ def run_test_traj_rb(env_id, sim_len, experiment_data, algo, VideoRecorder, conf
                 recorder.start_recording(filename=f"{algo}_{obj_name}_{traj_name}.mp4")
             algo_dict[obj_name][traj_name] = {}
             
-            for run_id in range(1):
+            for run_id in range(n_trials):
                 algo_dict[obj_name][traj_name][run_id] = []
                 path_cp = path.tolist()
                 init_pose = path_cp.pop(0)
@@ -113,9 +119,13 @@ def run_test_traj_rb(env_id, sim_len, experiment_data, algo, VideoRecorder, conf
                     
                     push_states = (algo, env.init_state[:env.n_idxs], env.pos[:env.n_idxs], inference)
                     if algo == "Vis Servo":
-                        actions = env.vs_action(random=False)
+                        execute_actions = env.vs_action(random=False)
+                        actions = -1*np.ones((env.n_idxs, 3))
+                        actions[:, :2] = execute_actions
                     elif algo == "Random":
-                        actions = env.vs_action(random=True)
+                        execute_actions = env.vs_action(random=True)
+                        actions = -1*np.ones((env.n_idxs, 3))
+                        actions[:, :2] = execute_actions
                     else:
                         actions = send_request(pipe_conn, TT_GET_ACTION, push_states, lock)
                         
@@ -128,7 +138,11 @@ def run_test_traj_rb(env_id, sim_len, experiment_data, algo, VideoRecorder, conf
                                 env.set_z_positions(active_idxs=list(inactive_idxs), low=False)  # Set to high
                             execute_actions = env.clip_actions_to_ws(actions[:, :2])
                         else:
+                            # print(actions.shape)
                             execute_actions = env.clip_actions_to_ws(actions)
+                            # print(execute_actions.shape)
+                            actions = -1*np.ones((env.n_idxs, 3))
+                            actions[:, :2] = execute_actions
                             
                         env.final_state[:env.n_idxs, 4:6] = execute_actions
                         
@@ -147,7 +161,7 @@ def run_test_traj_rb(env_id, sim_len, experiment_data, algo, VideoRecorder, conf
                             'reward'        : float(reward),
                             'tries'         : tries,
                             'robot_indices' : (env.active_idxs.copy()),
-                            'actions'       : actions.tolist(),
+                            'actions'       : actions,
                             'robot_count'   : (env.n_idxs),
                         }
                     
@@ -255,7 +269,8 @@ if __name__ == "__main__":
             algos = ['Vis Servo']
         else:
             # algos = ["Random", "Vis Servo", "MATSAC", "MABC_Finetune", 'MABC']
-            algos = ["MABC_Finetune_Bin","MABC_Finetune_PB","MABC_Finetune_CA"]
+            # algos = ["Random", "Vis Servo", "MATSAC", "MABC_Finetune", 'MABC', "MABC_Finetune_Bin","MABC_Finetune_PB","MABC_Finetune_CA","MABC_Finetune_PB_CA"]
+            algos = ["MABC_Finetune_PB"]
         
         experiment_data = manager.dict()
         processes = []
@@ -272,8 +287,8 @@ if __name__ == "__main__":
         #     run_test_traj_rb(0, config['simlen'], {}, config, True, parent_conn, lock)
             
         final_expt_data = dict(experiment_data)
-        save_path = f"./data/test_traj/test_traj_data_rope.pkl"
-        pkl.dump(final_expt_data, open(save_path, "wb"))
+        # save_path = f"./data/test_traj/test_traj_data_sel_acts.pkl"
+        # pkl.dump(final_expt_data, open(save_path, "wb"))
         # print(f"Saved Test Trajectory Data at {save_path}")
     else:
         print("Why are you running test.py?")

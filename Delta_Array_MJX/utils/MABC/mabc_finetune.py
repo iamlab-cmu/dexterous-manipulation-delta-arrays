@@ -54,7 +54,7 @@ class MABC_Finetune:
             # DiT Params:
             'state_dim'         : 6,
             'obj_name_enc_dim'  : 9,
-            'action_dim'        : 3,
+            'action_dim'        : parent_hp_dict['action_dim'],
             'act_limit'         : 0.03,
             "device"            : parent_hp_dict['dev_rl'],
             "dev_rl"            : parent_hp_dict['dev_rl'],
@@ -70,6 +70,7 @@ class MABC_Finetune:
             'masked'            : parent_hp_dict['masked'],
             'gauss'             : parent_hp_dict['gauss'],
             'learned_alpha'     : parent_hp_dict['learned_alpha'],
+            'pos_embed'         : parent_hp_dict['pos_embed'],
         }
         self.logger = logger
         self.device = self.hp_dict['device']
@@ -237,9 +238,36 @@ class MABC_Finetune:
         if len(obs.shape) == 2:
             obs = obs.unsqueeze(0)
             pos = pos.unsqueeze(0)
+            obs = obs.repeat(128, 1, 1)
+            pos = pos.repeat(128, 1)
+            noise = torch.randn_like(obs) * 0.0008
+            obs += noise 
+            
+            # obs = obs.unsqueeze(0)
+            # pos = pos.unsqueeze(0)
+            # obs = obs.repeat(128, 1, 1)
+            # pos = pos.repeat(128, 1)
+            # noise_s0 = torch.randn(obs.shape[0], obs.shape[1], 2) * 0.0005  # (128, N, 2)
+            # noise_p = torch.randn(obs.shape[0], obs.shape[1], 2) * 0.001    # (128, N, 2)
+            # obs[:, :, :2] += noise_s0.to(self.device)
+            # obs[:, :, 4:] += noise_p.to(self.device)
+            
         
         actions = self.tf.get_actions(obs, pos, deterministic=deterministic)
-        return actions.detach().cpu().numpy()
+        actions = torch.mean(actions, dim=0).squeeze()
+        # print(actions.shape)
+        return actions.detach().to(torch.float32).cpu().numpy()
+    
+    # @torch.no_grad()
+    # def get_actions(self, obs, pos, deterministic=False):
+    #     obs = torch.as_tensor(obs, dtype=torch.float32).to(self.device)
+    #     pos = torch.as_tensor(pos, dtype=torch.int32).to(self.device)
+    #     if len(obs.shape) == 2:
+    #         obs = obs.unsqueeze(0)
+    #         pos = pos.unsqueeze(0)
+        
+    #     actions = self.tf.get_actions(obs, pos, deterministic=deterministic)
+    #     return actions.detach().cpu().numpy()
     
     def save_model(self):
         dicc = {

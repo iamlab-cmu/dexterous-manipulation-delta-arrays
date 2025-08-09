@@ -110,6 +110,7 @@ def run_env(env_id, sim_len, n_runs, return_dict, config, inference, pipe_conn, 
             else:
                 actions, a_ks, log_ps, ents = send_request(pipe_conn, MA_GET_ACTION, push_states,
                                        lock=lock, batched_queue=batched_queue, response_dict=response_dict)
+                # print(env.n_idxs)
                 # ** the following 3 lines are imp cos they are sampled with the max N among all threads at server side
                 actions = actions[:env.n_idxs]
                 if actions.shape[-1] == 3:

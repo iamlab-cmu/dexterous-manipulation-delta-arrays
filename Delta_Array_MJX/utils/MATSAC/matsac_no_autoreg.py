@@ -14,10 +14,11 @@ import utils.multi_agent_replay_buffer as MARB
 class MATSAC:
     def __init__(self, env_dict, hp_dict, train_or_test="train"):
         self.train_or_test = train_or_test
-        self.hp_dict = hp_dict
+        self.hp_dict = hp_dict.copy()
         self.env_dict = env_dict
         self.obs_dim = self.env_dict['pi_obs_space']['dim']
-        self.act_dim = self.env_dict['action_space']['dim']
+        self.act_dim = 2 # self.env_dict['action_space']['dim']
+        self.hp_dict['action_dim'] = self.act_dim
         self.act_limit = self.env_dict['action_space']['high']
         self.device = self.hp_dict['dev_rl']
         self.gauss = hp_dict['gauss']
@@ -229,8 +230,8 @@ class MATSAC:
         obs = torch.as_tensor(obs, dtype=torch.float32).unsqueeze(0).to(self.device)
         pos = torch.as_tensor(pos, dtype=torch.int32).unsqueeze(0).to(self.device)
         
-        actions = self.tf.get_actions(obs, pos, deterministic=deterministic)
-        return actions.detach().cpu().numpy()[0]
+        actions = self.tf.get_actions(obs, pos, deterministic=deterministic).squeeze()
+        return actions.detach().to(torch.float32).cpu().numpy()
         
     def load_saved_policy(self, path='./data/rl_data/backup/matsac_expt_grasp/pyt_save/model.pt'):
         dicc = torch.load(path, map_location=self.hp_dict['dev_rl'])

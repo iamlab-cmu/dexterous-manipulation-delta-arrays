@@ -35,13 +35,16 @@ def apply_random_force(model, data, body_ids):
     force = np.array([fx, fy, fz, 0, 0, 0]) * force_scaling
     data.xfrc_applied[random_id] = force
 
-def get_skeleton_from_img(img, trad=True):
-    if trad:
-        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        mask = cv2.inRange(hsv, lower_green, upper_green)
-        mask = (mask > 0).astype(np.uint8)
+def get_skeleton_from_img(img, trad=True, mask=False):
+    if not mask:
+        if trad:
+            hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+            mask = cv2.inRange(hsv, lower_green, upper_green)
+            mask = (mask > 0).astype(np.uint8)
+        else:
+            raise NotImplementedError("Only trad-based segmentation is supported in sim.")
     else:
-        raise NotImplementedError("Only trad-based segmentation is supported.")
+        mask = img
 
     skeleton = skeletonize(mask)
     coords = np.column_stack(np.nonzero(skeleton))

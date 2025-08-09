@@ -5,9 +5,11 @@ from scipy import spatial
 from sklearn.cluster import KMeans
 from scipy.spatial import ConvexHull, KDTree
 from scipy.interpolate import interp1d
+from shapely.geometry import Polygon, Point
 import networkx as nx
 from collections import OrderedDict
 from sklearn.neighbors import NearestNeighbors
+import pandas as pd
 from copy import deepcopy
 
 class NNHelper:
@@ -241,75 +243,80 @@ class NNHelper:
 
         return idxs, np.array(nearest_neighbors)
 
-    def get_nn_robots_rope(self, boundary_pts, search_radius=0.031):
-        """
-        Optimized function to find nearest neighbor robots around a deformable boundary.
-        """
-        # Create KDTrees
-        robot_kdtree = KDTree(self.kdtree_positions_world)
+    def find_robots_outside_non_convex(self, sampled_boundary_points_world, finger_radius = 0.03):
+        num_robots = self.kdtree_positions_world.shape[0]
+        sampled_kdtree = KDTree(sampled_boundary_points_world)
+        distances, nearest_boundary_indices_all = sampled_kdtree.query(
+            self.kdtree_positions_world, k=1, workers=-1
+        )
+        proximity_mask = distances <= finger_radius
+        proximity_candidates_indices = np.where(proximity_mask)[0]
+
+        if proximity_candidates_indices.shape[0] == 0:
+            return np.array([], dtype=int), np.empty((0, 2)), np.array([], dtype=int)
+
+        polygon = Polygon(sampled_boundary_points_world)
+        candidate_robot_points = [Point(p) for p in self.kdtree_positions_world[proximity_candidates_indices]]
+        is_inside_mask = np.array([polygon.contains(p) for p in candidate_robot_points], dtype=bool)
+
+        final_active_robot_indices_provisional = proximity_candidates_indices[~is_inside_mask]
+        if final_active_robot_indices_provisional.shape[0] == 0:
+            return np.array([], dtype=int), np.empty((0, 2)), np.array([], dtype=int)
+
+        candidate_distances = distances[final_active_robot_indices_provisional]
+        candidate_boundary_indices = nearest_boundary_indices_all[final_active_robot_indices_provisional]
+
+        df = pd.DataFrame({
+            'robot_idx': final_active_robot_indices_provisional,
+            'boundary_idx': candidate_boundary_indices,
+            'distance': candidate_distances
+        })
+        idx_min_dist = df.loc[df.groupby('boundary_idx')['distance'].idxmin()]
+        active_robot_indices_final = idx_min_dist['robot_idx'].to_numpy(dtype=int)
+        matched_boundary_indices_final = idx_min_dist['boundary_idx'].to_numpy(dtype=int)
+
+        if active_robot_indices_final.shape[0] == 0:
+            return np.array([], dtype=int), np.empty((0, 2)), np.array([], dtype=int)
+
+        matched_boundary_pts_final = sampled_boundary_points_world[matched_boundary_indices_final]
+        return active_robot_indices_final, matched_boundary_pts_final, matched_boundary_indices_final
+    
+    def get_nn_robots_rope(self, centerline_pts: np.ndarray, rope_width: float = 0.015, finger_radius: float = 0.025):
+        N = centerline_pts.shape[0]
+        # compute per-segment tangents
+        next_pts = np.roll(centerline_pts, -1, axis=0)
+        tangents = next_pts - centerline_pts
+        tangents /= np.linalg.norm(tangents, axis=1, keepdims=True)
+        # normals = rotate tangents by +90°
+        normals = np.stack([-tangents[:,1], tangents[:,0]], axis=1)
+
+        half_rope = rope_width * 0.5
+        # only need one boundary (outer); inner is symmetrical if you want both sides
+        boundary_pts = centerline_pts + normals * half_rope
+
+        robot_kdtree    = KDTree(self.kdtree_positions_world)
         boundary_kdtree = KDTree(boundary_pts)
 
-        # Initialize result containers
+        # 3. For each boundary point, find robots whose fingertip center is within
+        #    `finger_radius` → these are the robots that *just* touch the rope surface.
+        indices_list = robot_kdtree.query_ball_point(boundary_pts, r=finger_radius, workers=8)
+
         nearest_neighbors = {}
-        processed_robots = set()
-
-        # Step 1: Find robots within search_radius of boundary points
-        indices_list = robot_kdtree.query_ball_point(boundary_pts, r=search_radius, workers=8)
-
-        for b_idx, r_indices in enumerate(indices_list):
-            for r_idx in r_indices:
+        processed_robots  = set()
+        for b_idx, nearby_robots in enumerate(indices_list):
+            for r_idx in nearby_robots:
                 if r_idx not in processed_robots:
+                    # map each robot to the index of the boundary_pt it overlaps
                     nearest_neighbors[r_idx] = b_idx
                     processed_robots.add(r_idx)
 
-        # Step 2: Vectorized local region analysis for unprocessed robots
-        unprocessed_robot_indices = np.setdiff1d(np.arange(len(self.kdtree_positions_world)), list(processed_robots))
-        if unprocessed_robot_indices.size > 0:
-            unprocessed_robot_positions = self.kdtree_positions_world[unprocessed_robot_indices]
-
-            # Boundary segments and their centers
-            segment_starts = boundary_pts
-            segment_ends = np.roll(boundary_pts, -1, axis=0)
-            segment_vecs = segment_ends - segment_starts
-            segment_centers = (segment_starts + segment_ends) / 2
-
-            # Create KDTree for segment centers
-            segment_nn = NearestNeighbors(n_neighbors=1, algorithm='kd_tree')
-            segment_nn.fit(segment_centers)
-
-            # Find nearest segments
-            distances, segment_indices = segment_nn.kneighbors(unprocessed_robot_positions)
-            valid_mask = distances.flatten() <= search_radius
-
-            # Filter valid robots
-            valid_robot_indices = unprocessed_robot_indices[valid_mask]
-            valid_segment_indices = segment_indices[valid_mask].flatten()
-            valid_robot_positions = unprocessed_robot_positions[valid_mask]
-
-            # Compute projections onto segments
-            segment_starts = segment_starts[valid_segment_indices]
-            segment_vecs = segment_vecs[valid_segment_indices]
-            robot_vecs = valid_robot_positions - segment_starts
-
-            t = np.clip(
-                np.einsum('ij,ij->i', robot_vecs, segment_vecs) / np.einsum('ij,ij->i', segment_vecs, segment_vecs),
-                0, 1
-            )
-            projections = segment_starts + (segment_vecs.T * t).T
-
-            # Find nearest boundary points to projections
-            _, nearest_indices = boundary_kdtree.query(projections)
-
-            # Update nearest_neighbors
-            for r_idx, b_idx in zip(valid_robot_indices, nearest_indices):
-                nearest_neighbors[r_idx] = b_idx
-
-        # Prepare return values
-        robot_indices = np.array(list(nearest_neighbors.keys()), dtype=np.int32)
-        boundary_indices = np.array(list(nearest_neighbors.values()), dtype=np.int32)
-        matched_boundary_points = boundary_pts[boundary_indices]
-
-        return robot_indices, matched_boundary_points, boundary_indices
+        # 4. Prepare outputs
+        robot_indices         = np.array(list(nearest_neighbors.keys()), dtype=np.int32)
+        boundary_indices      = np.array(list(nearest_neighbors.values()), dtype=np.int32)
+        # if you really want to return the matched boundary *center*,
+        # you can project back onto the original centerline:
+        matched_boundary_pts  = centerline_pts[boundary_indices]
+        return robot_indices, matched_boundary_pts, boundary_indices
 
     def get_nn_robots_objs(self, boundary_pts, world=True):
         hull = ConvexHull(boundary_pts)

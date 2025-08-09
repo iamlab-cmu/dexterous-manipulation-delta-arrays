@@ -5,6 +5,7 @@ import warnings
 warnings.filterwarnings("ignore")
 import time
 import threading
+from glob import glob
 
 import multiprocessing
 from multiprocessing import Process, Manager
@@ -24,8 +25,6 @@ LOG_INFERENCE        = 7
 TOGGLE_PUSHING_AGENT = 8
 TT_GET_ACTION        = 9
 
-OBJ_NAMES = ["block", 'cross', 'diamond', 'hexagon', 'star', 'triangle', 'parallelogram', 'semicircle', "trapezium", 'disc'] #'crescent',
-
 ###################################################
 # Client <-> Server Communication
 ###################################################
@@ -38,13 +37,16 @@ def start_capture_thread(current_traj, lock, rl_device, trad, plane_size, save_v
 def create_server_process():
     config = arg_helper.create_sac_config()
     parent_conn, child_conn = multiprocessing.Pipe()
+    manager = Manager()
+    batched_queue = manager.Queue()
+    response_dict = manager.dict()
     child_proc = multiprocessing.Process(
         target=server_process_main,
-        args=(child_conn, config),
+        args=(child_conn, batched_queue, response_dict, config),
         daemon=True
     )
     child_proc.start()
-    return parent_conn, child_proc, config
+    return parent_conn, batched_queue, response_dict, child_proc, config, manager
 
 def send_request(lock, pipe_conn, action_code, data=None):
     with lock:
@@ -56,9 +58,9 @@ def send_request(lock, pipe_conn, action_code, data=None):
 if __name__ == "__main__":
     multiprocessing.set_start_method('spawn', force=True)
     
-    manager = Manager()
+    # manager = Manager()
+    parent_conn, batched_queue, response_dict, child_proc, config, manager = create_server_process()
     lock = manager.Lock()
-    parent_conn, child_proc, config = create_server_process()
     
     current_episode = 0
     current_reward = 0
@@ -66,71 +68,61 @@ if __name__ == "__main__":
     
     algo = config['algo']
     from_NN = False
-    if algo in ['MATSAC', "MABC", "MABC_Finetune"]:
+    if algo in ['MATSAC', "MABC", "MABC_Finetune", "MABC_Finetune_Bin", "MABC_Finetune_PB", "MABC_Finetune_CA", "MABC_Finetune_PB_CA"]:
         from_NN = True
         
     obj_name = "rope"
         
-    env = delta_array_real_rope.DeltaArrayReal(config)
+    env = delta_array_real_rope.DeltaArrayRealRope(config)
     
-    vid_name = f"video_{algo}_{obj_name}.mp4".strip()
+    mp4s = glob(f"./data/videos/rope/*{algo}.mp4")
+    vid_name = f"video_{len(mp4s)}_{algo}.mp4".strip()
 
-    lock = threading.Lock()
+    # lock = threading.Lock()
     stop_event, cap_thread = delta_array_real_rope.start_capture_thread(lock, config['rl_device'], config['traditional'], env.plane_size, save_vid=config['save_vid'], vid_name=vid_name)
-    time.sleep(5)
+    time.sleep(10)
     
-    env.soft_reset()
-    
+    act_grasp = env.soft_reset()
+    reward = 0
     try_id = 0
-    tries = 1
     
     print(f'Algo: {algo} Object: {obj_name}')
     
     algo_dict = {}
-    algo_dict[obj_name] = {}
-    while env.rope_reward < 20:
+    algo_dict[obj_name] = []
+    while reward < 20:
         try_id += 1
-        print(f"Episode: {current_episode}, Try: {try_id}")
         push_states = (algo, env.init_state[:env.n_idxs], env.pos[:env.n_idxs], True)
         if algo == "Vis Servo":
-            actions = env.vs_action(random=False)
+            actions = env.vs_action(act_grasp, random=False)
         elif algo == "Random":
-            actions = env.vs_action(random=True)
+            actions = env.vs_action(act_grasp, random=True)
         else:
             actions = send_request(lock, parent_conn, TT_GET_ACTION, push_states)
-            env.final_state[:env.n_idxs, 4:6] = actions
         
-        env.move_robots(env.active_idxs, actions, delta_array_real_rope.LOW_Z, from_NN)
-        env.set_rl_states(actions, final=True, test_traj=True)
-        dist, reward = env.compute_reward(actions)
-        print(reward)
-        
+        dist, reward = env.rollout(act_grasp, actions, from_NN)
+        print(f"Episode: {current_episode}, Try: {try_id}, Reward: {reward}")
         step_data = {
                 'try_id'        : try_id,
-                'init_qpos'     : env.init_qpos,
-                # 'goal_qpos'     : env.goal_qpos,
-                'final_qpos'    : env.final_qpos,
+                'init_bd_pts'   : env.init_bd_pts,
+                'goal_bd_pts'   : env.goal_bd_pts,
+                'final_bd_pts'  : env.final_bd_pts,
                 'dist'          : dist,
                 'reward'        : float(reward),
                 'robot_indices' : (env.active_idxs.copy()),
-                'actions'       : actions.tolist(),
+                'actions'       : actions,
                 'robot_count'   : (env.n_idxs),
             }
+        algo_dict[obj_name].append(step_data)
         
-        algo_dict[obj_name][traj_name].append(step_data)
-        if (reward > 70) or (tries >= 2):
-            tries = 1
-            next_pose = current_traj.pop(0)
-            next_pose[2] += np.pi/2
-            env.soft_reset(goal_2Dpose=next_pose)
-        else:
-            tries += 1
-            env.soft_reset()
+        act_grasp = env.soft_reset()
             
-    save_path = f"./data/test_traj/test_traj_{algo}_{traj_name}_{obj_name}.pkl"
+    pkls = glob(f"./data/test_rope/*{algo}.pkl")
+    save_path = f"./data/test_rope/test_rope_{len(pkls)}_{algo}.pkl"
     pkl.dump(algo_dict, open(save_path, "wb"))
     
     print("Sending stop signal to capture thread...")
+    gc.collect()
     stop_event.set()
     cap_thread.join()
     

@@ -112,12 +112,14 @@ class DeltaArrayReal:
 if __name__ == "__main__":
     delta_array = DeltaArrayReal()
 
+    delta_array.reset()
     # Specify which robot to move (0-63)
-    robot_idx = 27  # Change this to whatever robot you want to move
+    robot_idx = 51  # Change this to whatever robot you want to move
 
     # Create actions array with desired x,y coordinates (0,0)
     # Note that actions should be in the format [x, y]
     action = np.array([[0, 0]])  # This will be scaled by 100 inside move_robots()
  
     # Call move_robots with a single robot index and its action
-    delta_array.move_robots([robot_idx], action, z_level=11.2)
+    # delta_array.move_robots([robot_idx], action, z_level=5.5)
+    delta_array.move_robots([robot_idx], action, z_level=14.9)

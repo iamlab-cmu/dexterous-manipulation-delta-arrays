@@ -51,6 +51,7 @@ class MABC:
             'gauss'             : parent_hp_dict['gauss'],
             'ca'                : parent_hp_dict['ca'],
             'learned_alpha'     : parent_hp_dict['learned_alpha'],
+            'pos_embed'         : parent_hp_dict['pos_embed'],
         }
         self.device = self.hp_dict['dev_rl']
         self.tf = Transformer(self.hp_dict)
@@ -62,8 +63,8 @@ class MABC:
         obs = torch.as_tensor(obs, dtype=torch.float32).unsqueeze(0).to(self.device)
         pos = torch.as_tensor(pos, dtype=torch.int32).unsqueeze(0).to(self.device)
             
-        actions = self.tf.get_actions(obs, pos, deterministic)
-        return actions.detach().cpu().numpy()[0]
+        actions = self.tf.get_actions(obs, pos, deterministic).squeeze()
+        return actions.detach().to(torch.float32).cpu().numpy()
     
     @torch.no_grad()
     def get_actions_batch(self, obs, pos, deterministic=False):
