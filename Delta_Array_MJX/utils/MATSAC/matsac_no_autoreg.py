@@ -1,30 +1,24 @@
 import numpy as np
-import matplotlib.pyplot as plt
 from copy import deepcopy
-import time
 import itertools
 import wandb
-import pickle as pkl
-import uuid
 
 import torch
-import torch.nn as nn
 import torch.optim as optim
-import torch.utils.data as data
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
 import utils.MATSAC.gpt_core_no_autoreg as core
-# from utils.openai_utils.logx import EpochLogger
 import utils.multi_agent_replay_buffer as MARB
 
 class MATSAC:
-    def __init__(self, env_dict, hp_dict, logger_kwargs=dict(), train_or_test="train"):
+    def __init__(self, env_dict, hp_dict, train_or_test="train"):
         self.train_or_test = train_or_test
-        self.hp_dict = hp_dict
+        self.hp_dict = hp_dict.copy()
         self.env_dict = env_dict
         self.obs_dim = self.env_dict['pi_obs_space']['dim']
-        self.act_dim = self.env_dict['action_space']['dim']
+        self.act_dim = 2 # self.env_dict['action_space']['dim']
+        self.hp_dict['action_dim'] = self.act_dim
         self.act_limit = self.env_dict['action_space']['high']
         self.device = self.hp_dict['dev_rl']
         self.gauss = hp_dict['gauss']
@@ -34,12 +28,13 @@ class MATSAC:
             'alpha': [],
             'mu': [],
             'std': [],
+            'Reward': []
         }
-        if not self.hp_dict['resume']:
-            self.uuid = uuid.uuid4()
+        self.max_avg_rew = 0
+        self.batch_size = hp_dict['batch_size']
 
         if self.hp_dict['data_type'] == "image":
-            self.ma_replay_buffer = MARB.MultiAgentImageReplayBuffer(act_dim=self.act_dim, size=hp_dict['replay_size'], max_agents=self.tf.max_agents)
+            self.ma_replay_buffer = MARB.MultiAgentImageReplayBuffer(act_dim=self.act_dim, size=hp_dict['rblen'], max_agents=self.tf.max_agents)
             # TODO: In future add ViT here as an option
         else:
             # self.tf = core.Transformer(self.obs_dim, self.act_dim, self.act_limit, self.hp_dict["model_dim"], self.hp_dict["num_heads"], self.hp_dict["dim_ff"], self.hp_dict["n_layers_dict"], self.hp_dict["dropout"], self.device, self.hp_dict["delta_array_size"], self.hp_dict["adaln"], self.hp_dict['masked'])
@@ -52,7 +47,7 @@ class MATSAC:
             # Freeze target networks with respect to optimizers (only update via polyak averaging)
             for p in self.tf_target.parameters():
                 p.requires_grad = False
-            self.ma_replay_buffer = MARB.MultiAgentReplayBuffer(obs_dim=self.obs_dim, act_dim=self.act_dim, size=hp_dict['replay_size'], max_agents=self.tf.max_agents)
+            self.ma_replay_buffer = MARB.MultiAgentReplayBuffer(obs_dim=self.obs_dim, act_dim=self.act_dim, size=hp_dict['rblen'], max_agents=self.tf.max_agents)
 
         # Count variables (protip: try to get a feel for how different size networks behave!)
         var_counts = tuple(core.count_vars(module) for module in [self.tf.decoder_actor, self.tf.decoder_critic1, self.tf.decoder_critic2])
@@ -86,7 +81,7 @@ class MATSAC:
                 self.alpha = self.log_alpha.exp()
                 self.alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=hp_dict['pi_lr'])
             else:
-                self.alpha = torch.tensor([0.2], requires_grad=False, device=self.device)
+                self.alpha = torch.tensor([self.hp_dict['alpha']], requires_grad=False, device=self.device)
 
     def compute_q_loss(self, s1, a, s2, r, d, pos):
         
@@ -97,7 +92,7 @@ class MATSAC:
             with torch.no_grad():
                 # if self.gauss:
                 #     next_actions, log_probs, _, _= self.tf(s2, pos)
-                # else:
+                # else:z
                 #     next_actions = self.tf(s2, pos)
                 
                 # next_q1 = self.tf_target.decoder_critic1(s2, next_actions, pos).squeeze()
@@ -163,8 +158,8 @@ class MATSAC:
             self.log_dict['mu'].append(mu.mean().item())
             self.log_dict['std'].append(std.mean().item())
 
-    def update(self, batch_size, current_episode, n_updates, logged_rew):
-        wandb.log({'Reward': logged_rew})
+    def update(self, current_episode, n_updates, avg_reward):
+        self.log_dict['Reward'].append(avg_reward)
         for j in range(n_updates):
             self.internal_updates_counter += 1
             # if self.internal_updates_counter == 1:
@@ -180,7 +175,7 @@ class MATSAC:
             self.scheduler_actor.step()
             self.scheduler_critic.step()
 
-            data = self.ma_replay_buffer.sample_batch(batch_size)
+            data = self.ma_replay_buffer.sample_batch(self.batch_size)
             n_agents = int(torch.max(data['num_agents']))
             states = data['obs'][:,:n_agents].to(self.device)
             actions = data['act'][:,:n_agents].to(self.device)
@@ -208,14 +203,16 @@ class MATSAC:
                     p_target.data.mul_(self.hp_dict['tau'])
                     p_target.data.add_((1 - self.hp_dict['tau']) * p.data)
 
-            if (self.train_or_test == "train") and (self.internal_updates_counter % 20000) == 0:
-                dicc = {
-                    'model': self.tf.state_dict(),
-                    'actor_optimizer': self.optimizer_actor.state_dict(),
-                    'critic_optimizer': self.optimizer_critic.state_dict(),
-                    'uuid': self.uuid
-                }
-                torch.save(dicc, f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
+            if (self.train_or_test == "train") and (self.internal_updates_counter % 5000) == 0:
+                if self.max_avg_rew < avg_reward:
+                    print("ckpt saved @ ", current_episode, self.internal_updates_counter)
+                    self.max_avg_rew = avg_reward
+                    dicc = {
+                        'model': self.tf.state_dict(),
+                        'actor_optimizer': self.optimizer_actor.state_dict(),
+                        'critic_optimizer': self.optimizer_critic.state_dict(),
+                    }
+                    torch.save(dicc, f"{self.hp_dict['data_dir']}/{self.hp_dict['exp_name']}/pyt_save/model.pt")
         
             if (not self.hp_dict["dont_log"]) and (self.internal_updates_counter % 100) == 0:
                 wandb.log({k: np.mean(v) if isinstance(v, list) and len(v) > 0 else v for k, v in self.log_dict.items()})
@@ -225,23 +222,22 @@ class MATSAC:
                     'alpha': [],
                     'mu': [],
                     'std': [],
+                    'Reward': []
                 }
                 
-                
-    
     @torch.no_grad()
     def get_actions(self, obs, pos, deterministic=False):
         obs = torch.as_tensor(obs, dtype=torch.float32).unsqueeze(0).to(self.device)
         pos = torch.as_tensor(pos, dtype=torch.int32).unsqueeze(0).to(self.device)
         
-        actions = self.tf.get_actions(obs, pos, deterministic=deterministic)
-        return actions.tolist()
+        actions = self.tf.get_actions(obs, pos, deterministic=deterministic).squeeze()
+        return actions.detach().to(torch.float32).cpu().numpy()
         
     def load_saved_policy(self, path='./data/rl_data/backup/matsac_expt_grasp/pyt_save/model.pt'):
         dicc = torch.load(path, map_location=self.hp_dict['dev_rl'])
         
         self.tf.load_state_dict(dicc['model'])
-        self.optimizer_actor.load_state_dict(dicc['actor_optimizer'])
-        self.optimizer_critic.load_state_dict(dicc['critic_optimizer'])
-        self.uuid = dicc['uuid']
+        # self.optimizer_actor.load_state_dict(dicc['actor_optimizer'])
+        # self.optimizer_critic.load_state_dict(dicc['critic_optimizer'])
+        # self.uuid = dicc['uuid']
         self.tf_target = deepcopy(self.tf)

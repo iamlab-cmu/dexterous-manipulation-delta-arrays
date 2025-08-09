@@ -22,6 +22,7 @@ mabc_new*
 Multi_Agent_RL_Dexterous_Manipulation/data/rl_data/matsac_all_4_vs_0.1/pyt_save/
 mabc_rope*
 mabc_final*
+mabc_finetune_final*
 git-filter-repo
 Delta_Array_MJX/data/rl_data/
 Multi_Agent_RL_Dexterous_Manipulation/data/rl_data/matsac_FINAL/
@@ -29,3 +30,6 @@ Multi_Agent_RL_Dexterous_Manipulation/data/rl_data/matsac_finetune_FINAL/
 Delta_Array_MJX/models/trained_models/
 mabc_mj*
 Multi_Agent_RL_Dexterous_Manipulation/data/rl_data/mabc_finetune_FINAL
+madptd3_mj*
+mabc_RoPE*
+mabc_spe*

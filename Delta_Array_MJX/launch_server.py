@@ -7,6 +7,7 @@ from pathlib import Path
 import argparse
 from typing import Any
 import os
+import numpy as np
 
 import utils.SAC.sac as sac
 import utils.MATSAC.matsac_no_autoreg as matsac
@@ -26,9 +27,9 @@ logging.basicConfig(level=logging.WARNING)
 class DeltaArrayServer():
     def __init__(self, args, train_or_test="test"):
         self.train_or_test = train_or_test
-        self.vision_model = GroundedSAM(obj_detection_model=args.obj_detection_model, 
-                                        segmentation_model=args.segmentation_model,
-                                        device=torch.device(f"cuda:{args.vis_device}"))
+        # self.vision_model = GroundedSAM(obj_detection_model=args.obj_detection_model, 
+        #                                 segmentation_model=args.segmentation_model,
+        #                                 device=torch.device(f"cuda:{args.vis_device}"))
         
         if not os.path.exists(f'./data/rl_data/{args.name}/pyt_save'):
             os.makedirs(f'./data/rl_data/{args.name}/pyt_save')
@@ -92,17 +93,18 @@ class DeltaArrayServer():
             'cmu_ri'            : args.cmu_ri,
             'test_algos'        : ['MABC', 'Random', 'Vis Servo', 'MATSAC', 'MABC Finetuned'],
             'resume'            : args.resume != "No",
+            'attn_mech'         : args.attn_mech,
+            'pos_embed'         : args.pos_embed,
         }
-        logger_kwargs = {}
 
-        self.grasping_agent = sac.SAC(single_agent_env_dict, self.hp_dict, logger_kwargs, ma=False, train_or_test="test")
+        self.grasping_agent = sac.SAC(single_agent_env_dict, self.hp_dict, ma=False, train_or_test="test")
         self.grasping_agent.load_saved_policy('./models/trained_models/SAC_1_agent_stochastic/pyt_save/model.pt')
 
         if self.hp_dict['test_traj']:
             self.pushing_agent = {
                 "Random" : None,
                 "Vis Servo" : None,
-                "MATSAC" : matsac.MATSAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="test"),
+                "MATSAC" : matsac.MATSAC(ma_env_dict, self.hp_dict, train_or_test="test"),
                 "MABC" : mabc.MABC(self.hp_dict),
                 "MABC Finetuned" : mabc_finetune.MABC_Finetune(self.hp_dict),
             }
@@ -111,18 +113,18 @@ class DeltaArrayServer():
             self.pushing_agent["MABC Finetuned"].load_saved_policy('./utils/MADP/MABC_Finetuned.pth')
         else:
             if args.algo=="MATSAC":
-                self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, logger_kwargs, train_or_test="train")
+                self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, train_or_test="train")
                 if args.resume != "No":
                     self.pushing_agent.load_saved_policy(args.resume)
             elif args.algo=="SAC":
-                self.pushing_agent = sac.SAC(simplified_ma_env_dict, self.hp_dict, logger_kwargs, ma=True, train_or_test="train")
+                self.pushing_agent = sac.SAC(simplified_ma_env_dict, self.hp_dict, ma=True, train_or_test="train")
             elif args.algo=="MADP":
                 self.pushing_agent = madp_test.MADP()
             elif args.algo=="MABC":
                 self.pushing_agent = mabc.MABC()
             elif args.algo=="MABC_Finetune":
                 self.pushing_agent = mabc_finetune.MABC_Finetune(self.hp_dict)
-                self.pushing_agent.load_saved_policy(f'./utils/MABC/{args.mabc_name}.pt')
+                self.pushing_agent.load_saved_policy(f'./utils/MABC/{args.finetune_name}.pt')
 
             if (self.train_or_test=="test") and (args.algo=="MATSAC"):
                 # self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/{args.name}_s69420/pyt_save/model.pt')
@@ -132,17 +134,14 @@ class DeltaArrayServer():
                     self.pushing_agent.load_saved_policy(f'./data/rl_data/{args.name}/pyt_save/model.pt')
             elif (self.train_or_test=="test") and (args.algo in ["MADP", "MABC", "MABC_Finetune"]):
                 self.pushing_agent.load_saved_policy(f'./utils/MABC/{args.name}.pth')
-                
         
         if self.train_or_test=="train":
             if not self.hp_dict["dont_log"]:
-                logger_kwargs = setup_logger_kwargs(self.hp_dict['exp_name'], 69420, data_dir=self.hp_dict['data_dir'])
                 if args.resume != "No":
                     wandb.init(project="MARL_Dexterous_Manipulation",
                             config=self.hp_dict,
                             name = self.hp_dict['exp_name'],
-                            id="w10i8dfm", resume=True)
-                    
+                            id="vn901xiw", resume=True)
                 else:
                     wandb.init(project="MARL_Dexterous_Manipulation",
                             config=self.hp_dict,
@@ -198,9 +197,9 @@ class LogInferenceRequest(BaseModel):
     rewards: Any
     
 app = FastAPI()
-@app.post("/vision/")
-def vision_endpoint(request: VisionRequest):
-    return VisionResponse(bd_pts=server.vision_model.grounded_obj_segmentation(request.img, request.label))
+# @app.post("/vision/")
+# def vision_endpoint(request: VisionRequest):
+#     return VisionResponse(bd_pts=server.vision_model.grounded_obj_segmentation(request.img, request.label))
 
 @app.post("/sac/get_actions")
 def sac_endpoint(request: SARequest):
@@ -212,7 +211,7 @@ def ma_endpoint(request: MAInferenceRequest):
 
 @app.post("/marl/update")
 def ma_endpoint(request: MATrainRequest):
-    print(f'Episodes Elapsed: {request.current_episode}, Avg Reward: {request.avg_reward}')
+    # print(f'Episodes Elapsed: {request.current_episode}, Avg Reward: {request.avg_reward}')
     return server.pushing_agent.update(request.batch_size, request.current_episode, request.n_updates, request.avg_reward)
 
 @app.post("/marb/store")
@@ -225,7 +224,7 @@ def marb_store():
     server.pushing_agent.ma_replay_buffer.save_RB()
 
 @app.post("/marl/save_model")
-def ma_endpoint(request):
+def ma_endpoint():
     server.pushing_agent.save_policy()
     
 @app.post("/marl/load_model")
@@ -246,7 +245,7 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--test", action="store_true", help="True for Test")
     parser.add_argument("-t_path", "--t_path", type=str, default=None, help="Path to test model")
     parser.add_argument("-n", "--name", type=str, default="HAKUNA", help="Expt Name")
-    parser.add_argument("-n2", "--mabc_name", type=str, default="HAKUNA", help="MABC pretrained Expt Name")
+    parser.add_argument("-n2", "--finetune_name", type=str, default="HAKUNA", help="MABC pretrained Expt Name")
     parser.add_argument("-data", "--data_type", type=str, default=None, help="Use simplified setup with only 4 fingers?")
     parser.add_argument('-detstr', "--detection_string", type=str, default="green block", help="Input to detect obj of interest")
     parser.add_argument("-dontlog", "--dont_log", action="store_true", help="Don't Log Experiment")
@@ -272,9 +271,21 @@ if __name__ == "__main__":
     parser.add_argument("-la", "--la", action="store_true", help="Is Alpha Learned?")
     parser.add_argument("-amp", "--amp", action="store_true", help="Turn on Automatic Mixed Precision")
     parser.add_argument("-alpha", "--alpha", type=float, default=0.2, help="Temperature")
+    parser.add_argument("-am", "--attn_mech", type=str, default="AdaLN", help="Choose between SA, CA, AdaLN")
+    parser.add_argument("-port", "--port", type=int, default=8000, help="Port to launch expt")
+    parser.add_argument("-seed", "--seed", type=int, default=None, help="Random Seed")
+    parser.add_argument("-pe", "--pos_embed", type=str, default="SCE", help="Choose between SCE, SPE, RoPE")
     args = parser.parse_args()
     
+    if args.attn_mech not in ['SA', 'CA', 'AdaLN']:
+        raise ValueError("Invalid Attention Mechanism")
+    
     train_or_test = "test" if args.test else "train"
+    
+    if args.seed is not None:
+        np.random.seed(args.seed)
+        torch.manual_seed(args.seed)
+    
     server = DeltaArrayServer(args, train_or_test)
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=args.port)
     

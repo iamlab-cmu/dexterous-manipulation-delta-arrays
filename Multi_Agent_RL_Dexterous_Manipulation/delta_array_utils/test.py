@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pickle as pkl
 from mpl_toolkits.mplot3d import Axes3D
+import seaborn as sns
 from scipy.spatial import ConvexHull, Delaunay
 from shapely.geometry import Polygon, MultiPolygon, Point, LineString
 from shapely.ops import nearest_points, polygonize, unary_union
@@ -128,17 +129,16 @@ idxs = np.logical_and(actuator_positions[:, 2] >= 0.0051, actuator_positions[:, 
 actuator_positions = actuator_positions[idxs]
 valid_points = points[idxs]
 
-# fig = plt.figure(figsize=(12, 10))
-# ax = fig.add_subplot(111, projection='3d')
-# scatter = ax.scatter(valid_points[:, 0], valid_points[:, 1], valid_points[:, 2], c=actuator_positions[:, 0], cmap='viridis', s=20)
-# ax.set_xlabel('X')
-# ax.set_ylabel('Y')
-# ax.set_zlabel('Z')
-# ax.set_title('Sampled End-Effector Positions Colored by Actuator 1 Position')
-# cbar = fig.colorbar(scatter)
-# cbar.set_label('Actuator 1 Position')
-# plt.show()
-
+fig = plt.figure(figsize=(12, 10))
+ax = fig.add_subplot(111, projection='3d')
+scatter = ax.scatter(valid_points[:, 0], valid_points[:, 1], valid_points[:, 2], c=actuator_positions[:, 0], cmap='viridis', s=20)
+ax.set_xlabel('X')
+ax.set_ylabel('Y')
+ax.set_zlabel('Z')
+ax.set_title('Sampled End-Effector Positions Colored by Actuator 1 Position')
+cbar = fig.colorbar(scatter)
+cbar.set_label('Actuator 1 Position')
+plt.show()
 
 def scale_convex_hull(points, scale_factor=0.7):
     hull = ConvexHull(points)

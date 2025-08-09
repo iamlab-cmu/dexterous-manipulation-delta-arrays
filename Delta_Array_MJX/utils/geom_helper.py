@@ -1,53 +1,41 @@
 import numpy as np
 import time
 import matplotlib.pyplot as plt
-import cv2
-from matplotlib.colors import LinearSegmentedColormap
-
 import open3d as o3d
+
 import networkx as nx
 import triangle as tr
 
 import scipy.linalg as linalg
-from scipy.spatial import KDTree, Delaunay
+from scipy.spatial import KDTree
 from scipy.spatial.transform import Rotation as R
-from scipy.interpolate import CubicSpline
-from skimage.measure import find_contours
+from scipy.optimize import minimize
 from scipy.interpolate import interp1d
-from scipy.spatial.distance import euclidean
 
 lower_green_filter = np.array([35, 50, 50])
 upper_green_filter = np.array([85, 255, 255])
 
+def get_2Dtf_matrix(x, y, yaw):
+    return np.array([[np.cos(yaw), -np.sin(yaw), x],
+                     [np.sin(yaw), np.cos(yaw), y],
+                     [0, 0, 1]])
+    
+def transform2D_pts(bd_pts, M):
+    homo_pts = np.hstack([bd_pts, np.ones((bd_pts.shape[0], 1))])
+    tfed_bd_pts = np.dot(M, homo_pts.T).T
+    return tfed_bd_pts[:, :2]
+
+def get_tfed_2Dpts(init_bd_pts, init_pose, goal_pose):
+    M_init = get_2Dtf_matrix(*init_pose)
+    M_goal = get_2Dtf_matrix(*goal_pose)
+    M = M_goal @ np.linalg.inv(M_init)
+    return transform2D_pts(init_bd_pts, M)
+
 def transform_pts_wrt_com(points, transform, com):
-    """
-    Apply a 2D transformation to a set of points.
-    """
     points_h = np.hstack([points - com, np.zeros((points.shape[0], 1)), np.ones((points.shape[0], 1))])
     transformed_points_h = points_h @ transform.T
     transformed_points = transformed_points_h[:, :2] + com
     return transformed_points
-
-def get_transform(init_bd_pts, new_bd_pts):
-    min_size = min(init_bd_pts.shape[0], new_bd_pts.shape[0])
-    init_bd_pts = init_bd_pts[np.random.choice(init_bd_pts.shape[0], size=min_size, replace=False)]
-    new_bd_pts = new_bd_pts[np.random.choice(new_bd_pts.shape[0], size=min_size, replace=False)]
-    M2 = icp(init_bd_pts, new_bd_pts, icp_radius=1)
-    return M2
-
-def icp(a, b, icp_radius = 1000):
-    # plt.scatter(a[:,0], a[:,1], c='r')
-    # plt.scatter(b[:,0], b[:,1], c='b')
-    # plt.show()
-    a = np.hstack([a, np.zeros([a.shape[0],1])])
-    b = np.hstack([b, np.zeros([b.shape[0],1])])
-    src = o3d.geometry.PointCloud()
-    dest = o3d.geometry.PointCloud()
-    src.points = o3d.utility.Vector3dVector(a)
-    dest.points = o3d.utility.Vector3dVector(b)
-    reg_p2p = o3d.pipelines.registration.registration_icp(src, dest, icp_radius, np.identity(4),
-                            o3d.pipelines.registration.TransformationEstimationPointToPoint())
-    return reg_p2p.transformation
 
 # Method 2: Angle-Based Ordering
 def sample_boundary_points(boundary_points: np.ndarray, n_samples: int) -> np.ndarray:
@@ -65,116 +53,90 @@ def sample_boundary_points(boundary_points: np.ndarray, n_samples: int) -> np.nd
     t = np.linspace(0, 1, n_samples)
     return np.column_stack([fx(t), fy(t)])
 
-def transform_boundary_points(init_bd_pts, goal_bd_pts, init_nn_bd_pts, method: str = 'rigid') -> np.ndarray:
-    """
-    Transform initial nearest neighbor boundary points to goal configuration.
+# def icp(A, B):
+#     centroid_A = np.mean(A, axis=0)
+#     centroid_B = np.mean(B, axis=0)
+#     Am = A - centroid_A
+#     Bm = B - centroid_B
     
-    Args:
-        init_bd_pts: Initial boundary points (N, 2)
-        goal_bd_pts: Goal boundary points (N, 2)
-        init_nn_bd_pts: Initial nearest neighbor points to transform (M, 2)
-        method: Transformation method ('rigid', 'affine', or 'local')
-        
-    Returns:
-        goal_nn_bd_pts: Transformed nearest neighbor points (M, 2)
-    """
-    # tf_matrix = get_transform(init_bd_pts, goal_bd_pts)
-    # return transform_pts_wrt_com(init_nn_bd_pts, tf_matrix, np.mean(init_bd_pts, axis=0))
-    if method == 'rigid':
-        return transform_rigid(init_bd_pts, goal_bd_pts, init_nn_bd_pts)
-    elif method == 'affine':
-        return transform_affine(init_bd_pts, goal_bd_pts, init_nn_bd_pts)
-    elif method == 'local':
-        return transform_local(init_bd_pts, goal_bd_pts, init_nn_bd_pts)
-    else:
-        raise ValueError(f"Unknown method: {method}")
+#     H = Am.T @ Bm
+#     U, _, Vt = np.linalg.svd(H)
+#     R = Vt.T @ U.T
+    
+#     if np.linalg.det(R) < 0:
+#         Vt[-1,:] *= -1
+#         R = Vt.T @ U.T    
+#     t = centroid_B - R @ centroid_A
+#     return R, t
 
-def find_rigid_transform(A, B):
-    """
-    Find rigid transformation (rotation + translation) between point sets A and B.
+# def icp_rot(A, B):
+#     H = A.T @ B
+#     U, _, Vt = np.linalg.svd(H)
+#     R = Vt.T @ U.T
     
-    Args:
-        A: Source points (N, 2)
-        B: Target points (N, 2)
-        
-    Returns:
-        R: Rotation matrix (2, 2)
-        t: Translation vector (2,)
-    """
-    centroid_A = np.mean(A, axis=0)
-    centroid_B = np.mean(B, axis=0)
-    Am = A - centroid_A
-    Bm = B - centroid_B
+#     if np.linalg.det(R) < 0:
+#         Vt[-1,:] *= -1
+#         R = Vt.T @ U.T    
+#     return R
+
+# def transform_boundary_points(init_bd_pts, goal_bd_pts, init_nn_bd_pts):
+#     com0 = np.mean(init_bd_pts, axis=0)
+#     com1 = np.mean(goal_bd_pts, axis=0)
     
-    # Compute rotation using SVD
-    H = Am.T @ Bm
+#     src = init_bd_pts - com0
+#     tgt = goal_bd_pts - com1
+    
+#     # R, t = icp(src, tgt)
+#     R = icp_rot(tgt, src)
+#     # R, t = icp_open3d(init_bd_pts, goal_bd_pts)
+#     return (R @ (init_nn_bd_pts - com0).T).T + com1
+
+
+def icp_rot_with_correspondence(src, tgt):
+    # Find nearest neighbors in tgt for each point in src
+    tgt_matched = np.zeros_like(src)
+    for i in range(len(src)):
+        distances = np.linalg.norm(tgt - src[i], axis=1)
+        tgt_matched[i] = tgt[np.argmin(distances)]
+    
+    H = src.T @ tgt_matched
     U, _, Vt = np.linalg.svd(H)
     R = Vt.T @ U.T
     
-    # Special reflection case
     if np.linalg.det(R) < 0:
-        Vt[-1,:] *= -1
+        Vt[-1, :] *= -1
         R = Vt.T @ U.T
-        
-    t = centroid_B - R @ centroid_A
-    return R, t
-
-def transform_rigid(init_bd_pts, goal_bd_pts, init_nn_bd_pts):
-    """Apply rigid transformation to points"""
-    R, t = find_rigid_transform(init_bd_pts, goal_bd_pts)
-    return (R @ init_nn_bd_pts.T).T + t
-
-def find_affine_transform(A, B):
-    """
-    Find affine transformation between point sets A and B.
     
-    Args:
-        A: Source points (N, 2)
-        B: Target points (N, 2)
-        
-    Returns:
-        M: Affine transformation matrix (2, 2)
-        t: Translation vector (2,)
-    """
-    A_hom = np.hstack([A, np.ones((A.shape[0], 1))])
-    transform = np.linalg.lstsq(A_hom, B, rcond=None)[0]
+    return R
+
+def transform_boundary_points(init_bd_pts, goal_bd_pts, init_nn_bd_pts):
+    com0 = np.mean(init_bd_pts, axis=0)
+    com1 = np.mean(goal_bd_pts, axis=0)
     
-    return transform[:2, :].T, transform[2, :]
-
-def transform_affine(init_bd_pts, goal_bd_pts, init_nn_bd_pts):
-    """Apply affine transformation to points"""
-    M, t = find_affine_transform(init_bd_pts, goal_bd_pts)
-    return (M @ init_nn_bd_pts.T).T + t
-
-def transform_local(init_bd_pts, goal_bd_pts, init_nn_bd_pts, k=5):
-    """
-    Apply locally weighted transformation based on nearest neighbors.
+    src = init_bd_pts - com0
+    tgt = goal_bd_pts - com1
     
-    Args:
-        init_bd_pts: Initial boundary points
-        goal_bd_pts: Goal boundary points
-        init_nn_bd_pts: Points to transform
-        k: Number of nearest neighbors for local transformation
-        
-    Returns:
-        Transformed points
-    """
-    tree = KDTree(init_bd_pts)
-    goal_nn_bd_pts = np.zeros_like(init_nn_bd_pts)
-    for i, point in enumerate(init_nn_bd_pts):
-        distances, indices = tree.query(point, k=k)
-        
-        weights = 1 / (distances + 1e-10)
-        weights = weights / np.sum(weights)
-        
-        local_init = init_bd_pts[indices]
-        local_goal = goal_bd_pts[indices]
-        
-        R, t = find_rigid_transform(local_init, local_goal)
-        
-        goal_nn_bd_pts[i] = (R @ point) + t
-    return goal_nn_bd_pts
+    R = icp_rot_with_correspondence(src, tgt)
+    
+    transformed_nn = (R @ (init_nn_bd_pts - com0).T).T + com1
+    return transformed_nn
 
+# def icp_open3d(source, target):
+#     source_pcd = o3d.geometry.PointCloud()
+#     target_pcd = o3d.geometry.PointCloud()
+#     source_pcd.points = o3d.utility.Vector3dVector(np.pad(source, ((0, 0), (0, 1))))  # Add z=0
+#     target_pcd.points = o3d.utility.Vector3dVector(np.pad(target, ((0, 0), (0, 1))))  # Add z=0
+#     threshold = 0.1
+#     trans_init = np.eye(4)
+#     result = o3d.pipelines.registration.registration_icp(
+#         source_pcd, target_pcd, threshold, trans_init,
+#         o3d.pipelines.registration.TransformationEstimationPointToPoint()
+#     )
+#     return result.transformation[:2, :2], result.transformation[:2, 3]
+
+# def transform_boundary_points(init_bd_pts, goal_bd_pts, init_nn_bd_pts):
+#     R, t = icp_open3d(init_bd_pts, goal_bd_pts)
+#     return (R @ (init_nn_bd_pts - init_bd_pts.mean(axis=0)).T).T + goal_bd_pts.mean(axis=0)
 
 def random_resample_boundary_points(init_bd_pts: np.ndarray, goal_bd_pts: np.ndarray):
     n1, n2 = len(init_bd_pts), len(goal_bd_pts)

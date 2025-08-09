@@ -1,185 +1,299 @@
-from multiprocessing import Process, Queue, Manager
-import multiprocessing
-import time
-import argparse
-import mujoco.viewer
+import pickle as pkl
 import numpy as np
-import sys
 import gc
-import requests
+import warnings
+import time
+import os
+import uuid
+warnings.filterwarnings("ignore")
+from scipy.spatial.transform import Rotation as R
+
+import multiprocessing
+from multiprocessing import Process, Manager
+
+from ipc_server import server_process_main
+from utils import arg_helper
 
 import src.delta_array_mj as delta_array_mj
 
-QUERY_VLM           = 0
-SA_GET_ACTION       = 1
-MA_GET_ACTION       = 2
-MA_UPDATE_POLICY    = 3
-MARB_STORE          = 4
-MARB_SAVE           = 5
-SAVE_MODEL          = 6
-LOAD_MODEL          = 7
+###################################################
+# Action / Endpoint Mappings
+###################################################
+MA_GET_ACTION        = 1
+MA_UPDATE_POLICY     = 2
+MARB_STORE           = 3
+MARB_SAVE            = 4
+SAVE_MODEL           = 5
+LOAD_MODEL           = 6
+LOG_INFERENCE        = 7
+TOGGLE_PUSHING_AGENT = 8
+TT_GET_ACTION        = 9
 
-url_dict = {
-    QUERY_VLM: "http://localhost:8000/vision",
-    SA_GET_ACTION: "http://localhost:8000/sac/get_actions",
-    MA_GET_ACTION: "http://localhost:8000/ma/get_actions",
-    MA_UPDATE_POLICY: "http://localhost:8000/marl/update",
-    MARB_STORE: "http://localhost:8000/marb/store",
-    MARB_SAVE: "http://localhost:8000/marb/save",
-    SAVE_MODEL: "http://localhost:8000/marl/save_model",
-    LOAD_MODEL: "http://localhost:8000/marl/load_model",
-}
-def send_request(data, action):
-    url = url_dict[action]
-    response = requests.post(url, json=data)
-    if response.status_code != 200:
-        print(f"Error in response: {response.status_code}")
-        return None
-    return response.json()
+# OBJ_NAMES = ['star', "block", 'hexagon', 'disc', 'cross', 'diamond', 'triangle', 'parallelogram', 'semicircle', "trapezium"]
+OBJ_NAMES = ['star', 'hexagon', "trapezium"]
 
-def run_env(env_id, sim_len, return_dict, args, inference=False):
-    # Set a unique random seed for this environment
-    seed = np.random.randint(0, 2**32 - 1)
-    np.random.seed(seed)
+###################################################
+# Client <-> Server Communication
+###################################################
+def create_server_process():
+    config = arg_helper.create_sac_config()
+    parent_conn, child_conn = multiprocessing.Pipe()
+    manager = Manager()
+    # Use the manager to create a shared Queue and a shared response dictionary.
+    batched_queue = manager.Queue()
+    response_dict = manager.dict()
+    child_proc = multiprocessing.Process(
+        target=server_process_main,
+        args=(child_conn, batched_queue, response_dict, config),
+        daemon=True
+    )
+    child_proc.start()
+    return parent_conn, batched_queue, response_dict, child_proc, config, manager
 
-    env = delta_array_mj.DeltaArrayMJ(args)
-
-    try:
-        run_dict = {}
-        for nrun in range(args['nruns']):
-            env.reset()
-            grasp_states = { 'states': env.init_grasp_state[:env.n_idxs].tolist() }
-
-            env.actions_grasp[:env.n_idxs] = send_request(grasp_states, SA_GET_ACTION)['actions']
-            env.init_state[:env.n_idxs, 4:6] = env.actions_grasp[:env.n_idxs]
-            for t_step in range(sim_len):
-                if t_step == 1:
-                    env.apply_action(env.actions_grasp[:env.n_idxs])
-                env.update_sim()
-
-            push_states = {
-                'states': env.init_state[:env.n_idxs].tolist(),
-                'pos': env.pos[:env.n_idxs].tolist(),
-                'det': inference
-            }
-
-            for t_step in range(sim_len):
-                if t_step == 1:
-                    if args['vis_servo']:
-                        env.vs_action()
-                        env.apply_action(env.actions[:env.n_idxs])
-                    else:
-                        print(push_states)
-                        response = send_request(push_states, MA_GET_ACTION)
-                        if response is None:
-                            print("Smth went wrong")
-                            raise ValueError("Error in response")
-                        env.actions[:env.n_idxs] = np.array(response['ma_actions'])
-                        env.final_state[:env.n_idxs, 4:6] = env.actions[:env.n_idxs]
-                        env.apply_action(env.actions[:env.n_idxs])
-                env.update_sim()
-
-            if env.rope:
-                env.final_state[:env.n_idxs, :2] = env.get_final_rope_pose()
-            else:
-                env.final_state[:env.n_idxs, :2] = env.get_final_obj_pose()
-            reward = env.compute_reward()
-            # print(f"Env {env_id}, Run {nrun} Reward: {reward}")
-
-            run_dict[nrun] = {
-                "s0": push_states['states'],
-                "a": env.actions[:env.n_idxs].tolist(),
-                "p": push_states['pos'],
-                "r": reward,
-                "s1": env.final_state[:env.n_idxs].tolist(),
-                "d": True if reward > -1 else False,
-                "N": env.n_idxs,
-            }
-        # Store results in the shared return_dict
-        return_dict[env_id] = run_dict
-    finally:
-        # Clean up resources
-        env.close()
-        del env
-        gc.collect()
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="A script that greets the user.")
-    parser.add_argument("-t", "--test", action="store_true", help="True for Test")
-    parser.add_argument('-nenv', '--nenv', type=int, default=4, help='Number of parallel envs')
-    parser.add_argument('-nruns', '--nruns', type=int, default=4, help='Number of runs in each parallel env before running off-policy updates')
-    parser.add_argument('-path', "--path", type=str, default="./config/env.xml", help="Path to the configuration file")
-    parser.add_argument('-H', '--height', type=int, default=1080, help='Height of the window')
-    parser.add_argument('-W', '--width', type=int, default=1920, help='Width of the window')
-    parser.add_argument('-gui', '--gui',  action='store_true', help='Whether to display the GUI')
-    parser.add_argument('-simlen', '--simlen', type=int, default=500, help='Number of steps to run sim')
-    parser.add_argument('-obj', "--obj_name", type=str, default="block", help="Object to manipulate in sim")
-    parser.add_argument('-nrb', '--num_rope_bodies', type=int, default=30, help='Number of cylinders in the rope')
-    parser.add_argument("-rf", "--robot_frame", action="store_true", help="Robot Frame Yes or No")
-    parser.add_argument("-v", "--vis_servo", action="store_true", help="True for Visual Servoing")
-    parser.add_argument("-avsd", "--add_vs_data", action="store_true", help="True for adding visual servoing data")
-    parser.add_argument("-vsd", "--vs_data", type=float, help="[0 to 1] ratio of data to use for visual servoing")
-    parser.add_argument("-print", "--print_summary", action="store_true", help="Print Summary and Store in Pickle File")
-    parser.add_argument("-savevid", "--save_vid", action="store_true", help="Save Videos at inference")
-    parser.add_argument("-XX", "--donothing", action="store_true", help="Do nothing to test sim")
-    parser.add_argument("-test_traj", "--test_traj", action="store_true", help="Test on trajectories")
-    parser.add_argument("-cmuri", "--cmuri", action="store_true", help="Set to use CMU RI trajectory")
-    parser.add_argument('-rc', '--rope_chunks', type=int, default=50, help='Number of visual rope chunks')
-    parser.add_argument('-dontlog', '--dontlog', action="store_true", help='Set to disable logging')
-    args = parser.parse_args()
-    args = vars(args)
-
-    if args['gui'] and args['nenv'] > 1:
-        raise ValueError("Cannot run multiple environments with GUI")
-    
-    update_dict = {
-        'batch_size': 256,
-        'current_episode': 0,
-        'n_updates': args['nenv']
-    }
-    outer_loops = 0
-    inference = False
-    
-    now = time.time()
-    # TODO: Implement testing script to load a pretrained model and run inference.
-    if args['gui']:
-        run_env(0, args['simlen'], {}, args, True if args['test'] else False)
+def send_request(pipe_conn, action_code, data=None, lock=None, batched_queue=None, response_dict=None):
+    """
+    For non-batched endpoints, use the Pipe (with lock).
+    For MA_GET_ACTION, put a request (with unique id) in the batched_queue and wait for its response in response_dict.
+    """
+    if action_code == MA_GET_ACTION:
+        req_id = str(uuid.uuid4())
+        # Request structure: (endpoint, data, req_id)
+        request = (action_code, data, req_id)
+        batched_queue.put(request)
+        # Wait (poll) until the server writes our response.
+        while req_id not in response_dict:
+            time.sleep(0.001)  # short sleep to avoid busy waiting
+        response = response_dict.pop(req_id)
+        return response
     else:
-        multiprocessing.set_start_method('spawn', force=True)
-        while True:
-            manager = Manager()
-            return_dict = manager.dict()
+        with lock:
+            request = (action_code, data)
+            pipe_conn.send(request)
+            response = pipe_conn.recv()
+        return response
+###################################################
+# Test Trajectory
+###################################################
+def run_test_traj_rb(env_id, sim_len, experiment_data, algo, VideoRecorder, config, inference, pipe_conn, lock):
+    print(algo)
+    algo_dict = {}
+    os.makedirs(f"./data/videos/{config['name']}", exist_ok=True)
+    if config['save_vid']:
+        recorder = VideoRecorder(output_dir=f"./data/videos/{config['name']}", fps=120)
+    else:
+        recorder = None
+    if recorder is not None:
+        n_trials = 1
+    else:
+        n_trials = 5
+        
+    print(f"Running Test Trajectories for {algo}")
+    for obj_name in OBJ_NAMES:
 
-            processes = []
-            for i in range(args['nenv']):
-                p = Process(target=run_env, args=(i, args['simlen'], return_dict, args, inference))
-                processes.append(p)
-                p.start()
-
-            for p in processes:
-                p.join()
-
-            update_dict['current_episode'] += args['nenv']*args['nruns']
-            for env_id, run_dict in return_dict.items():
-                avg_reward = 0
-                for nrun, data in run_dict.items():
-                    avg_reward += data['r']
-                    send_request(data, MARB_STORE)
+        print(f"{algo}: Object: {obj_name}")
+        algo_dict[obj_name] = {}
+        env = delta_array_mj.DeltaArrayRB(config, obj_name)
+        with open(f"./data/test_traj/test_trajs_new.pkl", "rb") as f:
+            data = pkl.load(f)
+                    
+        for traj_name, path in data.items():
+            
+            if recorder:
+                recorder.start_recording(filename=f"{algo}_{obj_name}_{traj_name}.mp4")
+            algo_dict[obj_name][traj_name] = {}
+            
+            for run_id in range(n_trials):
+                algo_dict[obj_name][traj_name][run_id] = []
+                path_cp = path.tolist()
+                init_pose = path_cp.pop(0)
+                next_pose = path_cp.pop(0)
+                env.soft_reset(init=init_pose, goal=next_pose)
                 
-                avg_reward /= args['nenv']
-                if not args['dontlog']:
-                    send_request(avg_reward, "wandb/log_reward")
+                try_id = 0
+                tries = 1
+                
+                while len(path_cp) > 0:
+                    try_id += 1
+                    env.apply_action(env.actions_grasp[:env.n_idxs])
+                    env.update_sim(sim_len, recorder)
+                    
+                    push_states = (algo, env.init_state[:env.n_idxs], env.pos[:env.n_idxs], inference)
+                    if algo == "Vis Servo":
+                        execute_actions = env.vs_action(random=False)
+                        actions = -1*np.ones((env.n_idxs, 3))
+                        actions[:, :2] = execute_actions
+                    elif algo == "Random":
+                        execute_actions = env.vs_action(random=True)
+                        actions = -1*np.ones((env.n_idxs, 3))
+                        actions[:, :2] = execute_actions
+                    else:
+                        actions = send_request(pipe_conn, TT_GET_ACTION, push_states, lock)
+                        
+                        actions = actions[:env.n_idxs]
+                        if actions.shape[-1] == 3:
+                            active_idxs = np.array(env.active_idxs)
+                            inactive_idxs = active_idxs[actions[:, 2] > 0]
+
+                            if len(inactive_idxs) > 0:
+                                env.set_z_positions(active_idxs=list(inactive_idxs), low=False)  # Set to high
+                            execute_actions = env.clip_actions_to_ws(actions[:, :2])
+                        else:
+                            # print(actions.shape)
+                            execute_actions = env.clip_actions_to_ws(actions)
+                            # print(execute_actions.shape)
+                            actions = -1*np.ones((env.n_idxs, 3))
+                            actions[:, :2] = execute_actions
+                            
+                        env.final_state[:env.n_idxs, 4:6] = execute_actions
+                        
+                    env.apply_action(execute_actions)
+                    env.update_sim(sim_len, recorder)
+                    env.set_rl_states(execute_actions, final=True, test_traj=True)
+                    dist, reward = env.compute_reward(actions, inference)
+                    print(f"Algo: {algo}, Obj: {obj_name}, Traj: {traj_name}, Run: {run_id}, Attempt: {try_id}, Reward: {reward}")
+                    
+                    step_data = {
+                            'try_id'        : try_id,
+                            'init_qpos'     : env.init_qpos,
+                            'goal_qpos'     : env.goal_qpos,
+                            'final_qpos'    : env.final_qpos,
+                            'dist'          : dist,
+                            'reward'        : float(reward),
+                            'tries'         : tries,
+                            'robot_indices' : (env.active_idxs.copy()),
+                            'actions'       : actions,
+                            'robot_count'   : (env.n_idxs),
+                        }
+                    
+                    algo_dict[obj_name][traj_name][run_id].append(step_data)
+                    
+                    # TODO: Set a proper threshold
+                    if (reward > 80) or (tries>3):
+                        tries = 1
+                        next_pose = path_cp.pop(0)
+                        env.soft_reset(goal=next_pose)
+                    else:
+                        tries+=1
+                        env.soft_reset()
+                        
+                if recorder is not None:
+                    recorder.stop_recording()
+    
+    experiment_data[algo] = algo_dict
+        
+        
+def run_test_traj_rope(env_id, sim_len, experiment_data, algo, VideoRecorder, config, inference, pipe_conn, lock):
+    algo_dict = {}
+    if config['save_vid']:
+        recorder = VideoRecorder(output_dir="./data/videos", fps=30)
+    else:
+        recorder = None
+    # send_request(lock, pipe_conn, TOGGLE_PUSHING_AGENT, algo)
+    print(f"Running Test Trajectories for {algo}")
+    env = delta_array_mj.DeltaArrayRope(config, obj_name="rope")
+        
+    for run_id in range(50):
+        algo_dict[run_id] = []
+        env.reset()
+        
+        for try_no in range(5):
+            env.apply_action(env.actions_grasp[:env.n_idxs])
+            env.update_sim(sim_len, recorder)
             
-            if update_dict['current_episode'] > 20000:
-                print("Data Collection Complete.")
-                print(f"Time taken: {time.time() - now}")
-                send_request(data, MARB_SAVE)
+            push_states = (algo, env.init_state[:env.n_idxs], env.pos[:env.n_idxs], inference)
+            if algo == "Vis Servo":
+                actions = env.vs_action(random=False)
+            elif algo == "Random":
+                actions = env.vs_action(random=True)
+            else:
+                actions = send_request(pipe_conn, TT_GET_ACTION, push_states, lock)
+                env.final_state[:env.n_idxs, 4:6] = actions
+                
+            env.apply_action(actions)
+            env.update_sim(sim_len, recorder)
+            env.set_rl_states(actions, final=True, test_traj=True)
+            dist, reward = env.compute_reward_long_horizon()
+            # print(dist, reward)
+            # print(f"Algo: {algo}, Obj: {obj_name}, Traj: {traj_name}, Run: {run_id}, Attempt: {try_id}, Reward: {reward}")
+            
+            step_data = {
+                    'try_id'        : try_no,
+                    'init_qpos'     : env.init_rope_pose,
+                    'goal_qpos'     : env.goal_rope_pose,
+                    'final_qpos'    : env.final_rope_pose,
+                    'reward'        : reward,
+                    'dist'          : dist,
+                    'robot_indices' : (env.active_idxs.copy()),
+                    'actions'       : actions.tolist(),
+                    'robot_count'   : (env.n_idxs),
+                }   
+            
+            algo_dict[run_id].append(step_data)
+            if (reward > 40) :
                 break
-        # send_request(update_dict, MA_UPDATE_POLICY)
+            else:
+                env.soft_reset()
             
-    # except Exception as e:
-    #     print(e)
-    #     send_request({}, SAVE_MODEL)
-    #     gc.collect()
-    # finally:
-    #     sys.exit(1)
+                    
+    experiment_data[algo] = algo_dict
+
+###################################################
+# Main
+###################################################
+if __name__ == "__main__":
+    multiprocessing.set_start_method('spawn', force=True)
+    from utils.training_helper import TrainingSchedule
+    from utils.video_utils import VideoRecorder
+    
+    parent_conn, batched_queue, response_dict, child_proc, config, manager = create_server_process()
+    if config['gui'] and config['nenv'] > 1:
+        raise ValueError("Cannot run multiple environments with GUI")
+
+    manager = Manager()
+    lock = manager.Lock()
+        
+    current_episode = 0
+    n_updates = config['nenv']
+    avg_reward = 0
+    
+    if config['test']:
+        send_request(parent_conn, LOAD_MODEL, lock=lock)
+        inference = True
+    else:
+        inference = False
+
+    outer_loops = 0
+    if config['test_traj']:
+            
+        if config['gui']:
+            algos = ['Vis Servo']
+        else:
+            # algos = ["Random", "Vis Servo", "MATSAC", "MABC_Finetune", 'MABC']
+            # algos = ["Random", "Vis Servo", "MATSAC", "MABC_Finetune", 'MABC', "MABC_Finetune_Bin","MABC_Finetune_PB","MABC_Finetune_CA","MABC_Finetune_PB_CA"]
+            algos = ["MABC_Finetune_PB"]
+        
+        experiment_data = manager.dict()
+        processes = []
+        for i in range(len(algos)):
+            p = Process(target=run_test_traj_rb if config['obj_name']!="rope" else run_test_traj_rope, 
+                        args=(i, config['simlen'], experiment_data, algos[i], 
+                              VideoRecorder, config, True, parent_conn, lock))
+            processes.append(p)
+            p.start()
+        for p in processes:
+            p.join()
+            
+        # for algo in algos:
+        #     run_test_traj_rb(0, config['simlen'], {}, config, True, parent_conn, lock)
+            
+        final_expt_data = dict(experiment_data)
+        # save_path = f"./data/test_traj/test_traj_data_sel_acts.pkl"
+        # pkl.dump(final_expt_data, open(save_path, "wb"))
+        # print(f"Saved Test Trajectory Data at {save_path}")
+    else:
+        print("Why are you running test.py?")
+        
+
+    send_request(parent_conn, action_code=None, data={"endpoint": "exit"}, lock=lock)
+    child_proc.join()
+    print("[Main] Done.")
