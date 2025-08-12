@@ -98,12 +98,10 @@ def run_env(env_id, sim_len, n_runs, return_dict, config, inference, pipe_conn, 
     nrun = 0
     while nrun < n_runs:
         if env.reset():
-            # APPLY GRASP ACTIONS
             env.apply_action(env.actions_grasp[:env.n_idxs])
             env.update_sim(sim_len, recorder)
 
             push_states = (env.init_state[:env.n_idxs], env.pos[:env.n_idxs], inference)
-            # APPLY PUSH ACTIONS
             if (config['vis_servo']) or (np.random.rand() < config['vsd']):
                 actions = env.vs_action(random=False)
                 env.apply_action(actions)

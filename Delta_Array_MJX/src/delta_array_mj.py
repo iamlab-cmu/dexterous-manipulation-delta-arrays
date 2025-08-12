@@ -137,9 +137,10 @@ class DeltaArrayBase(BaseMJEnv):
         if final:
             self.final_bd_pts, self.final_nn_bd_pts = self.get_current_bd_pts()
             if not self.rope:
+                # In jax, just clip the body pose by limits and set reward as 0.
                 x, y = self.data.qpos[self.obj_id: self.obj_id+2]
                 if (not((0.009 < x < 0.242) and (0.034 < y < 0.376))) or (self.final_bd_pts is None) or (self.final_nn_bd_pts is None):
-                    self.data.qpos[self.obj_id:self.obj_id+7] = self.init_qpos.copy()
+                    self.data.qpos[self.obj_id:self.obj_id+7] = self.init_qpos.copy() 
                     self.update_sim(1)
                     self.final_bd_pts, self.final_nn_bd_pts = self.get_current_bd_pts()
                     

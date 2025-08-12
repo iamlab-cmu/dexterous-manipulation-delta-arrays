@@ -1,0 +1,313 @@
+import jax
+import jax.numpy as jnp
+from jaxtyping import Array
+import mujoco
+from mujoco import mjx
+from functools import partial
+import equinox as eqx
+from jax.scipy.spatial.transform import Rotation as R
+
+import numpy as np
+import cv2
+from scipy.spatial.transform import Rotation as R_og
+
+from delta_array_utils.Prismatic_Delta import Prismatic_Delta
+import utils.geom_helper as geom_helper
+from src.base_env import BaseMJXEnv
+from utils.constants import OBJ_NAMES
+
+def normalize_angle(angle):
+    return (angle + jnp.pi) % (2 * jnp.pi) - jnp.pi
+        
+class State(eqx.Module):
+    data: mjx.Data
+    obs: Array
+    init_bd_pts: Array
+    init_nn_bd_pts: Array
+    goal_nn_bd_pts: Array
+    active_robot_mask: Array
+    obj_idx: Array
+    reward: Array
+    done: Array
+    key: jax.random.PRNGKey
+    
+@partial(jnp.vectorize, signature='(n,2),(m,2)->(m)')
+def _is_inside_polygon(polygon_pts, target_pts):
+    def is_left(p0, p1, p2):
+        return (p1[0] - p0[0]) * (p2[1] - p0[1]) - (p2[0] - p0[0]) * (p1[1] - p0[1])
+
+    def loop_body(i, winding_number):
+        p1 = polygon_pts[i]
+        p2 = polygon_pts[(i + 1) % polygon_pts.shape[0]]
+        
+        # Condition 1: target_pt.y <= p1.y
+        # Condition 2: target_pt.y > p2.y
+        # Condition 3: is_left(p1, p2, target_pt) > 0 (to the left)
+        upward_crossing = (target_pts[1] <= p1[1]) & (target_pts[1] > p2[1]) & (is_left(p1, p2, target_pts) > 0)
+        
+        # Condition 1: target_pt.y > p1.y
+        # Condition 2: target_pt.y <= p2.y
+        # Condition 3: is_left(p1, p2, target_pt) < 0 (to the right)
+        downward_crossing = (target_pts[1] > p1[1]) & (target_pts[1] <= p2[1]) & (is_left(p1, p2, target_pts) < 0)
+
+        return winding_number + jnp.where(upward_crossing, 1, 0) - jnp.where(downward_crossing, 1, 0)
+
+    # A non-zero winding number means the point is inside.
+    final_winding_number = jax.lax.fori_loop(0, polygon_pts.shape[0], loop_body, 0)
+    return final_winding_number != 0
+
+class DeltaArrayEnv(BaseMJXEnv):
+    def __init__(self, config):
+        super().__init__(config)
+        self.num_envs = config['num_envs']
+        self.n_ctrl_steps = config['simlen']
+        self.compensate_for_actions = self.args['compa']
+        self.ca_wt = 200
+        self.parsimony_bonus = self.args['parsimony_bonus']
+        self.pb_wt = 20
+        self.act_scale = 0.03
+        
+        s_p = 1.5
+        s_b = 4.3
+        ln = 4.5
+        self.Delta = Prismatic_Delta(s_p, s_b, ln)
+        self.low_Z = 0.015
+        self.high_Z = 0.2
+        self.ws_rad_sq = 0.033**2
+        self.ws_clip_rad = 0.025**2
+        
+        robot_positions = np.zeros((64, 2))
+        robot_z_qpos_adr = np.zeros(64, dtype=int) #z is qpos setted
+        robot_ctrl_adr = np.zeros((64, 2), dtype=int) # x, y are actuated
+        for i in range(8):
+            for j in range(8):
+                idx = i * 8 + j
+                rb_name = f"fingertip_{idx}"
+                rb_joint_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, rb_name)
+                robot_z_qpos_adr[idx] = self.model.jnt_qposadr[rb_joint_id] + 2
+                
+                actuator_x_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"act_{rb_name}_x")
+                actuator_y_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"act_{rb_name}_y")
+                robot_ctrl_adr[idx] = np.array(actuator_x_id, actuator_y_id)
+                
+                if i % 2 != 0:
+                    pos = np.array((i * 0.0375, j * 0.043301 - 0.02165))
+                else:
+                    pos = np.array((i * 0.0375, j * 0.043301))
+                robot_positions[idx] = pos
+        self.robot_positions = jnp.array(robot_positions)
+        self.robot_z_qpos_adr = jnp.array(robot_z_qpos_adr)
+        self.robot_ctrl_adr = jnp.array(robot_ctrl_adr)
+            
+        self.init_data_mjx = mjx.make_data(self.mjx_model)
+        self.set_canonical_bd_pts()
+        
+    def convert_pix_2_world(self, vecs):
+        plane_size = np.array([(-0.06, -0.2035), (0.3225, 0.485107)])
+        delta_plane_x = plane_size[1][0] - plane_size[0][0]
+        delta_plane_y = plane_size[1][1] - plane_size[0][1]
+        delta_plane = np.array((delta_plane_x, -delta_plane_y))
+        result = np.zeros((vecs.shape[0], 2))
+        result[:, 0] = vecs[:, 0] / 1080 * delta_plane[0] + plane_size[0][0]
+        result[:, 1] = (1920 - vecs[:, 1]) / 1920 * delta_plane[1] + plane_size[0][1]
+        return result
+        
+    def get_bdpts_traditional(self):
+        lower_green_filter = np.array([35, 50, 50])
+        upper_green_filter = np.array([85, 255, 255])
+        img = self.get_image()
+        hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+        mask = cv2.inRange(hsv, lower_green_filter, upper_green_filter)
+        seg_map = cv2.bitwise_and(img, img, mask = mask)
+        seg_map = cv2.cvtColor(seg_map, cv2.COLOR_RGB2GRAY)
+        boundary = cv2.Canny(seg_map,100,200)
+        boundary_pts = np.array(np.where(boundary==255)).T
+        return geom_helper.sample_boundary_points(self.convert_pix_2_world(boundary_pts), 300)
+            
+    def set_canonical_bd_pts(self):
+        canon_tx = np.array((0.13125, 0.1407285, 1.002))
+        canon_rot = R_og.from_euler('xyz', (np.pi/2, 0, 0))
+        
+        all_bd_pts = []
+        all_coms = []
+        self.obj_qpos_adr_map = {}
+        
+        for i, obj_name in enumerate(OBJ_NAMES):
+            obj_joint_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, obj_name)
+            obj_qpos_adr = self.model.jnt_qposadr[obj_joint_id]
+            self.obj_qpos_adr_map[i] = jnp.array(obj_qpos_adr)
+            
+            backup = self.data.qpos[obj_qpos_adr:obj_qpos_adr+7].copy()
+            self.data.qpos[obj_qpos_adr:obj_qpos_adr+7] = np.concatenate([canon_tx, canon_rot.as_quat(scalar_first=True)])
+            
+            mujoco.mj_step(self.model, self.data)
+            bd_pts = self.get_bdpts_traditional()
+            com = np.mean(bd_pts, axis=0)
+            
+            all_bd_pts.append(bd_pts)
+            all_coms.append(com)
+            self.data.qpos[obj_qpos_adr:obj_qpos_adr+7] = backup
+            mujoco.mj_step(self.model, self.data)
+            
+        self.canonical_bd_pts = jnp.stack(all_bd_pts)
+        self.canonical_coms = jnp.stack(all_coms)
+        self.num_objects = len(OBJ_NAMES)
+        print("Pre-computation complete.")
+        
+    @partial(jax.jit, static_argnums=(0,))
+    def _find_active_robots_jax(self, obj_bd_pts):
+        # 1. Compute pairwise squared distances between all robots and all boundary points
+        # robot_positions: (64, 2), obj_bd_pts: (N, 2)
+        # -> dists_sq: (64, N)
+        dists_sq = jnp.sum((self.robot_positions[:, None, :] - obj_bd_pts[None, :, :])**2, axis=-1)
+        min_dists_sq = jnp.min(dists_sq, axis=1) # Shape: (64,)
+        nn_indices = jnp.argmin(dists_sq, axis=1) # Shape: (64,)
+        nn_bd_pts = obj_bd_pts[nn_indices] # Shape: (64, 2)
+
+        is_inside = _is_inside_polygon(obj_bd_pts, self.robot_positions) # Shape: (64,)
+
+        # Condition A: Robot is NOT inside the object.
+        # Condition B: Minimum distance is less than the workspace radius.
+        active_mask = ~is_inside & (min_dists_sq < self.workspace_radius_sq)
+        return active_mask, nn_bd_pts
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def _transform_bd_pts_jax(self, init_bd_pts, goal_bd_pts, init_nn_bd_pts):
+        com_init = jnp.mean(init_bd_pts, axis=0)
+        com_goal = jnp.mean(goal_bd_pts, axis=0)
+
+        src = init_bd_pts - com_init
+        tgt = goal_bd_pts - com_goal
+
+        H = src.T @ tgt
+        U, S, Vt = jnp.linalg.svd(H)
+        R = Vt.T @ U.T
+        d = jnp.linalg.det(R)
+        diag_matrix = jnp.eye(R.shape[0]).at[-1, -1].set(d)
+        R = Vt.T @ diag_matrix @ U.T
+        
+        transformed_nn_pts = (R @ (init_nn_bd_pts - com_init).T).T + com_goal
+        return transformed_nn_pts
+        
+    @partial(jax.jit, static_argnums=(0,))
+    def _clip_actions_to_ws_jax(self, actions: Array) -> Array:
+        action_mag_sq = jnp.sum(actions**2, axis=-1, keepdims=True)
+        scale = jnp.sqrt(self.ws_clip_rad / action_mag_sq)
+        clipped_actions = jnp.where(action_mag_sq > self.ws_clip_rad, actions * scale, actions)
+        return clipped_actions
+        
+    @partial(jax.jit, static_argnums=(0,))
+    def _set_z_pos(self, data_mjx, active_mask):
+        z_positions = jnp.where(active_mask, self.low_Z, self.high_Z)
+        new_qpos = data_mjx.qpos.at[self.robot_z_qpos_adr].set(z_positions)
+        return data_mjx.replace(qpos=new_qpos)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def reset(self, env_state, key):
+        key, obj_key, pose_key, grasp_key = jax.random.split(key, 4)
+        new_state = eqx.tree_at(lambda s: (s.data, s.key), env_state, (self.init_data_mjx, key))
+        
+        obj_idx = jax.random.randint(obj_key, shape=(), minval=0, maxval=self.num_objects)
+        bd_pts = self.canonical_bd_pts[obj_idx]
+        com = self.canonical_coms[obj_idx]
+
+        g_key, i_key = jax.random.split(pose_key)
+        goal_x = jax.random.uniform(g_key, minval=0.011, maxval=0.24)
+        goal_y = jax.random.uniform(g_key, minval=0.007, maxval=0.27)
+        goal_yaw_angle = jax.random.uniform(g_key, minval=-jnp.pi, maxval=jnp.pi)
+        goal_rot = R.from_euler('z', goal_yaw_angle)
+        goal_pos = jnp.array([goal_x, goal_y])
+        
+        init_x = goal_x + jax.random.uniform(i_key, minval=-0.02, maxval=0.02)
+        init_y = goal_y + jax.random.uniform(i_key, minval=-0.02, maxval=0.02)
+        init_yaw_delta = jax.random.uniform(i_key, minval=-jnp.pi/2, maxval=jnp.pi/2)
+        init_rot = R.from_euler('z', goal_yaw_angle + init_yaw_delta)
+        init_pos = jnp.array((init_x, init_y))
+        init_qpos = jnp.concatenate((jnp.array((init_x, init_y, 1.002)), init_rot.as_quat(scalar_first=True)))
+        
+        goal_bd_pts = goal_rot.apply(bd_pts - com)[:, :2] + goal_pos
+        init_bd_pts = init_rot.apply(bd_pts - com)[:, :2] + init_pos
+        
+        active_robot_mask, init_nn_bd_pts = self._find_active_robots_jax(init_bd_pts)
+        goal_nn_bd_pts = self._transform_bd_pts_jax(init_bd_pts, goal_bd_pts, init_nn_bd_pts)
+        raw_rb_pos = self.robot_positions
+        vec_to_init_pt = init_nn_bd_pts - raw_rb_pos
+        vec_to_goal_pt = goal_nn_bd_pts - raw_rb_pos
+        grasp_acts = self._clip_actions_to_ws_jax(vec_to_init_pt)
+        
+        obs = jnp.concatenate([vec_to_init_pt, vec_to_goal_pt, grasp_acts], axis=-1)
+        obs = jnp.where(active_robot_mask[:, None], obs, 0.)
+        actions_grasp = jnp.where(active_robot_mask[:, None], grasp_acts, 0.)
+        
+        data_mjx = new_state.data
+        data_mjx = data_mjx.replace(qpos=jax.lax.dynamic_update_slice(data_mjx.qpos, init_qpos, self.obj_qpos_adr_map[obj_idx]))
+        data_mjx = self._set_z_pos_jax(data_mjx, jnp.zeros_like(active_robot_mask, dtype=bool))
+
+        ctrl = jnp.zeros(self.model.nu).at[self.robot_ctrl_adr.flatten()].set(actions_grasp.flatten())
+        data_mjx = data_mjx.replace(ctrl=ctrl)
+        
+        def _substep(carry_data, _):
+            new_data = mjx.step(self.mjx_model, carry_data)
+            return new_data, None
+
+        data_mjx, _ = jax.lax.scan(_substep, data_mjx, (), self.n_substeps)
+        
+        return eqx.tree_at(
+            lambda s: (s.data, s.obs, s.init_bd_pts, s.init_nn_bd_pts, s.goal_nn_bd_pts, s.active_robot_mask, s.obj_idx, s.reward, s.done),
+            new_state,
+            (data_mjx, obs, init_bd_pts, init_nn_bd_pts, goal_nn_bd_pts, active_robot_mask, obj_idx, jnp.zeros(()), jnp.zeros(()))
+        )
+
+    @partial(jax.jit, static_argnums=(0,))
+    def step(self, state: State, action: jnp.ndarray) -> State:
+        act_xy = action[:, :2]
+        act_z = action[:, 2]
+        robot_is_selected_mask = (act_z < 0) & state.active_robot_mask
+
+        ctrl_xy = jnp.where(robot_is_selected_mask[:, None], act_xy, 0.)
+        scaled_action = ctrl_xy * self.act_scale
+        ctrl = jnp.zeros(self.model.nu).at[self.robot_ctrl_adr.flatten()].set(scaled_action.flatten())
+        data_mjx = state.data.replace(ctrl=ctrl)
+
+        def _substep(carry_data, _):
+            new_data = mjx.step(self.mjx_model, carry_data)
+            return new_data, None
+        final_data, _ = jax.lax.scan(_substep, data_mjx, (), self.n_substeps)
+        
+        obj_qpos_adr = self.obj_qpos_adr_map[state.obj_idx.item()]
+        final_qpos = jax.lax.dynamic_slice(final_data.qpos, (obj_qpos_adr,), (7,))
+        final_pos, final_rot = final_qpos[:2], R.from_quat(final_qpos[3:])
+        
+        canon_pts = self.canonical_bd_pts[state.obj_idx]
+        canon_com = self.canonical_coms[state.obj_idx]
+        final_bd_pts = final_rot.apply(canon_pts - canon_com)[:, :2] + final_pos
+        
+        final_nn_bd_pts = self._transform_bd_pts_jax(state.init_bd_pts, final_bd_pts, state.init_nn_bd_pts)
+        
+        dist_vec = state.goal_nn_bd_pts - final_nn_bd_pts
+        dist = jnp.linalg.norm(dist_vec, axis=-1)
+        
+        masked_dist = jnp.where(state.active_robot_mask, dist, 0.)
+        mean_dist = jnp.sum(masked_dist) / jnp.maximum(jnp.sum(state.active_robot_mask), 1.)
+
+        reward = 1 / (100 * mean_dist**3 + 0.01)
+        
+        if self.compensate_for_actions:
+            action_magnitudes = jnp.sum(jnp.abs(act_xy))
+            action_penalty = self.action_penalty_weight * jnp.sum(jnp.where(robot_is_selected_mask, action_magnitudes, 0.))
+            reward -= action_penalty
+            
+        if self.parsimony_bonus:
+            num_selected = jnp.sum(robot_is_selected_mask)
+            num_available = jnp.maximum(jnp.sum(state.active_robot_mask), 1.)
+            parsimony_penalty = self.parsimony_penalty_weight * (num_selected / num_available)
+            reward -= parsimony_penalty
+        
+        next_obs = state.obs
+                
+        return eqx.tree_at(
+            lambda s: (s.data, s.obs, s.reward, s.done),
+            state,
+            (final_data, next_obs, reward, jnp.ones(()))
+        )
+

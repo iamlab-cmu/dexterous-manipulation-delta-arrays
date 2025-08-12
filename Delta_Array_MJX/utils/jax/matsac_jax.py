@@ -1,0 +1,150 @@
+import jax
+import jax.numpy as jnp
+import jax.random as jr
+import equinox as eqx
+
+from utils.jax_utils import polyak_update
+from utils.jax.gpt_adaln_core import JaxTransformer as TF
+
+class MATSACAgent(eqx.Module):
+    actor: eqx.Module
+    critic1: eqx.Module
+    critic2: eqx.Module
+
+    critic1_target: eqx.Module
+    critic2_target: eqx.Module
+    log_alpha: jnp.array
+    
+    def __init__(self, key, config):
+        actor_key, c1_key, c2_key = jr.split(key, 3)
+
+        act_out_dim = config['act_dim'] * 2 
+        q_out_dim = 1
+        self.actor = TF(config, out_dim=act_out_dim, is_critic=False, key=actor_key)
+        self.critic1 = TF(config, out_dim=q_out_dim, is_critic=True, key=c1_key)
+        self.critic2 = TF(config, out_dim=q_out_dim, is_critic=True, key=c2_key)
+        
+        self.critic1_target = self.critic1
+        self.critic2_target = self.critic2
+        
+        self.log_alpha = jnp.array(-1.609) # e^log_alpha = 0.2 
+      
+@eqx.filter_vmap(in_axes=(None, 0, 0, 0))
+def _vmapped_actor_sample(actor, s, pos, key):
+    model_key, sample_key = jr.split(key)
+    dist = actor(s, pos, key=model_key)
+    return dist.sample_and_log_prob(key=sample_key)
+
+@eqx.filter_vmap(in_axes=(None, 0, 0, 0, 0))
+def _vmapped_critic_eval(critic, s, pos, a, key):
+    q_vals = critic(s, pos, a, key=key)
+    return jnp.sum(q_vals.squeeze(-1), axis=-1)
+
+def _critic_loss_fn(critics_to_grad, static_critics, batch,  next_actions_log_probs,  keys, gamma, alpha):
+    q1_model, q2_model = critics_to_grad
+    q1_target, q2_target = static_critics
+    s, a, rd, s_next, d, pos = batch
+    next_actions, next_log_probs = next_actions_log_probs
+    q1_key, q2_key, q1t_key, q2t_key = keys
+
+    q1_keys_t = jr.split(q1t_key, s_next.shape[0])
+    q2_keys_t = jr.split(q2t_key, s_next.shape[0])
+    
+    q1_next_target = _vmapped_critic_eval(q1_target, s_next, pos, next_actions, q1_keys_t)
+    q2_next_target = _vmapped_critic_eval(q2_target, s_next, pos, next_actions, q2_keys_t)
+    q_next_target = jnp.minimum(q1_next_target, q2_next_target)
+    
+    q_target = rd + gamma * (1.0 - d) * (q_next_target - alpha * next_log_probs)
+
+    q1_keys = jr.split(q1_key, s.shape[0])
+    q2_keys = jr.split(q2_key, s.shape[0])
+    q1_pred = _vmapped_critic_eval(q1_model, s, pos, a, q1_keys)
+    q2_pred = _vmapped_critic_eval(q2_model, s, pos, a, q2_keys)
+
+    loss = jnp.mean((q1_pred - q_target)**2) + jnp.mean((q2_pred - q_target)**2)
+    return loss
+
+def _actor_loss_fn(actor_to_grad, static_critics, s, pos, alpha, keys, actor_keys_s):
+    actions, log_probs = _vmapped_actor_sample(actor_to_grad, s, pos, actor_keys_s)
+    q1_model, q2_model = static_critics
+    q1_key, q2_key = keys
+    
+    q1_keys = jr.split(q1_key, s.shape[0])
+    q2_keys = jr.split(q2_key, s.shape[0])
+    q1_pred = _vmapped_critic_eval(q1_model, s, pos, actions, q1_keys)
+    q2_pred = _vmapped_critic_eval(q2_model, s, pos, actions, q2_keys)
+    q_pred = jnp.minimum(q1_pred, q2_pred)
+    
+    actor_loss = jnp.mean(alpha * log_probs - q_pred)
+    return actor_loss, log_probs
+
+def _alpha_loss_fn(log_alpha_to_grad, log_probs, target_entropy):
+    log_probs_detached = jax.lax.stop_gradient(log_probs)
+    alpha_loss = -jnp.exp(log_alpha_to_grad) * jnp.mean(log_probs_detached + target_entropy)
+    return alpha_loss
+
+def create_matsac_update_step(config, pi_optimizer, q_optimizer, a_optimizer):
+    critic_loss_and_grad = eqx.filter_value_and_grad(_critic_loss_fn)
+    actor_loss_and_grad = eqx.filter_value_and_grad(_actor_loss_fn, has_aux=True)
+    alpha_loss_and_grad = eqx.filter_value_and_grad(_alpha_loss_fn)
+    
+    target_entropy = -float(config['act_dim'])
+    gamma = config['gamma']
+    tau = config['tau']
+    
+    @eqx.filter_jit
+    def update_step(agent, batch, pi_state, q_state, a_state, key):
+        keys = jr.split(key, 7)
+        actor_key_s, actor_key_s_next, q1_key, q2_key, q1t_key, q2t_key, alpha_key = keys
+        
+        s, _, _, s_next, _, pos = batch
+        alpha = jnp.exp(agent.log_alpha)
+        
+        actor_keys_s = jr.split(actor_key_s, s.shape[0])
+        actor_keys_s_next = jr.split(actor_key_s_next, s_next.shape[0])
+        
+        next_actions, next_log_probs = _vmapped_actor_sample(agent.actor, s_next, pos, actor_keys_s_next)
+        
+        critic_loss_val, critic_grads = critic_loss_and_grad((agent.critic1, agent.critic2), 
+                            (agent.critic1_target, agent.critic2_target), batch, (next_actions, next_log_probs), 
+                            (q1_key, q2_key, q1t_key, q2t_key), gamma, alpha
+                        )
+        critic_updates, new_q_state = q_optimizer.update(critic_grads, q_state, (agent.critic1, agent.critic2))
+        new_critic1, new_critic2 = eqx.apply_updates((agent.critic1, agent.critic2), critic_updates)
+        
+        static_critics = (new_critic1, new_critic2)
+
+        (actor_loss_val, log_probs), actor_grads = actor_loss_and_grad(agent.actor, static_critics, 
+                                        s, pos, alpha, (q1_key, q2_key), actor_keys_s)
+        actor_updates, new_pi_state = pi_optimizer.update(actor_grads, pi_state, agent.actor)
+        new_actor = eqx.apply_updates(agent.actor, actor_updates)
+        
+        alpha_loss_val, alpha_grads = alpha_loss_and_grad(agent.log_alpha, log_probs, target_entropy)
+        alpha_updates, new_a_state = a_optimizer.update(alpha_grads, a_state, agent.log_alpha)
+        new_log_alpha = eqx.apply_updates(agent.log_alpha, alpha_updates)
+        
+        new_agent = eqx.tree_at(
+            lambda a: (a.actor, a.critic1, a.critic2, a.log_alpha), 
+            agent, 
+            (new_actor, new_critic1, new_critic2, new_log_alpha)
+        )
+        
+        new_critic1_target = polyak_update(new_critic1, agent.critic1_target, tau)
+        new_critic2_target = polyak_update(new_critic2, agent.critic2_target, tau)
+        
+        new_agent = eqx.tree_at(
+            lambda a: (a.critic1_target, a.critic2_target),
+            new_agent,
+            (new_critic1_target, new_critic2_target)
+        )
+        
+        metrics = {
+            'critic_loss': critic_loss_val,
+            'actor_loss': actor_loss_val,
+            'alpha_loss': alpha_loss_val,
+            'alpha': jnp.exp(new_log_alpha)
+        }
+        
+        return new_agent, new_pi_state, new_q_state, new_a_state, metrics
+
+    return update_step

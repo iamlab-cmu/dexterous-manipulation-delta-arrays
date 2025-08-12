@@ -1,0 +1,262 @@
+import equinox as eqx
+import equinox.nn as nn
+import jax
+import jax.numpy as jnp
+import jax.random as jr
+from jaxtyping import Array, Float, PRNGKeyArray
+from jax.scipy.stats import norm
+
+LOG_STD_MIN = -20.0
+LOG_STD_MAX = 2.0
+EPSILON = 1e-6
+
+class TanhNormal(eqx.Module):
+    loc: Float[Array, "..."]
+    scale: Float[Array, "..."]
+    def __init__(self, loc, scale):
+        self.loc = loc
+        self.scale = scale
+
+    @classmethod
+    def from_loc_and_log_std(cls, loc, log_std):
+        scale = jnp.exp(jnp.clip(log_std, LOG_STD_MIN, LOG_STD_MAX))
+        return cls(loc, scale)
+
+    def sample(self, *, key: PRNGKeyArray) -> Array:
+        noise = jr.normal(key, self.loc.shape)
+        unsquashed_action = self.loc + self.scale * noise
+        return jnp.tanh(unsquashed_action)
+
+    def log_prob(self, value: Array) -> Array:
+        value = jnp.clip(value, -1.0 + EPSILON, 1.0 - EPSILON)
+        pre_tanh_value = jnp.arctanh(value)
+        log_prob_gaussian = norm.logpdf(pre_tanh_value, loc=self.loc, scale=self.scale).sum(axis=-1)
+        log_prob_correction = jnp.log(1.0 - value**2 + EPSILON).sum(axis=-1)
+        return log_prob_gaussian - log_prob_correction
+
+    def sample_and_log_prob(self, key: PRNGKeyArray) -> tuple[Array, Array]:
+        noise = jr.normal(key, self.loc.shape)
+        unsquashed_action = self.loc + self.scale * noise
+        log_prob_gaussian = norm.logpdf(unsquashed_action, loc=self.loc, scale=self.scale).sum(axis=-1)
+        action = jnp.tanh(unsquashed_action)
+        log_prob_correction = jnp.log(1.0 - action**2 + EPSILON).sum(axis=-1)
+        log_prob = log_prob_gaussian - log_prob_correction
+        return action, log_prob
+    
+    def deterministic_sample(self) -> Array:
+        return jnp.tanh(self.loc)
+
+def modulate(x: Array, shift: Array, scale: Array) -> Array:
+    return x * (1 + scale) + shift
+
+def orthogonal_init(weight: Array, key: PRNGKeyArray, gain: float = 1.0) -> Array:
+    if weight.ndim < 2:
+        raise ValueError("Only tensors with 2 or more dimensions are supported")
+    
+    rows, cols = weight.shape[-2:]
+    flattened_shape = (cols, rows * jnp.prod(jnp.array(weight.shape[:-2])))
+    random_matrix = jr.normal(key, flattened_shape)
+    q, r = jnp.linalg.qr(random_matrix)
+    
+    d = jnp.diag(r)
+    q *= jnp.sign(d)
+    q = q.T * gain
+    return q.reshape(weight.shape)
+
+def linear_init(weight: Array, key: PRNGKeyArray) -> Array:
+    return orthogonal_init(weight, key, gain=1.0)
+
+def constant_init(bias: Array, value: float = 0.0) -> Array:
+    return jnp.full_like(bias, value)
+
+class AdaLMLP(eqx.Module):
+    fc1: nn.Linear
+    fc2: nn.Linear
+    
+    def __init__(self, model_dim: int, dim_ff: int, key=None):
+        key1, key2 = jax.random.split(key)
+        self.fc1 = nn.Linear(model_dim, dim_ff, key=key1)
+        self.fc2 = nn.Linear(dim_ff, model_dim, key=key2)
+
+    def __call__(self, x):
+        return self.fc2(jax.nn.silu(self.fc1(x)))
+
+class AdaLNAttention(eqx.Module):
+    num_heads: int
+    model_dim: int
+    split_head_dim: int
+    W_Q: nn.Linear
+    W_K: nn.Linear
+    W_V: nn.Linear
+    W_O: nn.Linear
+    masked: bool
+    chunk_len: int
+    tril: jax.Array
+
+    def __init__(self, model_dim: int, num_heads: int, chunk_len: int, masked: bool, key=None):
+        keys = jax.random.split(key, 4)
+        self.num_heads = num_heads
+        self.model_dim = model_dim
+        self.split_head_dim = model_dim // num_heads
+        self.masked = masked
+        self.chunk_len = chunk_len
+
+        self.W_Q = nn.Linear(model_dim, model_dim, key=keys[0])
+        self.W_K = nn.Linear(model_dim, model_dim, key=keys[1])
+        self.W_V = nn.Linear(model_dim, model_dim, key=keys[2])
+        self.W_O = nn.Linear(model_dim, model_dim, key=keys[3])
+
+        if self.masked:
+            self.tril = jnp.tril(jnp.ones((self.chunk_len, self.chunk_len)))
+
+    def __call__(self, Q, K, V):
+        seq_len, _ = Q.shape
+        Q = jax.vmap(self.W_Q)(Q)
+        K = jax.vmap(self.W_K)(K)
+        V = jax.vmap(self.W_V)(V)
+
+        Q = self._split_heads(Q)
+        K = self._split_heads(K)
+        V = self._split_heads(V)
+
+        attn = self._scaled_dot_product_attention(Q, K, V)
+        output = jax.vmap(self.W_O)(self._combine_heads(attn))
+        return output
+
+    def _split_heads(self, x):
+        return x.reshape(self.chunk_len, self.num_heads, self.split_head_dim).transpose(1, 0, 2)
+
+    def _combine_heads(self, x):
+        return x.transpose(1, 0, 2).reshape(self.chunk_len, self.model_dim)
+
+    def _scaled_dot_product_attention(self, Q, K, V):
+        attention_scores = jnp.matmul(Q, K.transpose(0, 2, 1)) / jnp.sqrt(self.split_head_dim)
+        if self.masked:
+            attention_scores = jnp.where(self.tril[:self.chunk_len, :self.chunk_len] == 0, float('-inf'), attention_scores)
+        attention_probs = jax.nn.softmax(attention_scores, axis=-1)
+        output = jnp.matmul(attention_probs, V)
+        return output
+   
+class AdaLNLayer(eqx.Module):
+    attn: AdaLNAttention
+    mlp: AdaLMLP
+    adaLN_modulation: nn.Linear
+    layer_norm1: nn.LayerNorm
+    layer_norm2: nn.LayerNorm
+
+    def __init__(self, model_dim, num_heads, chunk_len, dim_ff, dropout, masked, key=None):
+        keys = jax.random.split(key, 3)
+        self.attn = AdaLNAttention(model_dim, num_heads, chunk_len, masked, key=keys[0])
+        self.mlp = AdaLMLP(model_dim, dim_ff, key=keys[1])
+        self.adaLN_modulation = nn.Linear(model_dim, 6 * model_dim, use_bias=True, key=keys[2])
+
+        self.layer_norm1 = nn.LayerNorm(model_dim, use_weight=False, use_bias=False, eps=1e-6)
+        self.layer_norm2 = nn.LayerNorm(model_dim, use_weight=False, use_bias=False, eps=1e-6)
+
+    def __call__(self, x, cond):
+        modulated_cond = jax.nn.silu(cond)
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = jnp.split(jax.vmap(self.adaLN_modulation)(modulated_cond), 6, axis=-1)
+
+        def modulate(x, shift, scale):
+            return x * (1 + scale) + shift
+
+        moduln = modulate(jax.vmap(self.layer_norm1)(x), shift_msa, scale_msa)
+        x = x + gate_msa * self.attn(moduln, moduln, moduln)
+
+        moduln2 = modulate(jax.vmap(self.layer_norm2)(x), shift_mlp, scale_mlp)
+        x = x + gate_mlp * jax.vmap(self.mlp)(moduln2)
+        return x
+
+class FinalAdaLNLayer(eqx.Module):
+    norm_final: nn.LayerNorm
+    linear: nn.Linear
+    adaLN_modulation: nn.Linear
+
+    def __init__(self, model_dim, out_dim, key=None):
+        keys = jax.random.split(key, 2)
+        self.norm_final = nn.LayerNorm(model_dim, use_weight=False, use_bias=False, eps=1e-6)
+        self.linear = nn.Linear(model_dim, out_dim, use_bias=True, key=keys[0])
+        self.adaLN_modulation = nn.Linear(model_dim, 2 * model_dim, use_bias=True, key=keys[1])
+
+    def __call__(self, x, c):
+        modulated_c = jax.nn.silu(c)
+        shift, scale = jnp.split(jax.vmap(self.adaLN_modulation)(modulated_c), 2, axis=-1)
+
+        def modulate(x, shift, scale):
+            return x * (1 + scale) + shift
+
+        x = modulate(jax.vmap(self.norm_final)(x), shift, scale)
+        x = jax.vmap(self.linear)(x)
+        return x
+
+class AdaLNTransformer(eqx.Module):
+    layers: list
+    final_layer: FinalAdaLNLayer
+    config: dict
+    
+    def __init__(self, config, out_dim: int, key=None):
+        keys = jax.random.split(key, config['n_layers']+ 1)
+        self.config = config
+        self.layers = [
+            AdaLNLayer(
+                model_dim=config['model_dim'],
+                num_heads=config['num_heads'],
+                chunk_len=config['chunk_len'],
+                dim_ff=config['dim_ff'],
+                dropout=config['dropout'],
+                masked=config['masked'],
+                key=keys[i]
+            ) for i in range(config['n_layers'])
+        ]
+        self.final_layer = FinalAdaLNLayer(config['model_dim'], out_dim, key=keys[-1])
+
+    def __call__(self, x, cond):
+        for layer in self.layers:
+            x = layer(x, cond)
+        return self.final_layer(x, cond)
+    
+class JaxTransformer(eqx.Module):
+    state_enc: nn.Linear
+    action_embedding: nn.Linear
+    # NOTE: Positional embedding logic (SPE, SCE, RoPE) would be added here
+    # For now, we'll use a simple one for demonstration.
+    pos_embedding: nn.Linear
+    decoder: AdaLNTransformer
+    is_critic: bool
+
+    def __init__(self, config, out_dim: int, is_critic: bool, key=None):
+        keys = jax.random.split(key, 4)
+        self.is_critic = is_critic
+        
+        state_dim = config['state_dim'] if not is_critic else config['state_dim'] + config['act_dim']
+        self.state_enc = nn.Linear(state_dim, config['model_dim'], key=keys[0])
+        self.action_embedding = nn.Linear(config['act_dim'], config['model_dim'], key=keys[1])
+        self.pos_embedding = nn.Linear(1, config['model_dim'], key=keys[2]) # Simplified placeholder
+        
+        self.decoder = AdaLNTransformer(config, out_dim, key=keys[3])
+
+    def __call__(self, state: Array, pos: Array, actions: Array = None, key: PRNGKeyArray = None):
+        if not self.is_critic:
+            n_agents = state.shape[0]
+            initial_actions = jnp.zeros((n_agents, self.action_embedding.out_features))
+            
+            act_enc = self.action_embedding(initial_actions)
+            state_enc = self.state_enc(state)
+            pos_embed = self.pos_embedding(pos[:, None])
+            
+            conditional_enc = state_enc + pos_embed
+            logits = self.decoder(act_enc, conditional_enc)
+            mu, log_std = jnp.split(logits, 2, axis=-1)
+            return TanhNormal.from_loc_and_log_std(mu, log_std)
+
+        else:
+            if actions is None:
+                raise ValueError("Critic must be provided with actions.")
+            critic_state = jnp.concatenate([state, actions], axis=-1)
+            
+            act_enc = jnp.zeros((state.shape[0], self.action_embedding.out_features))
+            state_enc = self.state_enc(critic_state)
+            pos_embed = self.pos_embedding(pos[:, None])
+
+            conditional_enc = state_enc + pos_embed
+            return self.decoder(act_enc, conditional_enc)

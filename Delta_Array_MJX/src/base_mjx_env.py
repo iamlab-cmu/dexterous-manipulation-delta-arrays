@@ -1,51 +1,46 @@
+import jax.numpy as jnp
 import mujoco
+from mujoco import mjx
+
 import numpy as np
-from scipy.spatial.transform import Rotation as R
-import matplotlib.pyplot as plt
-from spatialmath import SE3
-import spatialmath as sm
-import matplotlib.pyplot as plt
-import argparse
-import cv2
 import sys
-import time
 sys.path.append("..")
-from threading import Lock
 import mujoco.viewer
 
-import utils.visualizer_utils as visualizer_utils
 from config.delta_array_generator import DeltaArrayEnvCreator
 
-
-class BaseMJEnv:
-    def __init__(self, args, obj_name):
-        # Create the environment
-        self.obj_name = obj_name
-        self.env_creator = DeltaArrayEnvCreator()
-        env_xml = self.env_creator.create_env(self.obj_name, args['num_rope_bodies'])
-        self.args = args
+class BaseMJXEnv:
+    def __init__(self, config):
+        self.env_creator = DeltaArrayEnvCreator(mjx=True)
+        env_xml = self.env_creator.create_env("ALL", config['num_rope_bodies'])
+        self.config = config
 
         self.model = mujoco.MjModel.from_xml_string(env_xml)
         self.data = mujoco.MjData(self.model)
-        self.gui = args['gui']
-        self.setup_gui()
-        self.gui_lock = Lock()
-        self.visualizer = visualizer_utils.Visualizer()
+        self.mjx_model = mjx.put_model(self.model)
+        
+        act_low = jnp.array([*self.model.actuator_ctrlrange[:, 0]])
+        act_high = jnp.array([*self.model.actuator_ctrlrange[:, 1]])
+        self.act_scale = (act_high - act_low) / 2.0
+        self.act_bias = (act_high + act_low) / 2.0
+        
+        self.gui = config['gui']
+        self.setup_camera()
         self.fps_ctr = 0
         
         mujoco.mj_forward(self.model, self.data)
-
-    def setup_gui(self, lookat=np.array((0.13125, 0.1407285, 1.5)), distance=0.85, elevation=90, azimuth=0):
-        self.width, self.height = 1920, 1080
-        self.renderer = mujoco.Renderer(self.model, self.height, self.width)
+        
+    def setup_camera(self, lookat=np.array((0.13125, 0.1407285, 1.5)), distance=0.85, elevation=90, azimuth=0):
+        self.renderer = mujoco.Renderer(self.model, 1080, 1920)
         self.renderer.disable_segmentation_rendering()
         self.camera = mujoco.MjvCamera()
-            
         self.camera.lookat = lookat
         self.camera.distance = distance
         self.camera.elevation = elevation
         self.camera.azimuth = azimuth
-        
+
+    def setup_gui(self, lookat=np.array((0.13125, 0.1407285, 1.5)), distance=0.85, elevation=90, azimuth=0):
+        self.setup_camera(lookat, distance, elevation, azimuth)
         if self.gui:
             self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
             self.viewer.cam.lookat = lookat
@@ -61,8 +56,9 @@ class BaseMJEnv:
         mask = (geom_ids == target_id)
         return (255*mask).astype(np.uint8)
 
-    def get_image(self):
-        self.renderer.update_scene(self.data, camera=self.camera)        
+    def get_image(self, data_mjx):
+        data = mjx.get_data(self.model, data_mjx)
+        self.renderer.update_scene(data, camera=self.camera)     
         return self.renderer.render()
     
     def update_sim_recorder(self, simlen, recorder):
@@ -72,20 +68,16 @@ class BaseMJEnv:
             if (self.fps_ctr % 20 == 0):
                 recorder.add_frame(self.get_image())
 
-    def update_sim(self, simlen, recorder=None):
+    def update_sim_gui(self, simlen, recorder=None):
         if self.gui:
             for i in range(simlen):
                 mujoco.mj_step(self.model, self.data)
                 if recorder is not None:
                     recorder.add_frame(self.get_image())
                 self.viewer.sync()
-                # time.sleep(0.0001)
-                # time.sleep(0.00075)
         elif (recorder is not None):
             self.update_sim_recorder(simlen, recorder)
-        else:
-            mujoco.mj_step(self.model, self.data, simlen)
-
+            
     def reset(self):
         raise NotImplementedError
 
