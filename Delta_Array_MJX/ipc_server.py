@@ -238,7 +238,7 @@ def server_process_main(pipe_conn, batched_queue, response_dict, config):
 
     collecting_batch = False
     batch_start_time = None
-    max_batch_wait = 5
+    max_batch_wait = 0.1
     while True:
         if pipe_conn.poll(0.00005):
             try:

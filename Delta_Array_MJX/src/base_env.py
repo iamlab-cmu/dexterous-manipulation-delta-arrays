@@ -19,10 +19,13 @@ from config.delta_array_generator import DeltaArrayEnvCreator
 
 class BaseMJEnv:
     def __init__(self, args, obj_name):
-        # Create the environment
-        self.obj_name = obj_name
         self.env_creator = DeltaArrayEnvCreator()
-        env_xml = self.env_creator.create_env(self.obj_name, args['num_rope_bodies'])
+        if isinstance(obj_name, np.ndarray):
+            self.obj_names = obj_name
+            env_xml = self.env_creator.create_env_multobj(self.obj_name, args['num_rope_bodies'])
+        else:
+            self.obj_name = obj_name
+            env_xml = self.env_creator.create_env(self.obj_name, args['num_rope_bodies'])
         self.args = args
 
         self.model = mujoco.MjModel.from_xml_string(env_xml)
@@ -86,6 +89,16 @@ class BaseMJEnv:
         else:
             mujoco.mj_step(self.model, self.data, simlen)
 
+<<<<<<< Updated upstream
+=======
+    def set_obj_pose(self, obj_name, pose):
+        self.data.body(obj_name).qpos = pose
+        mujoco.mj_forward(self.model, self.data)
+
+    def get_obj_pose(self, obj_name):
+        return self.data.body(obj_name).qpos
+    
+>>>>>>> Stashed changes
     def reset(self):
         raise NotImplementedError
 

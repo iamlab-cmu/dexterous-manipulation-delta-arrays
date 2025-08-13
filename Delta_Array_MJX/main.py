@@ -28,8 +28,8 @@ TOGGLE_PUSHING_AGENT = 8
 TT_GET_ACTION        = 9
 SET_BATCH_SIZE       = 10
 
-OBJ_NAMES = ["block", "cross", "diamond", "hexagon", "star", "triangle",
-             "parallelogram", "semicircle", "trapezium", "disc"]
+OBJ_NAMES = ["block", "cross", "diamond", "hexagon", "star", "triangle", "parallelogram", "semicircle", "trapezium", "disc"]
+# OBJ_NAMES = ["hexagon"]
 
 ###################################################
 # Client <-> Server Communication
@@ -61,7 +61,7 @@ def send_request(pipe_conn, action_code, data=None, lock=None, batched_queue=Non
         batched_queue.put(request)
         # Wait (poll) until the server writes our response.
         while req_id not in response_dict:
-            time.sleep(0.00001)  # short sleep to avoid busy waiting
+            time.sleep(0.00001)
         response = response_dict.pop(req_id)
         return response
     else:
@@ -78,46 +78,57 @@ def run_env(env_id, sim_len, n_runs, return_dict, config, inference, pipe_conn, 
     seed = np.random.randint(0, 2**32 - 1)
     np.random.seed(seed)
 
-    if config['obj_name'] == "ALL":
-        obj_name = OBJ_NAMES[np.random.randint(0, len(OBJ_NAMES))]
-    else:
-        obj_name = config['obj_name']
-
     if config['save_vid']:
         from utils.video_utils import VideoRecorder
         recorder = VideoRecorder(output_dir="./data/videos", fps=120)
     else:
         recorder = None
         
-    if obj_name != "rope":
-        env = delta_array_mj.DeltaArrayRB(config, obj_name)
+    if config['obj_name'] == "rope":
+        env = delta_array_mj.DeltaArrayRope(config, config['obj_name'])
     else:
-        env = delta_array_mj.DeltaArrayRope(config, obj_name)
+        if config['multi_obj']:
+            obj_names = np.array(OBJ_NAMES)[np.random.randint(0, len(OBJ_NAMES), size=2)]
+            env = delta_array_mj.DeltaArrayRB(config, obj_names)
+        else:
+            obj_name = OBJ_NAMES[np.random.randint(0, len(OBJ_NAMES))]
+            env = delta_array_mj.DeltaArrayRB(config, obj_name)
+
+    def open_loop_rollout(env, sim_len, recorder):
+        env.apply_action(env.actions_grasp[:env.n_idxs])
+        env.update_sim(sim_len, recorder)
+        # env.randomize_state()
+        env.apply_action(execute_actions)
+        env.update_sim(sim_len, recorder)
 
     run_dict = {}
     nrun = 0
     while nrun < n_runs:
         if env.reset():
+<<<<<<< Updated upstream
             env.apply_action(env.actions_grasp[:env.n_idxs])
             env.update_sim(sim_len, recorder)
+=======
+>>>>>>> Stashed changes
 
             push_states = (env.init_state[:env.n_idxs], env.pos[:env.n_idxs], inference)
             if (config['vis_servo']) or (np.random.rand() < config['vsd']):
                 actions = env.vs_action(random=False)
-                env.apply_action(actions)
+                open_loop_rollout(env, sim_len, recorder)
             else:
                 actions, a_ks, log_ps, ents = send_request(pipe_conn, MA_GET_ACTION, push_states,
+<<<<<<< Updated upstream
                                        lock=lock, batched_queue=batched_queue, response_dict=response_dict)
                 # print(env.n_idxs)
+=======
+                                                lock=lock, batched_queue=batched_queue, 
+                                                response_dict=response_dict)
+>>>>>>> Stashed changes
                 # ** the following 3 lines are imp cos they are sampled with the max N among all threads at server side
                 actions = actions[:env.n_idxs]
                 if actions.shape[-1] == 3:
-                    # inactive_mask = actions[:, 2] >= 0
-                    # print(inactive_mask, env.active_idxs)
-                    # new_active_idxs = env.active_idxs[active_mask]
                     active_idxs = np.array(env.active_idxs)
                     inactive_idxs = active_idxs[actions[:, 2] > 0]
-
                     if len(inactive_idxs) > 0:
                         env.set_z_positions(active_idxs=list(inactive_idxs), low=False)  # Set to high
                     execute_actions = env.clip_actions_to_ws(actions[:, :2])
@@ -128,9 +139,8 @@ def run_env(env_id, sim_len, n_runs, return_dict, config, inference, pipe_conn, 
                     a_ks = a_ks[:, :env.n_idxs]
                     log_ps = log_ps[:, :env.n_idxs]
                 env.final_state[:env.n_idxs, 4:6] = execute_actions
-                env.apply_action(execute_actions)
+                open_loop_rollout(env, sim_len, recorder)
                 
-            env.update_sim(sim_len, recorder)
             env.set_rl_states(execute_actions, final=True)
             dist, reward = env.compute_reward(actions, inference)
             if env.gui:
@@ -174,7 +184,7 @@ if __name__ == "__main__":
 
     manager_lock = manager.Lock()
     
-    current_episode = 0
+    current_episode = config['ep_resume']
     n_updates = config['nenv']
     infer_every = config['infer_every']
     avg_reward = 0
