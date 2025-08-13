@@ -26,6 +26,12 @@ class BaseMJEnv:
         else:
             self.obj_name = obj_name
             env_xml = self.env_creator.create_env(self.obj_name, args['num_rope_bodies'])
+        if isinstance(obj_name, np.ndarray):
+            self.obj_names = obj_name
+            env_xml = self.env_creator.create_env_multobj(self.obj_name, args['num_rope_bodies'])
+        else:
+            self.obj_name = obj_name
+            env_xml = self.env_creator.create_env(self.obj_name, args['num_rope_bodies'])
         self.args = args
 
         self.model = mujoco.MjModel.from_xml_string(env_xml)

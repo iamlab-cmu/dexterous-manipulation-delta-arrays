@@ -152,6 +152,32 @@ class DeltaArrayEnvCreator:
                 name = f"fingertip_{arr.shape[0]*i + j}"
                 actuator.extend(self.create_actuator(name))
             
+        xml_string = ET.tostring(root, encoding="unicode", method="xml")
+        return xml_string
+    
+    def create_env_multobj(self, obj_names):
+        root = ET.Element('mujoco', model="scene")
+        ET.SubElement(root, 'compiler', autolimits="true", angle="degree")
+        option = ET.SubElement(root, 'option', integrator="implicitfast", timestep="0.002")
+        ET.SubElement(option, 'flag', multiccd="enable")
+        
+        asset, worldbody, arr = self.add_delta_arrays(root)
+        
+        for obj_name in obj_names:
+            # ET.SubElement(root, 'include', file=f"config/assets/{obj_name}/{obj_name}.xml")
+            ET.SubElement(asset, 'texture', name=obj_name, file=f"config/assets/texture.png", type="2d")
+            ET.SubElement(asset, 'material', name=obj_name, texture=obj_name, specular="0.5", shininess="0.5")
+            ET.SubElement(asset, 'mesh', file=f"config/assets/{obj_name}.obj", scale="1 1 1")
+            obj = ET.SubElement(worldbody, 'body', name=f"{obj_name}", pos="0.13125 0.1407285 1.0201", euler="90 0 0")
+            ET.SubElement(obj, 'freejoint')
+            ET.SubElement(obj, 'geom', name="object", type="mesh", mesh=obj_name, material=obj_name, mass="0.05", condim="6")
+        
+        actuator = ET.SubElement(root, 'actuator')
+        for i in range(arr.shape[0]):
+            for j in range(arr.shape[1]):
+                name = f"fingertip_{arr.shape[0]*i + j}"
+                actuator.extend(self.create_actuator(name))
+            
         # Convert to string
         xml_string = ET.tostring(root, encoding="unicode", method="xml")
         return xml_string
