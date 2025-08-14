@@ -13,7 +13,7 @@ from scipy.spatial.transform import Rotation as R_og
 
 from delta_array_utils.Prismatic_Delta import Prismatic_Delta
 import utils.geom_helper as geom_helper
-from src.base_env import BaseMJXEnv
+from src.base_mjx_env import BaseMJXEnv
 from utils.constants import OBJ_NAMES
 
 def normalize_angle(angle):
@@ -30,42 +30,35 @@ class State(eqx.Module):
     reward: Array
     done: Array
     key: jax.random.PRNGKey
-    
-@partial(jnp.vectorize, signature='(n,2),(m,2)->(m)')
-def _is_inside_polygon(polygon_pts, target_pts):
+
+def _is_one_point_inside(polygon_pts, target_pt):
     def is_left(p0, p1, p2):
         return (p1[0] - p0[0]) * (p2[1] - p0[1]) - (p2[0] - p0[0]) * (p1[1] - p0[1])
 
     def loop_body(i, winding_number):
         p1 = polygon_pts[i]
         p2 = polygon_pts[(i + 1) % polygon_pts.shape[0]]
-        
-        # Condition 1: target_pt.y <= p1.y
-        # Condition 2: target_pt.y > p2.y
-        # Condition 3: is_left(p1, p2, target_pt) > 0 (to the left)
-        upward_crossing = (target_pts[1] <= p1[1]) & (target_pts[1] > p2[1]) & (is_left(p1, p2, target_pts) > 0)
-        
-        # Condition 1: target_pt.y > p1.y
-        # Condition 2: target_pt.y <= p2.y
-        # Condition 3: is_left(p1, p2, target_pt) < 0 (to the right)
-        downward_crossing = (target_pts[1] > p1[1]) & (target_pts[1] <= p2[1]) & (is_left(p1, p2, target_pts) < 0)
-
+        upward_crossing = (target_pt[1] <= p1[1]) & (target_pt[1] > p2[1]) & (is_left(p1, p2, target_pt) > 0)
+        downward_crossing = (target_pt[1] > p1[1]) & (target_pt[1] <= p2[1]) & (is_left(p1, p2, target_pt) < 0)
         return winding_number + jnp.where(upward_crossing, 1, 0) - jnp.where(downward_crossing, 1, 0)
 
-    # A non-zero winding number means the point is inside.
     final_winding_number = jax.lax.fori_loop(0, polygon_pts.shape[0], loop_body, 0)
-    return final_winding_number != 0
+    return final_winding_number != 0    
+
+@partial(jax.jit)
+def _is_inside_polygon(polygon_pts, target_pts):
+    return jax.vmap(_is_one_point_inside, in_axes=(None, 0))(polygon_pts, target_pts)
 
 class DeltaArrayEnv(BaseMJXEnv):
     def __init__(self, config):
         super().__init__(config)
-        self.num_envs = config['num_envs']
-        self.n_ctrl_steps = config['simlen']
-        self.compensate_for_actions = self.args['compa']
+        self.num_envs = config['nenv']
+        self.compensate_for_actions = config['compa']
         self.ca_wt = 200
-        self.parsimony_bonus = self.args['parsimony_bonus']
+        self.parsimony_bonus = config['parsimony_bonus']
         self.pb_wt = 20
         self.act_scale = 0.03
+        self.n_substeps = config['simlen']
         
         s_p = 1.5
         s_b = 4.3
@@ -88,7 +81,7 @@ class DeltaArrayEnv(BaseMJXEnv):
                 
                 actuator_x_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"act_{rb_name}_x")
                 actuator_y_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"act_{rb_name}_y")
-                robot_ctrl_adr[idx] = np.array(actuator_x_id, actuator_y_id)
+                robot_ctrl_adr[idx] = np.array((actuator_x_id, actuator_y_id))
                 
                 if i % 2 != 0:
                     pos = np.array((i * 0.0375, j * 0.043301 - 0.02165))
@@ -130,12 +123,12 @@ class DeltaArrayEnv(BaseMJXEnv):
         
         all_bd_pts = []
         all_coms = []
-        self.obj_qpos_adr_map = {}
+        obj_qpos_adrs = []
         
         for i, obj_name in enumerate(OBJ_NAMES):
             obj_joint_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, obj_name)
             obj_qpos_adr = self.model.jnt_qposadr[obj_joint_id]
-            self.obj_qpos_adr_map[i] = jnp.array(obj_qpos_adr)
+            obj_qpos_adrs.append(jnp.array(obj_qpos_adr))
             
             backup = self.data.qpos[obj_qpos_adr:obj_qpos_adr+7].copy()
             self.data.qpos[obj_qpos_adr:obj_qpos_adr+7] = np.concatenate([canon_tx, canon_rot.as_quat(scalar_first=True)])
@@ -151,6 +144,7 @@ class DeltaArrayEnv(BaseMJXEnv):
             
         self.canonical_bd_pts = jnp.stack(all_bd_pts)
         self.canonical_coms = jnp.stack(all_coms)
+        self.obj_qpos_adr_array = jnp.array(obj_qpos_adrs)
         self.num_objects = len(OBJ_NAMES)
         print("Pre-computation complete.")
         
@@ -168,7 +162,7 @@ class DeltaArrayEnv(BaseMJXEnv):
 
         # Condition A: Robot is NOT inside the object.
         # Condition B: Minimum distance is less than the workspace radius.
-        active_mask = ~is_inside & (min_dists_sq < self.workspace_radius_sq)
+        active_mask = ~is_inside & (min_dists_sq < self.ws_rad_sq)
         return active_mask, nn_bd_pts
     
     @partial(jax.jit, static_argnums=(0,))
@@ -225,8 +219,12 @@ class DeltaArrayEnv(BaseMJXEnv):
         init_pos = jnp.array((init_x, init_y))
         init_qpos = jnp.concatenate((jnp.array((init_x, init_y, 1.002)), init_rot.as_quat(scalar_first=True)))
         
-        goal_bd_pts = goal_rot.apply(bd_pts - com)[:, :2] + goal_pos
-        init_bd_pts = init_rot.apply(bd_pts - com)[:, :2] + init_pos
+        centered_pts_2d = bd_pts - com
+        centered_pts_3d = jnp.pad(centered_pts_2d, ((0, 0), (0, 1)))
+        goal_rotated_pts_3d = goal_rot.apply(centered_pts_3d)
+        init_rotated_pts_3d = init_rot.apply(centered_pts_3d)
+        goal_bd_pts = goal_rotated_pts_3d[:, :2] + goal_pos
+        init_bd_pts = init_rotated_pts_3d[:, :2] + init_pos
         
         active_robot_mask, init_nn_bd_pts = self._find_active_robots_jax(init_bd_pts)
         goal_nn_bd_pts = self._transform_bd_pts_jax(init_bd_pts, goal_bd_pts, init_nn_bd_pts)
@@ -240,16 +238,19 @@ class DeltaArrayEnv(BaseMJXEnv):
         actions_grasp = jnp.where(active_robot_mask[:, None], grasp_acts, 0.)
         
         data_mjx = new_state.data
-        data_mjx = data_mjx.replace(qpos=jax.lax.dynamic_update_slice(data_mjx.qpos, init_qpos, self.obj_qpos_adr_map[obj_idx]))
-        data_mjx = self._set_z_pos_jax(data_mjx, jnp.zeros_like(active_robot_mask, dtype=bool))
+        start_index = self.obj_qpos_adr_array[obj_idx]
+        data_mjx = data_mjx.replace(
+            qpos=jax.lax.dynamic_update_slice(data_mjx.qpos, init_qpos, (start_index,))
+        )
+        data_mjx = self._set_z_pos(data_mjx, jnp.zeros_like(active_robot_mask, dtype=bool))
 
         ctrl = jnp.zeros(self.model.nu).at[self.robot_ctrl_adr.flatten()].set(actions_grasp.flatten())
         data_mjx = data_mjx.replace(ctrl=ctrl)
+        data_mjx = mjx.forward(self.mjx_model, data_mjx)
         
         def _substep(carry_data, _):
             new_data = mjx.step(self.mjx_model, carry_data)
             return new_data, None
-
         data_mjx, _ = jax.lax.scan(_substep, data_mjx, (), self.n_substeps)
         
         return eqx.tree_at(

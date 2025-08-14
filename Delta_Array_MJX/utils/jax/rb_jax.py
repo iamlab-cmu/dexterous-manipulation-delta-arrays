@@ -6,15 +6,15 @@ import time
 from utils.constants import RB_STORE, RB_SAMPLE, RB_SAVE, RB_LOAD, RB_CLOSE
 
 class ReplayBuffer:
-    def __init__(self, obs_dim, act_dim, max_size, max_agents):
-        self.ptr, self.size, self.max_size = 0, 0, max_size
+    def __init__(self, config):
+        self.ptr, self.size, self.max_size = 0, 0, config['rblen']
 
-        self.st_buf         = np.zeros((max_size, max_agents, obs_dim), dtype=np.float32)
-        self.pos_buf        = np.zeros((max_size, max_agents), dtype=np.int32)
-        self.at_buf         = np.zeros((max_size, max_agents, act_dim), dtype=np.float32)
-        self.rew_buf        = np.zeros((max_size,), dtype=np.float32)
-        self.st_plus_1_buf  = np.zeros((max_size, max_agents, obs_dim), dtype=np.float32)
-        self.done_buf       = np.zeros((max_size,), dtype=np.float32)
+        self.st_buf         = np.zeros((self.max_size, config['max_agents'], config['state_dim']), dtype=np.float32)
+        self.pos_buf        = np.zeros((self.max_size, config['max_agents']), dtype=np.int32)
+        self.at_buf         = np.zeros((self.max_size, config['max_agents'], config['act_dim']), dtype=np.float32)
+        self.rew_buf        = np.zeros((self.max_size,), dtype=np.float32)
+        self.st_plus_1_buf  = np.zeros((self.max_size, config['max_agents'], config['state_dim']), dtype=np.float32)
+        self.done_buf       = np.zeros((self.max_size,), dtype=np.float32)
 
     def store(self, batch_of_transitions):
         obs, action, pos, reward, next_obs, done = batch_of_transitions

@@ -95,8 +95,6 @@ class BaseMJEnv:
         else:
             mujoco.mj_step(self.model, self.data, simlen)
 
-<<<<<<< Updated upstream
-=======
     def set_obj_pose(self, obj_name, pose):
         self.data.body(obj_name).qpos = pose
         mujoco.mj_forward(self.model, self.data)
@@ -104,7 +102,6 @@ class BaseMJEnv:
     def get_obj_pose(self, obj_name):
         return self.data.body(obj_name).qpos
     
->>>>>>> Stashed changes
     def reset(self):
         raise NotImplementedError
 

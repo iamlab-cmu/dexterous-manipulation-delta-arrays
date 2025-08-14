@@ -123,11 +123,8 @@ def run_env(env_id, sim_len, n_runs, return_dict, config, inference, pipe_conn, 
     nrun = 0
     while nrun < n_runs:
         if env.reset():
-<<<<<<< Updated upstream
             env.apply_action(env.actions_grasp[:env.n_idxs])
             env.update_sim(sim_len, recorder)
-=======
->>>>>>> Stashed changes
 
             push_states = (env.init_state[:env.n_idxs], env.pos[:env.n_idxs], inference)
             if (config['vis_servo']) or (np.random.rand() < config['vsd']):
@@ -136,13 +133,7 @@ def run_env(env_id, sim_len, n_runs, return_dict, config, inference, pipe_conn, 
                 open_loop_rollout(env, sim_len, recorder)
             else:
                 actions, a_ks, log_ps, ents = send_request(pipe_conn, MA_GET_ACTION, push_states,
-<<<<<<< Updated upstream
                                        lock=lock, batched_queue=batched_queue, response_dict=response_dict)
-                # print(env.n_idxs)
-=======
-                                                lock=lock, batched_queue=batched_queue, 
-                                                response_dict=response_dict)
->>>>>>> Stashed changes
                 # ** the following 3 lines are imp cos they are sampled with the max N among all threads at server side
                 actions = actions[:env.n_idxs]
                 if actions.shape[-1] == 3:

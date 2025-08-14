@@ -56,9 +56,8 @@ class BaseMJXEnv:
         mask = (geom_ids == target_id)
         return (255*mask).astype(np.uint8)
 
-    def get_image(self, data_mjx):
-        data = mjx.get_data(self.model, data_mjx)
-        self.renderer.update_scene(data, camera=self.camera)     
+    def get_image(self):
+        self.renderer.update_scene(self.data, camera=self.camera)     
         return self.renderer.render()
     
     def update_sim_recorder(self, simlen, recorder):

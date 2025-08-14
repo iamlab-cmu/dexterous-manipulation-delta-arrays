@@ -30,14 +30,14 @@ class MATSACAgent(eqx.Module):
         self.log_alpha = jnp.array(-1.609) # e^log_alpha = 0.2 
       
 @eqx.filter_vmap(in_axes=(None, 0, 0, 0))
-def _vmapped_actor_sample(actor, s, pos, key):
+def _vmapped_actor_sample(actor, s, key):
     model_key, sample_key = jr.split(key)
-    dist = actor(s, pos, key=model_key)
+    dist = actor(s, key=model_key)
     return dist.sample_and_log_prob(key=sample_key)
 
 @eqx.filter_vmap(in_axes=(None, 0, 0, 0, 0))
-def _vmapped_critic_eval(critic, s, pos, a, key):
-    q_vals = critic(s, pos, a, key=key)
+def _vmapped_critic_eval(critic, s, a, key):
+    q_vals = critic(s, a, key=key)
     return jnp.sum(q_vals.squeeze(-1), axis=-1)
 
 def _critic_loss_fn(critics_to_grad, static_critics, batch,  next_actions_log_probs,  keys, gamma, alpha):
@@ -50,29 +50,29 @@ def _critic_loss_fn(critics_to_grad, static_critics, batch,  next_actions_log_pr
     q1_keys_t = jr.split(q1t_key, s_next.shape[0])
     q2_keys_t = jr.split(q2t_key, s_next.shape[0])
     
-    q1_next_target = _vmapped_critic_eval(q1_target, s_next, pos, next_actions, q1_keys_t)
-    q2_next_target = _vmapped_critic_eval(q2_target, s_next, pos, next_actions, q2_keys_t)
+    q1_next_target = _vmapped_critic_eval(q1_target, s_next, next_actions, q1_keys_t)
+    q2_next_target = _vmapped_critic_eval(q2_target, s_next, next_actions, q2_keys_t)
     q_next_target = jnp.minimum(q1_next_target, q2_next_target)
     
     q_target = rd + gamma * (1.0 - d) * (q_next_target - alpha * next_log_probs)
 
     q1_keys = jr.split(q1_key, s.shape[0])
     q2_keys = jr.split(q2_key, s.shape[0])
-    q1_pred = _vmapped_critic_eval(q1_model, s, pos, a, q1_keys)
-    q2_pred = _vmapped_critic_eval(q2_model, s, pos, a, q2_keys)
+    q1_pred = _vmapped_critic_eval(q1_model, s, a, q1_keys)
+    q2_pred = _vmapped_critic_eval(q2_model, s, a, q2_keys)
 
     loss = jnp.mean((q1_pred - q_target)**2) + jnp.mean((q2_pred - q_target)**2)
     return loss
 
-def _actor_loss_fn(actor_to_grad, static_critics, s, pos, alpha, keys, actor_keys_s):
-    actions, log_probs = _vmapped_actor_sample(actor_to_grad, s, pos, actor_keys_s)
+def _actor_loss_fn(actor_to_grad, static_critics, s, alpha, keys, actor_keys_s):
+    actions, log_probs = _vmapped_actor_sample(actor_to_grad, s, actor_keys_s)
     q1_model, q2_model = static_critics
     q1_key, q2_key = keys
     
     q1_keys = jr.split(q1_key, s.shape[0])
     q2_keys = jr.split(q2_key, s.shape[0])
-    q1_pred = _vmapped_critic_eval(q1_model, s, pos, actions, q1_keys)
-    q2_pred = _vmapped_critic_eval(q2_model, s, pos, actions, q2_keys)
+    q1_pred = _vmapped_critic_eval(q1_model, s, actions, q1_keys)
+    q2_pred = _vmapped_critic_eval(q2_model, s, actions, q2_keys)
     q_pred = jnp.minimum(q1_pred, q2_pred)
     
     actor_loss = jnp.mean(alpha * log_probs - q_pred)
@@ -103,7 +103,7 @@ def create_matsac_update_step(config, pi_optimizer, q_optimizer, a_optimizer):
         actor_keys_s = jr.split(actor_key_s, s.shape[0])
         actor_keys_s_next = jr.split(actor_key_s_next, s_next.shape[0])
         
-        next_actions, next_log_probs = _vmapped_actor_sample(agent.actor, s_next, pos, actor_keys_s_next)
+        next_actions, next_log_probs = _vmapped_actor_sample(agent.actor, s_next, actor_keys_s_next)
         
         critic_loss_val, critic_grads = critic_loss_and_grad((agent.critic1, agent.critic2), 
                             (agent.critic1_target, agent.critic2_target), batch, (next_actions, next_log_probs), 
@@ -115,7 +115,7 @@ def create_matsac_update_step(config, pi_optimizer, q_optimizer, a_optimizer):
         static_critics = (new_critic1, new_critic2)
 
         (actor_loss_val, log_probs), actor_grads = actor_loss_and_grad(agent.actor, static_critics, 
-                                        s, pos, alpha, (q1_key, q2_key), actor_keys_s)
+                                        s, alpha, (q1_key, q2_key), actor_keys_s)
         actor_updates, new_pi_state = pi_optimizer.update(actor_grads, pi_state, agent.actor)
         new_actor = eqx.apply_updates(agent.actor, actor_updates)
         

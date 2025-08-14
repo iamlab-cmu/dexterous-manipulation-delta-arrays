@@ -434,8 +434,6 @@ class GPT(nn.Module):
             return act_mean, std
         else:
             act_mean = self.final_layer(act_enc)
-<<<<<<< Updated upstream
-=======
             return act_mean
 
     def forward_rotpe(self, state, actions, pos, idx=None):
@@ -452,7 +450,6 @@ class GPT(nn.Module):
             return act_mean, std
         else:
             act_mean = self.final_layer(act_enc)
->>>>>>> Stashed changes
         return act_mean
 
 class AdaLNLayer(nn.Module):
@@ -562,11 +559,8 @@ class GPT_AdaLN(nn.Module):
             return act_mean, std
         else:
             act_mean = self.final_layer(act_enc, conditional_enc)
-<<<<<<< Updated upstream
         return act_mean
-=======
             return act_mean
->>>>>>> Stashed changes
 
     def forward_rotpe(self, state, actions, pos, idx=None):
         state_enc = self.state_enc(state)
@@ -621,11 +615,8 @@ class Transformer(nn.Module):
         elif hp_dict['pos_embed'] == "SCE":
             self.pos_embedding = IntegerEmbeddingModel(self.max_agents, embedding_dim=256)
             self.pos_embedding.load_state_dict(
-<<<<<<< Updated upstream
                 torch.load(hp_dict['idx_embed_loc'], # /utils/MATSAC
-=======
                 torch.load("./idx_embedding_new.pth", # /utils/MATSAC
->>>>>>> Stashed changes
                            map_location=self.device,
                            weights_only=True)
             )
@@ -654,11 +645,8 @@ class Transformer(nn.Module):
             self.decoder_critic = GPT_AdaLN(hp_dict['state_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'], mha, critic=True, masked=hp_dict['masked'])
             # self.decoder_critic2 = GPT_AdaLN(hp_dict['state_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'], critic=True, masked=hp_dict['masked'])
         else:
-<<<<<<< Updated upstream
             self.decoder_actor = GPT(hp_dict['state_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['actor'], mha, masked=hp_dict['masked'])
-=======
             self.decoder_actor = GPT(hp_dict['state_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['actor'], mha, masked=hp_dict['masked'], gauss=hp_dict['gauss'])
->>>>>>> Stashed changes
             self.decoder_critic = GPT(hp_dict['state_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'], mha, critic=True, masked=hp_dict['masked'])
             # self.decoder_critic2 = GPT(hp_dict['state_dim'], hp_dict['model_dim'], self.action_dim, hp_dict['num_heads'], self.max_agents, hp_dict['dim_ff'], self.pos_embedding, hp_dict['dropout'], hp_dict['n_layers_dict']['critic'], critic=True, masked=hp_dict['masked'])
 

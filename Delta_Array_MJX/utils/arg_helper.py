@@ -21,7 +21,6 @@ def parse_args():
     parser.add_argument("-resume", "--resume", type=str, default="No", help="Path to ckpt to resume from (Can be diff esp when resuming expt from copied pt files)")
     parser.add_argument("-wb_resume", "--wb_resume", type=str, default=None, help="WandB resume ID")
     parser.add_argument("-ep_resume", "--ep_resume", type=int, default=0, help="Episode to resume training from")
-    parser.add_argument("-ep_resume", "--ep_resume", type=int, default=0, help="Episode to resume training from")
     parser.add_argument('-nupd', '--n_updates', type=int, default=1, help='Number of updates to run')
     parser.add_argument('-gui', '--gui',  action='store_true', help='Whether to display the GUI')
     parser.add_argument('-fs', '--frameskip', type=int, default=5, help='Number of steps to run sim after sending ctrl')
@@ -38,7 +37,6 @@ def parse_args():
     parser.add_argument('-simlen', '--simlen', type=int, default=600, help='Number of steps to run sim')
     parser.add_argument('-obj', "--obj_name", type=str, default="ALL", help="Object to manipulate in sim")
     parser.add_argument("-mobj", "--multi_obj", action="store_true", help="Use multiple RB objects?")
-    parser.add_argument("-mobj", "--multi_obj", action="store_true", help="Use multiple RB objects?")
     parser.add_argument('-traj', "--traj_name", type=str, default="snek", help="Traj to manipulate obj over")
     parser.add_argument('-nrb', '--num_rope_bodies', type=int, default=30, help='Number of cylinders in the rope')
     parser.add_argument("-v", "--vis_servo", action="store_true", help="True for Visual Servoing")
@@ -48,12 +46,10 @@ def parse_args():
     parser.add_argument("-pb", "--parsimony_bonus", action="store_true", help="reward for fewer Actions in reward function")
     parser.add_argument("-rs", "--reward_scale", type=float, default=0.01, help="Scale reward function by this value")
     parser.add_argument("-cd", "--collect_data", action="store_true", help="Collect data to be stored in RB")
-<<<<<<< Updated upstream
+
     parser.add_argument("-n_obj", "--n_obj", type=int, default=1, help="To use multiple objs or not. ")
-=======
     parser.add_argument("-r2st", "--r2sdeltat", type=float, default=0, help="Delta shift for real2sim")
     parser.add_argument("-r2sr", "--r2sdeltar", type=float, default=0, help="Delta rotate for real2sim")
->>>>>>> Stashed changes
     
     parser.add_argument("-nrew", "--new_rew", action="store_true", help="New Gaussian reward function - Smooth gradient")
     parser.add_argument("-trad", "--traditional", action="store_true", help="Traditional Pipeline for Vis Servo")
@@ -84,7 +80,7 @@ def parse_args():
     parser.add_argument("-nlc", "--n_layers_critic", type=int, default=10, help="Number of Layers for critic GPT")
     parser.add_argument("-nle", "--n_layers_encoder", type=int, default=5, help="Number of Layers for encoder GPT")
     parser.add_argument("-nh", "--num_heads", type=int, default=8, help="Number of Heads for Multihead Attention")
-    parser.add_argument("-d_ff", "--dim_ff", type=int, default=128, help="Feed Forward Dimension")
+    parser.add_argument("-dff", "--dim_ff", type=int, default=128, help="Feed Forward Dimension")
     parser.add_argument("-adaln", "--adaln", action="store_true", help="Use AdaLN Zero Transformer")
     parser.add_argument("-am", "--attn_mech", type=str, default="AdaLN", help="Choose between SA, CA, AdaLN")
     parser.add_argument("-masked", "--masked", action="store_false", help="Masked Attention Layers True by Default")
@@ -132,6 +128,10 @@ def create_sac_config():
     config = vars(args)
     if config['seed'] == -1:
         config['seed'] = np.random.randint(0, 100000)
+        
+    config['max_agents'] = 64
+    config['state_dim'] = 6
+    config['act_dim'] = 3
     # config['activation'] = get_activation(config['activation'])
     if config['mac']:
         config['dev_rl'] = torch.device("mps")

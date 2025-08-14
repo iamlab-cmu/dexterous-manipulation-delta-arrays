@@ -46,6 +46,23 @@ class TanhNormal(eqx.Module):
     def deterministic_sample(self) -> Array:
         return jnp.tanh(self.loc)
 
+class SCEmbedding(eqx.Module):
+    embedding: nn.Embedding
+    linear1: nn.Linear
+    linear2: nn.Linear
+
+    def __init__(self, num_embeddings: int, embedding_dim: int, *, key):
+        key1, key2, key3 = jax.random.split(key, 3)
+        self.embedding = nn.Embedding(num_embeddings, embedding_dim, key=key1)
+        self.linear1 = nn.Linear(embedding_dim, embedding_dim, key=key2)
+        self.linear2 = nn.Linear(embedding_dim, embedding_dim, key=key3)
+
+    def __call__(self, x):
+        x = self.embedding(x)
+        x = jax.nn.relu(self.linear1(x))
+        x = jax.nn.relu(self.linear2(x))
+        return x
+
 def modulate(x: Array, shift: Array, scale: Array) -> Array:
     return x * (1 + scale) + shift
 
@@ -195,20 +212,20 @@ class AdaLNTransformer(eqx.Module):
     config: dict
     
     def __init__(self, config, out_dim: int, key=None):
-        keys = jax.random.split(key, config['n_layers']+ 1)
+        keys = jax.random.split(key, config['n_layers_actor']+ 1)
         self.config = config
         self.layers = [
             AdaLNLayer(
-                model_dim=config['model_dim'],
+                model_dim=config['dim_ff'],
                 num_heads=config['num_heads'],
-                chunk_len=config['chunk_len'],
+                chunk_len=config['max_agents'],
                 dim_ff=config['dim_ff'],
                 dropout=config['dropout'],
                 masked=config['masked'],
                 key=keys[i]
-            ) for i in range(config['n_layers'])
+            ) for i in range(config['n_layers_actor'])
         ]
-        self.final_layer = FinalAdaLNLayer(config['model_dim'], out_dim, key=keys[-1])
+        self.final_layer = FinalAdaLNLayer(config['dim_ff'], out_dim, key=keys[-1])
 
     def __call__(self, x, cond):
         for layer in self.layers:
@@ -220,31 +237,40 @@ class JaxTransformer(eqx.Module):
     action_embedding: nn.Linear
     # NOTE: Positional embedding logic (SPE, SCE, RoPE) would be added here
     # For now, we'll use a simple one for demonstration.
-    pos_embedding: nn.Linear
+    pos_embedding: SCEmbedding
     decoder: AdaLNTransformer
-    is_critic: bool
+    
+    robot_indices: Array = eqx.field(static=True)
+    is_critic: bool = eqx.field(static=True)
 
     def __init__(self, config, out_dim: int, is_critic: bool, key=None):
         keys = jax.random.split(key, 4)
         self.is_critic = is_critic
+        self.robot_indices = jnp.arange(64)
         
         state_dim = config['state_dim'] if not is_critic else config['state_dim'] + config['act_dim']
-        self.state_enc = nn.Linear(state_dim, config['model_dim'], key=keys[0])
-        self.action_embedding = nn.Linear(config['act_dim'], config['model_dim'], key=keys[1])
-        self.pos_embedding = nn.Linear(1, config['model_dim'], key=keys[2]) # Simplified placeholder
+        self.state_enc = nn.Linear(state_dim, config['dim_ff'], key=keys[0])
+        self.action_embedding = nn.Linear(config['act_dim'], config['dim_ff'], key=keys[1])
+        num_robots = 64
+        embedding_dim = config['dim_ff']
+        self.pos_embedding = SCEmbedding(num_robots, embedding_dim, key=keys[2])
+        with open('./utils/jax/sce_model.eqx', 'rb') as f:
+            self.pos_embedding = eqx.tree_deserialise_leaves(f, self.pos_embedding)
+        self.pos_embedding = eqx.filter(self.pos_embedding, eqx.is_array, jax.lax.stop_gradient)
         
         self.decoder = AdaLNTransformer(config, out_dim, key=keys[3])
 
-    def __call__(self, state: Array, pos: Array, actions: Array = None, key: PRNGKeyArray = None):
+    def __call__(self, state: Array, actions: Array = None, key: PRNGKeyArray = None):
         if not self.is_critic:
             n_agents = state.shape[0]
             initial_actions = jnp.zeros((n_agents, self.action_embedding.out_features))
             
             act_enc = self.action_embedding(initial_actions)
             state_enc = self.state_enc(state)
-            pos_embed = self.pos_embedding(pos[:, None])
+            pos_embed = jax.vmap(self.pos_embedding)(self.robot_indices)
             
-            conditional_enc = state_enc + pos_embed
+            conditional_enc = state_enc
+            act_enc = act_enc + pos_embed
             logits = self.decoder(act_enc, conditional_enc)
             mu, log_std = jnp.split(logits, 2, axis=-1)
             return TanhNormal.from_loc_and_log_std(mu, log_std)
@@ -256,7 +282,8 @@ class JaxTransformer(eqx.Module):
             
             act_enc = jnp.zeros((state.shape[0], self.action_embedding.out_features))
             state_enc = self.state_enc(critic_state)
-            pos_embed = self.pos_embedding(pos[:, None])
+            pos_embed = jax.vmap(self.pos_embedding)(self.robot_indices)
 
-            conditional_enc = state_enc + pos_embed
+            conditional_enc = state_enc
+            act_enc = act_enc + pos_embed
             return self.decoder(act_enc, conditional_enc)

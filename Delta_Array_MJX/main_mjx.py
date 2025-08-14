@@ -10,9 +10,9 @@ class MjxRunner:
         self.env = env
         self.inference_env = inference_env
         self.config = config
-        self.n_envs = config['num_envs']
+        self.n_envs = config['nenv']
         self.bs = config['bs']
-        self.warmup_steps = config['warmup_steps']
+        self.warmup_steps = config['warmup']
         self.n_updates = config['n_updates']
         self.infer_every = config['infer_every']
         self.max_eps = config['explen']
@@ -25,7 +25,7 @@ class MjxRunner:
         
         self.actor_optimizer = optax.adamw(config['pi_lr'])
         self.critic_optimizer = optax.adamw(config['q_lr'])
-        self.alpha_optimizer = optax.adamw(config['alpha_lr'])
+        self.alpha_optimizer = optax.adamw(config['pi_lr'])
         
         self.actor_opt_state = self.actor_optimizer.init(eqx.filter(self.agent.actor, eqx.is_array))
         self.critic_opt_state = self.critic_optimizer.init(eqx.filter((self.agent.critic1, self.agent.critic2), eqx.is_array))
@@ -58,7 +58,7 @@ class MjxRunner:
                         done=jnp.zeros(()), 
                         key=init_key
                     )
-        env_state = jax.tree_map(
+        env_state = jax.tree_util.tree_map(
             lambda x: jnp.stack([x] * self.n_envs), 
             env_state
         )
@@ -75,7 +75,7 @@ class MjxRunner:
                         done=jnp.zeros(()), 
                         key=init_key
                     )
-        reset_state = jax.tree_map(
+        reset_state = jax.tree_util.tree_map(
             lambda x: jnp.stack([x] * self.n_envs), 
             reset_state
         )
@@ -88,8 +88,8 @@ class MjxRunner:
             actions = dist.sample(key=key)
             return actions
         
-        vmapped_state = jax.map(self.env.step)
-        vmapped_reset = jax.map(self.env.reset)
+        vmapped_state = jax.vmap(self.env.step)
+        vmapped_reset = jax.vmap(self.env.reset)
         for ep in range(self.max_eps):
             self.key, reset_key = jax.random.split(self.key)
             # Create a unique key for each parallel environment
@@ -189,7 +189,7 @@ if __name__ == "__main__":
     log_queue = manager.Queue(100)
     log_proc = ctx.Process(
         target=logger_worker,
-        args=(config, log_queue),
+        args=(log_queue, config),
         daemon=True
     )
     log_proc.start()
