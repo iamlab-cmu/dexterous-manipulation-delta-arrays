@@ -362,7 +362,6 @@ class GPTLayer_SA(nn.Module):
 
 class GPT(nn.Module):
     def __init__(self, state_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, mha, critic=False, masked=True, gauss=False, SA=False):
-    def __init__(self, state_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, mha, critic=False, masked=True, gauss=False, SA=False):
         super(GPT, self).__init__()
         self.SA = SA
         print(model_dim)
@@ -457,7 +456,6 @@ class AdaLNLayer(nn.Module):
     A DiT block with adaptive layer norm zero (adaLN-Zero) conditioning.
     """
     def __init__(self, model_dim, num_heads, max_agents, dim_ff, dropout, masked, mha):
-    def __init__(self, model_dim, num_heads, max_agents, dim_ff, dropout, masked, mha):
         super().__init__()
         self.attn = mha(model_dim, num_heads, max_agents, masked=masked)
         self.attn = mha(model_dim, num_heads, max_agents, masked=masked)
@@ -499,7 +497,6 @@ class FinalLayer(nn.Module):
         return x
 
 class GPT_AdaLN(nn.Module):
-    def __init__(self, state_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, mha, critic=False, masked=True, gauss=False):
     def __init__(self, state_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, mha, critic=False, masked=True, gauss=False):
         super(GPT_AdaLN, self).__init__()
         self.state_enc = nn.Linear(state_dim, model_dim)
@@ -560,7 +557,6 @@ class GPT_AdaLN(nn.Module):
         else:
             act_mean = self.final_layer(act_enc, conditional_enc)
         return act_mean
-            return act_mean
 
     def forward_rotpe(self, state, actions, pos, idx=None):
         state_enc = self.state_enc(state)
@@ -577,10 +573,6 @@ class GPT_AdaLN(nn.Module):
             act_std = self.log_std(act_enc, state_enc)
             act_std = torch.clamp(act_std, LOG_STD_MIN, LOG_STD_MAX)
             std = torch.exp(act_std)
-            return act_mean, std
-        else:
-            act_mean = self.final_layer(act_enc, state_enc)
-        return act_mean
             return act_mean, std
         else:
             act_mean = self.final_layer(act_enc, state_enc)
@@ -615,11 +607,7 @@ class Transformer(nn.Module):
         elif hp_dict['pos_embed'] == "SCE":
             self.pos_embedding = IntegerEmbeddingModel(self.max_agents, embedding_dim=256)
             self.pos_embedding.load_state_dict(
-                torch.load(hp_dict['idx_embed_loc'], # /utils/MATSAC
-                torch.load("./idx_embedding_new.pth", # /utils/MATSAC
-                           map_location=self.device,
-                           weights_only=True)
-            )
+                torch.load("./idx_embedding_new.pth", map_location=self.device, weights_only=True))
             for param in self.pos_embedding.parameters():
                 param.requires_grad = False
             mha = MultiHeadAttention

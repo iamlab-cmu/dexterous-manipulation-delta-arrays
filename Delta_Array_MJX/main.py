@@ -105,19 +105,6 @@ def run_env(env_id, sim_len, n_runs, return_dict, config, inference, pipe_conn, 
         # env.randomize_state()
         env.apply_action(execute_actions)
         env.update_sim(sim_len, recorder)
-        if config['multi_obj']:
-            obj_names = np.array(OBJ_NAMES)[np.random.randint(0, len(OBJ_NAMES), size=2)]
-            env = delta_array_mj.DeltaArrayRB(config, obj_names)
-        else:
-            obj_name = OBJ_NAMES[np.random.randint(0, len(OBJ_NAMES))]
-            env = delta_array_mj.DeltaArrayRB(config, obj_name)
-
-    def open_loop_rollout(env, sim_len, recorder):
-        env.apply_action(env.actions_grasp[:env.n_idxs])
-        env.update_sim(sim_len, recorder)
-        # env.randomize_state()
-        env.apply_action(execute_actions)
-        env.update_sim(sim_len, recorder)
 
     run_dict = {}
     nrun = 0

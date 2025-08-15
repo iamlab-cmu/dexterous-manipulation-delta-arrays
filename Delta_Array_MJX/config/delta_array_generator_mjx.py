@@ -1,44 +1,42 @@
 import numpy as np
 import xml.etree.ElementTree as ET
 
+from utils.constants import OBJ_NAMES
+
 class DeltaArrayEnvCreator:
-    def __init__(self):
-        pass
+    def __init__(self, mjx=False):
+        self.mjx = mjx
     
     def create_fingertip_body(self, name, pos):
         body = ET.Element('body', name=name, pos=f"{pos[0]:.6f} {pos[1]:.6f} {pos[2]:.6f}")
         ET.SubElement(body, 'geom', rgba="1 0 0 1")
         ET.SubElement(body, 'joint', name=f"{name}_x", type="slide", axis="1 0 0", limited="true", range="-0.03 0.03")
         ET.SubElement(body, 'joint', name=f"{name}_y", type="slide", axis="0 1 0", limited="true", range="-0.03 0.03")
+        ET.SubElement(body, 'joint', name=f"{name}_z", type="slide", axis="0 0 1", limited="true", range="0.015 0.2") #or viceversa
         return body
 
     def create_fiducial_marker(self, name, pos):
         body = ET.Element('body', name=name, pos=f"{pos[0]} {pos[1]} {pos[2]}")
         ET.SubElement(body, 'freejoint')
-        ET.SubElement(body, 'geom', 
-                     name=name,
-                     size="0.005 0.005 0.001",
-                     type="box",
-                     rgba="1 0 0 1",
-                     mass="100")
+        ET.SubElement(body, 'geom', name=name, size="0.005 0.005 0.001", type="box", rgba="1 0 0 1", mass="100")
         return body
     
     def create_actuator(self, name):
         actuators = []
         for axis in ['x', 'y']:
-            actuators.append(ET.Element('position', joint=f"{name}_{axis}", ctrllimited="true", ctrlrange="-0.03 0.03", kp="50", kv="20"))
+            actuators.append(ET.Element('position', name=f"act_{name}_{axis}", joint=f"{name}_{axis}", ctrllimited="true", ctrlrange="-0.03 0.03", kp="50", kv="20"))
         return actuators
 
     def create_env(self, obj_name, num_rope_bodies=None):
         root = ET.Element('mujoco', model="scene")
-        
         ET.SubElement(root, 'compiler', autolimits="true", angle="degree")
-        
         if obj_name == "rope":
             option = ET.SubElement(root, 'option', integrator="implicit", timestep="0.008", solver="CG", iterations="75")
         else:
             option = ET.SubElement(root, 'option', integrator="implicitfast", timestep="0.002")
-        ET.SubElement(option, 'flag', multiccd="enable")
+        ET.SubElement(option, 'flag', multiccd="disable")
+        custom = ET.SubElement(root, 'custom')
+        ET.SubElement(custom, 'numeric', name="max_contact_points", data="100")
         
         default = ET.SubElement(root, 'default')
         ET.SubElement(default, 'geom', type="capsule", size="0.0075 0.01", mass="0.4", condim="6")
@@ -79,20 +77,32 @@ class DeltaArrayEnvCreator:
         ET.SubElement(table, 'geom', name="collision_geom", type="box", size="1 1 1", contype="1", conaffinity="1", condim="4", material="collision_material")
         ET.SubElement(table, 'geom', name="visual_geom", type="box", size="0.15 0.15 0.015", contype="0", conaffinity="0", material="visual_material")
         
-        if obj_name == "rope":
-            composite_body = ET.SubElement(worldbody, 'body', name="rope", pos="0.13125 0.03 1.021", euler="0 0 90")
-            ET.SubElement(composite_body, 'freejoint')
-            composite = ET.SubElement(composite_body, 'composite', type="cable", curve="s", count=f"{num_rope_bodies} 1 1", size="0.3", initial="none")
-            ET.SubElement(composite, 'joint', kind="main", stiffness="0", damping="0.1")
-            ET.SubElement(composite, 'geom', type="capsule", size=".0075", rgba="0 1 0 1", condim="4", mass="0.005")
+        if self.mjx:
+            ET.SubElement(asset, 'texture', name='generic_obj', file="config/assets/texture.png", type="2d")
+            ET.SubElement(asset, 'material', name='generic_obj', texture='generic_obj', specular="0.5", shininess="0.5")
+            for n, obj_name in enumerate(OBJ_NAMES):
+                x = 0.13125 + n * 0.05
+                y = 1.1407285
+                ET.SubElement(asset, 'mesh', file=f"config/assets/{obj_name}.obj", scale="1 1 1")
+                obj = ET.SubElement(worldbody, 'body', name=f"{obj_name}", pos=f"{x} {y} 1.0201", euler="90 0 0")
+                ET.SubElement(obj, 'freejoint')
+                ET.SubElement(obj, 'geom', name=obj_name, type="mesh", mesh=obj_name, material='generic_obj', mass="0.05", condim="6")
+            
         else:
-            # ET.SubElement(root, 'include', file=f"config/assets/{obj_name}/{obj_name}.xml")
-            ET.SubElement(asset, 'texture', name=obj_name, file=f"config/assets/texture.png", type="2d")
-            ET.SubElement(asset, 'material', name=obj_name, texture=obj_name, specular="0.5", shininess="0.5")
-            ET.SubElement(asset, 'mesh', file=f"config/assets/{obj_name}.obj", scale="1 1 1")
-            obj = ET.SubElement(worldbody, 'body', name=f"{obj_name}", pos="0.13125 0.1407285 1.0201", euler="90 0 0")
-            ET.SubElement(obj, 'freejoint')
-            ET.SubElement(obj, 'geom', name="object", type="mesh", mesh=obj_name, material=obj_name, mass="0.05", condim="6")
+            if obj_name == "rope":
+                composite_body = ET.SubElement(worldbody, 'body', name="rope", pos="0.13125 0.03 1.021", euler="0 0 90")
+                ET.SubElement(composite_body, 'freejoint')
+                composite = ET.SubElement(composite_body, 'composite', type="cable", curve="s", count=f"{num_rope_bodies} 1 1", size="0.3", initial="none")
+                ET.SubElement(composite, 'joint', kind="main", stiffness="0", damping="0.1")
+                ET.SubElement(composite, 'geom', type="capsule", size=".0075", rgba="0 1 0 1", condim="4", mass="0.005")
+            else:
+                # ET.SubElement(root, 'include', file=f"config/assets/{obj_name}/{obj_name}.xml")
+                ET.SubElement(asset, 'texture', name=obj_name, file="config/assets/texture.png", type="2d")
+                ET.SubElement(asset, 'material', name=obj_name, texture=obj_name, specular="0.5", shininess="0.5")
+                ET.SubElement(asset, 'mesh', file=f"config/assets/{obj_name}.obj", scale="1 1 1")
+                obj = ET.SubElement(worldbody, 'body', name=f"{obj_name}", pos="0.13125 0.1407285 1.0201", euler="90 0 0")
+                ET.SubElement(obj, 'freejoint')
+                ET.SubElement(obj, 'geom', name="object", type="mesh", mesh=obj_name, material=obj_name, mass="0.05", condim="6")
         
         actuator = ET.SubElement(root, 'actuator')
         for i in range(arr.shape[0]):

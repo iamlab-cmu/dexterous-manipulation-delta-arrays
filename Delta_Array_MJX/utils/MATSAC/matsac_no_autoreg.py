@@ -227,8 +227,11 @@ class MATSAC:
                 
     @torch.no_grad()
     def get_actions(self, obs, pos, deterministic=False):
-        obs = torch.as_tensor(obs, dtype=torch.float32).unsqueeze(0).to(self.device)
-        pos = torch.as_tensor(pos, dtype=torch.int32).unsqueeze(0).to(self.device)
+        obs = torch.as_tensor(obs, dtype=torch.float32).to(self.device)
+        pos = torch.as_tensor(pos, dtype=torch.int32).to(self.device)
+        if len(obs.shape) == 2:
+            obs = obs.unsqueeze(0)
+            pos = pos.unsqueeze(0)
         
         actions = self.tf.get_actions(obs, pos, deterministic=deterministic).squeeze()
         return actions.detach().to(torch.float32).cpu().numpy()
