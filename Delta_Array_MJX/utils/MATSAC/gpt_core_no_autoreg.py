@@ -32,7 +32,6 @@ def build_rotary_pos_emb(seq_len, dim, base=10000.0):
     angles = t * inv_freq.unsqueeze(0)
     return torch.cos(angles), torch.sin(angles)
 
-
 def apply_rotary_pos_emb(q, k, cos, sin, offset=0):
     bs, n_heads, seq_len, dim = q.shape
     half_dim = dim // 2
@@ -102,6 +101,127 @@ class MultiHeadAttentionRoPE(nn.Module):
         # Q, K: (bs, num_heads, n_agents, split_head_dim)
         Q, K = apply_rotary_pos_emb(Q, K, self.rope_cos, self.rope_sin, offset=0)
         # -----------------------------------------
+
+        attn = self.scaled_dot_product_attention(Q, K, V, n_agents)
+        output = self.W_O(self.combine_heads(attn, bs, n_agents))
+        return output
+    
+
+# New class for Locally-Constrained RoPE
+class MultiHeadAttentionLC_RoPE(MultiHeadAttentionRoPE):
+    def __init__(self, model_dim, num_heads, max_agents, masked, r_local=0.1, delta_array_size=(8, 8)):
+        super(MultiHeadAttentionLC_RoPE, self).__init__(model_dim, num_heads, max_agents, masked)
+
+        # Create a locality mask
+        self.r_local = r_local
+        self.delta_array_size = delta_array_size
+        self.locality_mask = self.create_locality_mask()
+        self.register_buffer('locality_mask_buffer', self.locality_mask)
+
+    def create_locality_mask(self):
+        # Create a grid of robot positions
+        coords = torch.zeros(self.max_agents, 2)
+        for i in range(self.max_agents):
+            row = i // self.delta_array_size[1]
+            col = i % self.delta_array_size[1]
+            coords[i, 0] = col
+            coords[i, 1] = row
+            
+        # Calculate pairwise distances
+        dist_matrix = torch.cdist(coords, coords)
+        
+        # Create the mask
+        mask = (dist_matrix <= self.r_local).float()
+        return mask
+
+    def scaled_dot_product_attention(self, Q, K, V, n_agents):
+        attention_scores = torch.matmul(Q, K.transpose(-1, -2)) / math.sqrt(self.split_head_dim)
+        
+        # Apply the locality mask
+        attention_scores = attention_scores.masked_fill(self.locality_mask_buffer[:n_agents, :n_agents] == 0, float('-inf'))
+        
+        if self.masked:
+            attention_scores = attention_scores.masked_fill(self.tril[:n_agents, :n_agents] == 0, float('-inf'))
+            
+        attention_probs = torch.softmax(attention_scores, dim=-1)
+        output = torch.matmul(attention_probs, V)
+        return output
+
+# New class for Learned Relative Embeddings
+class MultiHeadAttentionLRE(nn.Module):
+    def __init__(self, model_dim, num_heads, max_agents, masked, k_classes=13, delta_array_size=(8, 8)):
+        super(MultiHeadAttentionLRE, self).__init__()
+        assert model_dim % num_heads == 0
+
+        self.num_heads = num_heads
+        self.model_dim = model_dim
+        self.split_head_dim = model_dim // num_heads
+        self.masked = masked
+        self.max_agents = max_agents
+        self.k_classes = k_classes
+        self.delta_array_size = delta_array_size
+
+        self.W_Q = wt_init_(nn.Linear(model_dim, model_dim), activation="linear")
+        self.W_K = wt_init_(nn.Linear(model_dim, model_dim), activation="linear")
+        self.W_V = wt_init_(nn.Linear(model_dim, model_dim), activation="linear")
+        self.W_O = wt_init_(nn.Linear(model_dim, model_dim), activation="linear")
+
+        if self.masked:
+            self.register_buffer('tril', torch.tril(torch.ones(max_agents, max_agents)))
+
+        # Learnable angle lookup table
+        self.angle_lookup = nn.Embedding(k_classes, self.split_head_dim // 2)
+
+    def map_to_class(self, i, j):
+        # Simplified mapping logic for a grid
+        row_i, col_i = i // self.delta_array_size[1], i % self.delta_array_size[1]
+        row_j, col_j = j // self.delta_array_size[1], j % self.delta_array_size[1]
+        
+        diff_row, diff_col = abs(row_i - row_j), abs(col_i - col_j)
+        
+        # This is a simplified example; you might need a more sophisticated mapping for a hexagonal grid
+        if diff_row == 0 and diff_col == 0: return 0  # Same robot
+        if diff_row <= 1 and diff_col <= 1: return 1  # Immediate neighbors
+        return 2  # Further neighbors (simplified to 3 classes for this example)
+
+    def scaled_dot_product_attention(self, Q, K, V, n_agents):
+        # Create rotation matrices for all pairs
+        bs, _, _, dim = K.size()
+        half_dim = dim // 2
+        
+        rel_pos_classes = torch.tensor([[self.map_to_class(i, j) for j in range(n_agents)] for i in range(n_agents)], device=Q.device)
+        angles = self.angle_lookup(rel_pos_classes) # (n_agents, n_agents, half_dim)
+        
+        cos = torch.cos(angles).unsqueeze(0).unsqueeze(1)
+        sin = torch.sin(angles).unsqueeze(0).unsqueeze(1)
+        
+        k1, k2 = K[..., :half_dim], K[..., half_dim:]
+        
+        # The rotation needs to be applied carefully based on relative positions
+        # This is a simplified implementation
+        K_rotated = torch.cat([k1.unsqueeze(2) * cos - k2.unsqueeze(2) * sin, 
+                               k1.unsqueeze(2) * sin + k2.unsqueeze(2) * cos], dim=-1).sum(dim=3)
+        
+        attention_scores = torch.matmul(Q, K_rotated.transpose(-1, -2)) / math.sqrt(self.split_head_dim)
+        
+        if self.masked:
+            attention_scores = attention_scores.masked_fill(self.tril[:n_agents, :n_agents] == 0, float('-inf'))
+            
+        attention_probs = torch.softmax(attention_scores, dim=-1)
+        output = torch.matmul(attention_probs, V)
+        return output
+
+    def split_heads(self, x, bs, n_agents):
+        return x.view(bs, n_agents, self.num_heads, self.split_head_dim).transpose(1, 2)
+
+    def combine_heads(self, x, bs, n_agents):
+        return x.transpose(1, 2).contiguous().view(bs, n_agents, self.model_dim)
+
+    def forward(self, Q, K, V):
+        bs, n_agents, _ = Q.size()
+        Q = self.split_heads(self.W_Q(Q), bs, n_agents)
+        K = self.split_heads(self.W_K(K), bs, n_agents)
+        V = self.split_heads(self.W_V(V), bs, n_agents)
 
         attn = self.scaled_dot_product_attention(Q, K, V, n_agents)
         output = self.W_O(self.combine_heads(attn, bs, n_agents))
@@ -437,9 +557,15 @@ class Transformer(nn.Module):
         elif hp_dict['pos_embed'] == "RoPE":
             self.pos_embedding = None
             mha = MultiHeadAttentionRoPE
-            
+        elif hp_dict['pos_embed'] == "LCRoPE":
+            self.pos_embedding = None
+            mha = MultiHeadAttentionLC_RoPE
+        elif hp_dict['pos_embed'] == "LRE":
+            self.pos_embedding = None
+            mha = MultiHeadAttentionLRE
+
         if mha is None:
-            raise ValueError("pos_embed must be one of ['SPE', 'SCE', 'RoPE']")
+            raise ValueError("pos_embed must be one of ['SPE', 'SCE', 'RoPE', 'LCRoPE', 'LRE']")
         
         log_std = -0.5 * torch.ones(self.action_dim)
         self.log_std = torch.nn.Parameter(log_std)
