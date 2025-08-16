@@ -105,7 +105,6 @@ def parse_args():
     parser.add_argument('-bs', '--bs', type=int, default=256, help='Batch size for training (default: 256)')
     parser.add_argument('-ln', '--layer_norm', action="store_true", help='Whether to use layer normalization (default: False)')
     parser.add_argument('-pn', '--penultimate_norm', action="store_true", help='Whether to use Unit Ball Norm for Critic')
-    parser.add_argument('-actvn', '--activation', type=str, default='ReLU', choices=['ReLU', 'SiLU', 'GELU'], help='Activation function (default: ReLU)')
     
     # Add any additional config params here
     parser.add_argument('-mac', '--mac', action="store_true", help='Working on Mac?')
@@ -114,13 +113,6 @@ def parse_args():
     
     return parser.parse_args()
 
-def get_activation(activation_name: str) -> nn.Module:
-    activation_dict = {
-        'ReLU': nn.ReLU,
-        'SiLU': nn.SiLU,
-        'GELU': nn.GELU,
-    }
-    return activation_dict[activation_name]
 
 def create_sac_config():
     args = parse_args()
@@ -131,7 +123,6 @@ def create_sac_config():
     config['max_agents'] = 64
     config['state_dim'] = 6
     config['act_dim'] = 3
-    # config['activation'] = get_activation(config['activation'])
     if config['mac']:
         config['dev_rl'] = torch.device("mps")
     else:

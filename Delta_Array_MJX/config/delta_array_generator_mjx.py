@@ -33,13 +33,16 @@ class DeltaArrayEnvCreator:
         if obj_name == "rope":
             option = ET.SubElement(root, 'option', integrator="implicit", timestep="0.008", solver="CG", iterations="75")
         else:
-            option = ET.SubElement(root, 'option', integrator="implicitfast", timestep="0.002")
-        ET.SubElement(option, 'flag', multiccd="disable")
+            # impratio="10" iterations="1" ls_iterations="4" timestep="0.001"
+            option = ET.SubElement(root, 'option', integrator="implicitfast", timestep="0.002", impratio="10", iterations="5", ls_iterations="8")
+        ET.SubElement(option, 'flag', multiccd="disable", eulerdamp="disable")
         custom = ET.SubElement(root, 'custom')
-        ET.SubElement(custom, 'numeric', name="max_contact_points", data="100")
+        ET.SubElement(custom, 'numeric', name="max_contact_points", data="50")
+        ET.SubElement(custom, 'numeric', name="max_geom_points", data="50")
         
         default = ET.SubElement(root, 'default')
-        ET.SubElement(default, 'geom', type="capsule", size="0.0075 0.01", mass="0.4", condim="6")
+        ET.SubElement(default, 'geom', type="capsule", size="0.0075 0.01", mass="0.4", condim="4")
+        ET.SubElement(default, 'mesh', maxhullvert="32")
         
         # Add visual settings
         visual = ET.SubElement(root, 'visual')
@@ -83,10 +86,10 @@ class DeltaArrayEnvCreator:
             for n, obj_name in enumerate(OBJ_NAMES):
                 x = 0.13125 + n * 0.05
                 y = 1.1407285
-                ET.SubElement(asset, 'mesh', file=f"config/assets/{obj_name}.obj", scale="1 1 1")
+                ET.SubElement(asset, 'mesh', file=f"config/assets/{obj_name}.obj", scale="1 1 1", maxhullvert="32")
                 obj = ET.SubElement(worldbody, 'body', name=f"{obj_name}", pos=f"{x} {y} 1.0201", euler="90 0 0")
                 ET.SubElement(obj, 'freejoint')
-                ET.SubElement(obj, 'geom', name=obj_name, type="mesh", mesh=obj_name, material='generic_obj', mass="0.05", condim="6")
+                ET.SubElement(obj, 'geom', name=obj_name, type="mesh", mesh=obj_name, material='generic_obj', mass="0.05", condim="4")
             
         else:
             if obj_name == "rope":
@@ -102,7 +105,7 @@ class DeltaArrayEnvCreator:
                 ET.SubElement(asset, 'mesh', file=f"config/assets/{obj_name}.obj", scale="1 1 1")
                 obj = ET.SubElement(worldbody, 'body', name=f"{obj_name}", pos="0.13125 0.1407285 1.0201", euler="90 0 0")
                 ET.SubElement(obj, 'freejoint')
-                ET.SubElement(obj, 'geom', name="object", type="mesh", mesh=obj_name, material=obj_name, mass="0.05", condim="6")
+                ET.SubElement(obj, 'geom', name="object", type="mesh", mesh=obj_name, material=obj_name, mass="0.05", condim="4")
         
         actuator = ET.SubElement(root, 'actuator')
         for i in range(arr.shape[0]):
