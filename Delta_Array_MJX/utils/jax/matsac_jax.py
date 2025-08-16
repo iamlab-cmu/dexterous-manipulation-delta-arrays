@@ -6,6 +6,39 @@ import equinox as eqx
 from utils.jax_utils import polyak_update
 from utils.jax.gpt_adaln_core import JaxTransformer as TF
 
+# Standalone JIT-compiled functions for performance optimization
+
+@jax.jit
+def compute_q_values(q_vals: jnp.ndarray) -> jnp.ndarray:
+    """Compute Q-values by summing and squeezing."""
+    return jnp.sum(q_vals.squeeze(-1), axis=-1)
+
+@jax.jit
+def compute_target_q(rd: jnp.ndarray, gamma: float, d: jnp.ndarray, 
+                     q_next_target: jnp.ndarray, alpha: float, next_log_probs: jnp.ndarray) -> jnp.ndarray:
+    return rd # + gamma * (1.0 - d) * (q_next_target - alpha * next_log_probs)
+
+@jax.jit 
+def compute_critic_loss(q1_pred: jnp.ndarray, q2_pred: jnp.ndarray, q_target: jnp.ndarray) -> jnp.ndarray:
+    """Compute MSE loss for critics."""
+    return jnp.mean((q1_pred - q_target)**2) + jnp.mean((q2_pred - q_target)**2)
+
+@jax.jit
+def compute_actor_loss(alpha: float, log_probs: jnp.ndarray, q_pred: jnp.ndarray) -> jnp.ndarray:
+    """Compute actor loss."""
+    return jnp.mean((alpha * log_probs).mean(axis=-1) - q_pred)
+
+@jax.jit  
+def compute_alpha_loss(log_alpha: jnp.ndarray, log_probs: jnp.ndarray, target_entropy: float) -> jnp.ndarray:
+    """Compute alpha (temperature) loss."""
+    log_probs_detached = jax.lax.stop_gradient(log_probs)
+    return -jnp.exp(log_alpha) * jnp.mean(log_probs_detached + target_entropy)
+
+@jax.jit
+def compute_min_q_values(q1_vals: jnp.ndarray, q2_vals: jnp.ndarray) -> jnp.ndarray:
+    """Compute minimum of two Q-value arrays."""
+    return jnp.minimum(q1_vals, q2_vals)
+
 class MATSACAgent(eqx.Module):
     actor: eqx.Module
     critic1: eqx.Module
@@ -29,17 +62,18 @@ class MATSACAgent(eqx.Module):
         
         self.log_alpha = jnp.array(-1.609) # e^log_alpha = 0.2 
       
-@eqx.filter_vmap(in_axes=(None, 0, 0, 0))
+@eqx.filter_vmap(in_axes=(None, 0, 0))
 def _vmapped_actor_sample(actor, s, key):
     model_key, sample_key = jr.split(key)
     dist = actor(s, key=model_key)
     return dist.sample_and_log_prob(key=sample_key)
 
-@eqx.filter_vmap(in_axes=(None, 0, 0, 0, 0))
+@eqx.filter_vmap(in_axes=(None, 0, 0, 0))
 def _vmapped_critic_eval(critic, s, a, key):
     q_vals = critic(s, a, key=key)
-    return jnp.sum(q_vals.squeeze(-1), axis=-1)
+    return compute_q_values(q_vals)
 
+@jax.jit
 def _critic_loss_fn(critics_to_grad, static_critics, batch,  next_actions_log_probs,  keys, gamma, alpha):
     q1_model, q2_model = critics_to_grad
     q1_target, q2_target = static_critics
@@ -52,18 +86,19 @@ def _critic_loss_fn(critics_to_grad, static_critics, batch,  next_actions_log_pr
     
     q1_next_target = _vmapped_critic_eval(q1_target, s_next, next_actions, q1_keys_t)
     q2_next_target = _vmapped_critic_eval(q2_target, s_next, next_actions, q2_keys_t)
-    q_next_target = jnp.minimum(q1_next_target, q2_next_target)
+    q_next_target = compute_min_q_values(q1_next_target, q2_next_target)
     
-    q_target = rd + gamma * (1.0 - d) * (q_next_target - alpha * next_log_probs)
+    q_target = compute_target_q(rd, gamma, d, q_next_target, alpha, next_log_probs)
 
     q1_keys = jr.split(q1_key, s.shape[0])
     q2_keys = jr.split(q2_key, s.shape[0])
     q1_pred = _vmapped_critic_eval(q1_model, s, a, q1_keys)
     q2_pred = _vmapped_critic_eval(q2_model, s, a, q2_keys)
 
-    loss = jnp.mean((q1_pred - q_target)**2) + jnp.mean((q2_pred - q_target)**2)
+    loss = compute_critic_loss(q1_pred, q2_pred, q_target)
     return loss
 
+@jax.jit
 def _actor_loss_fn(actor_to_grad, static_critics, s, alpha, keys, actor_keys_s):
     actions, log_probs = _vmapped_actor_sample(actor_to_grad, s, actor_keys_s)
     q1_model, q2_model = static_critics
@@ -73,11 +108,12 @@ def _actor_loss_fn(actor_to_grad, static_critics, s, alpha, keys, actor_keys_s):
     q2_keys = jr.split(q2_key, s.shape[0])
     q1_pred = _vmapped_critic_eval(q1_model, s, actions, q1_keys)
     q2_pred = _vmapped_critic_eval(q2_model, s, actions, q2_keys)
-    q_pred = jnp.minimum(q1_pred, q2_pred)
+    q_pred = compute_min_q_values(q1_pred, q2_pred)
     
-    actor_loss = jnp.mean(alpha * log_probs - q_pred)
+    actor_loss = compute_actor_loss(alpha, log_probs, q_pred)
     return actor_loss, log_probs
 
+@jax.jit
 def _alpha_loss_fn(log_alpha_to_grad, log_probs, target_entropy):
     log_probs_detached = jax.lax.stop_gradient(log_probs)
     alpha_loss = -jnp.exp(log_alpha_to_grad) * jnp.mean(log_probs_detached + target_entropy)

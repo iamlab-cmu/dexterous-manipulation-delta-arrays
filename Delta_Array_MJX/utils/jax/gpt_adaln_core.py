@@ -99,15 +99,16 @@ class AdaLMLP(eqx.Module):
         return self.fc2(jax.nn.silu(self.fc1(x)))
 
 class AdaLNAttention(eqx.Module):
-    num_heads: int
-    model_dim: int
-    split_head_dim: int
+    num_heads: int = eqx.field(static=True)
+    model_dim: int = eqx.field(static=True)
+    split_head_dim: int = eqx.field(static=True)
+    masked: bool = eqx.field(static=True)
+    chunk_len: int = eqx.field(static=True)
+
     W_Q: nn.Linear
     W_K: nn.Linear
     W_V: nn.Linear
     W_O: nn.Linear
-    masked: bool
-    chunk_len: int
     tril: jax.Array
 
     def __init__(self, model_dim: int, num_heads: int, chunk_len: int, masked: bool, key=None):
@@ -209,7 +210,7 @@ class FinalAdaLNLayer(eqx.Module):
 class AdaLNTransformer(eqx.Module):
     layers: list
     final_layer: FinalAdaLNLayer
-    config: dict
+    config: dict = eqx.field(static=True)
     
     def __init__(self, config, out_dim: int, key=None):
         keys = jax.random.split(key, config['n_layers_actor']+ 1)
@@ -237,7 +238,7 @@ class JaxTransformer(eqx.Module):
     action_embedding: nn.Linear
     # NOTE: Positional embedding logic (SPE, SCE, RoPE) would be added here
     # For now, we'll use a simple one for demonstration.
-    pos_embedding: SCEmbedding
+    pos_embedding: Array
     decoder: AdaLNTransformer
     
     robot_indices: Array = eqx.field(static=True)
@@ -248,26 +249,35 @@ class JaxTransformer(eqx.Module):
         self.is_critic = is_critic
         self.robot_indices = jnp.arange(64)
         
-        state_dim = config['state_dim'] if not is_critic else config['state_dim'] + config['act_dim']
+        state_dim = config['state_dim']
         self.state_enc = nn.Linear(state_dim, config['dim_ff'], key=keys[0])
         self.action_embedding = nn.Linear(config['act_dim'], config['dim_ff'], key=keys[1])
         num_robots = 64
         embedding_dim = config['dim_ff']
-        self.pos_embedding = SCEmbedding(num_robots, embedding_dim, key=keys[2])
-        with open('./utils/jax/sce_model.eqx', 'rb') as f:
-            self.pos_embedding = eqx.tree_deserialise_leaves(f, self.pos_embedding)
-        self.pos_embedding = eqx.filter(self.pos_embedding, eqx.is_array, jax.lax.stop_gradient)
+        pos_embedding_model = SCEmbedding(num_robots, embedding_dim, key=keys[2])
+        try:
+            with open('./utils/jax/sce_model.eqx', 'rb') as f:
+                pos_embedding_model = eqx.tree_deserialise_leaves(f, pos_embedding_model)
+        except FileNotFoundError:
+            print("WARNING: sce_model.eqx not found. Using randomly initialized positional embeddings.")
         
+        arrays, static = eqx.partition(pos_embedding_model, eqx.is_array)
+        arrays = jax.lax.stop_gradient(arrays)
+        pos_embedding_model = eqx.combine(arrays, static)
+
+        all_indices = jnp.arange(num_robots)
+        self.pos_embedding = jax.vmap(pos_embedding_model)(all_indices)
+
         self.decoder = AdaLNTransformer(config, out_dim, key=keys[3])
 
     def __call__(self, state: Array, actions: Array = None, key: PRNGKeyArray = None):
         if not self.is_critic:
             n_agents = state.shape[0]
-            initial_actions = jnp.zeros((n_agents, self.action_embedding.out_features))
+            initial_actions = jnp.zeros((n_agents, self.action_embedding.in_features))
             
-            act_enc = self.action_embedding(initial_actions)
-            state_enc = self.state_enc(state)
-            pos_embed = jax.vmap(self.pos_embedding)(self.robot_indices)
+            act_enc = jax.vmap(self.action_embedding)(initial_actions)
+            state_enc = jax.vmap(self.state_enc)(state)
+            pos_embed = self.pos_embedding
             
             conditional_enc = state_enc
             act_enc = act_enc + pos_embed
@@ -278,11 +288,9 @@ class JaxTransformer(eqx.Module):
         else:
             if actions is None:
                 raise ValueError("Critic must be provided with actions.")
-            critic_state = jnp.concatenate([state, actions], axis=-1)
-            
-            act_enc = jnp.zeros((state.shape[0], self.action_embedding.out_features))
-            state_enc = self.state_enc(critic_state)
-            pos_embed = jax.vmap(self.pos_embedding)(self.robot_indices)
+            act_enc = jax.vmap(self.action_embedding)(actions)
+            state_enc = jax.vmap(self.state_enc)(state)
+            pos_embed = self.pos_embedding
 
             conditional_enc = state_enc
             act_enc = act_enc + pos_embed

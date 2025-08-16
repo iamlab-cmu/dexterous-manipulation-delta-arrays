@@ -8,13 +8,9 @@ class MetricLogger:
         self.dontlog = dontlog
     
     def add_data(self, key, value):
-        """Add a data point to the specified metric."""
         self.metrics[key].append(value)
     
     def log_metrics(self, max_length):
-        """
-        Resample all metrics to `max_length`, log them to wandb, and then flush the metrics.
-        """
         if not self.dontlog:
             resampled = {}
             for key in self.metrics:
