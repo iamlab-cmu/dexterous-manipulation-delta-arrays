@@ -109,7 +109,7 @@ class MultiHeadAttentionRoPE(nn.Module):
 
 # New class for Locally-Constrained RoPE
 class MultiHeadAttentionLC_RoPE(MultiHeadAttentionRoPE):
-    def __init__(self, model_dim, num_heads, max_agents, masked, r_local=0.1, delta_array_size=(8, 8)):
+    def __init__(self, model_dim, num_heads, max_agents, masked, r_local=0.6, delta_array_size=(8, 8)):
         super(MultiHeadAttentionLC_RoPE, self).__init__(model_dim, num_heads, max_agents, masked)
 
         # Create a locality mask

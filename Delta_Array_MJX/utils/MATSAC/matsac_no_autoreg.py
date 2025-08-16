@@ -17,7 +17,7 @@ class MATSAC:
         self.hp_dict = hp_dict.copy()
         self.env_dict = env_dict
         self.obs_dim = self.env_dict['pi_obs_space']['dim']
-        self.act_dim = 2 # self.env_dict['action_space']['dim']
+        self.act_dim = self.env_dict['action_space']['dim']
         self.hp_dict['action_dim'] = self.act_dim
         self.act_limit = self.env_dict['action_space']['high']
         self.device = self.hp_dict['dev_rl']
@@ -158,8 +158,8 @@ class MATSAC:
             self.log_dict['mu'].append(mu.mean().item())
             self.log_dict['std'].append(std.mean().item())
 
-    def update(self, current_episode, n_updates, avg_reward):
-        self.log_dict['Reward'].append(avg_reward)
+    def update(self, current_episode, n_updates, rewards):
+        self.log_dict['Reward'].append(rewards)
         for j in range(n_updates):
             self.internal_updates_counter += 1
             # if self.internal_updates_counter == 1:
@@ -184,29 +184,26 @@ class MATSAC:
             dones = data['done'].to(self.device)
             pos = data['pos'][:,:n_agents].to(self.device)
 
-            # Critic Update
             # self.optimizer_critic.zero_grad()
             for param in self.critic_params:
                 param.grad = None
             self.compute_q_loss(states, actions, new_states, rews, dones, pos)
 
-            # Actor Update
             # with torch.autograd.set_detect_anomaly(True):
             # self.optimizer_actor.zero_grad()
             for param in self.tf.decoder_actor.parameters():
                 param.grad = None
             self.compute_pi_loss(states, pos)
 
-            # Target Update
             with torch.no_grad():
                 for p, p_target in zip(self.tf.parameters(), self.tf_target.parameters()):
                     p_target.data.mul_(self.hp_dict['tau'])
                     p_target.data.add_((1 - self.hp_dict['tau']) * p.data)
 
             if (self.train_or_test == "train") and (self.internal_updates_counter % 5000) == 0:
-                if self.max_avg_rew < avg_reward:
+                if self.max_avg_rew < np.mean(rewards):
                     print("ckpt saved @ ", current_episode, self.internal_updates_counter)
-                    self.max_avg_rew = avg_reward
+                    self.max_avg_rew = np.mean(rewards)
                     dicc = {
                         'model': self.tf.state_dict(),
                         'actor_optimizer': self.optimizer_actor.state_dict(),
@@ -231,6 +228,7 @@ class MATSAC:
         pos = torch.as_tensor(pos, dtype=torch.int32).to(self.device)
         if len(obs.shape) == 2:
             obs = obs.unsqueeze(0)
+        if len(pos.shape) == 2:
             pos = pos.unsqueeze(0)
         
         actions = self.tf.get_actions(obs, pos, deterministic=deterministic).squeeze()

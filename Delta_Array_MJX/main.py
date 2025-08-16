@@ -1,19 +1,16 @@
-import pickle as pkl
 import numpy as np
 import gc
 import warnings
 import uuid
 import time
-warnings.filterwarnings("ignore")
-
 import multiprocessing
 from multiprocessing import Process, Manager
 
-from ipc_server import server_process_main  # your updated server code (see below)
+from ipc_server import server_process_main
 from utils import arg_helper
-
 import src.delta_array_mj as delta_array_mj
 
+warnings.filterwarnings("ignore")
 ###################################################
 # Action / Endpoint Mappings
 ###################################################
@@ -28,8 +25,6 @@ TOGGLE_PUSHING_AGENT = 8
 TT_GET_ACTION        = 9
 SET_BATCH_SIZE       = 10
 
-OBJ_NAMES = ["block", "cross", "diamond", "hexagon", "star", "triangle", "parallelogram", "semicircle", "trapezium", "disc"]
-# OBJ_NAMES = ["hexagon"]
 OBJ_NAMES = ["block", "cross", "diamond", "hexagon", "star", "triangle", "parallelogram", "semicircle", "trapezium", "disc"]
 # OBJ_NAMES = ["hexagon"]
 
@@ -58,12 +53,9 @@ def send_request(pipe_conn, action_code, data=None, lock=None, batched_queue=Non
     """
     if action_code == MA_GET_ACTION:
         req_id = str(uuid.uuid4())
-        # Request structure: (endpoint, data, req_id)
         request = (action_code, data, req_id)
         batched_queue.put(request)
-        # Wait (poll) until the server writes our response.
         while req_id not in response_dict:
-            time.sleep(0.00001)
             time.sleep(0.00001)
         response = response_dict.pop(req_id)
         return response
@@ -74,6 +66,10 @@ def send_request(pipe_conn, action_code, data=None, lock=None, batched_queue=Non
             response = pipe_conn.recv()
         return response
 
+def open_loop_rollout(env, sim_len, recorder):
+    env.apply_action(env.actions_grasp[:env.n_idxs])
+    env.update_sim(sim_len, recorder)
+    
 ###################################################
 # Environment Runner
 ###################################################
@@ -89,34 +85,19 @@ def run_env(env_id, sim_len, n_runs, return_dict, config, inference, pipe_conn, 
         
     if config['obj_name'] == "rope":
         env = delta_array_mj.DeltaArrayRope(config, config['obj_name'])
-    if config['obj_name'] == "rope":
-        env = delta_array_mj.DeltaArrayRope(config, config['obj_name'])
     else:
-        if config['multi_obj']:
-            obj_names = np.array(OBJ_NAMES)[np.random.randint(0, len(OBJ_NAMES), size=2)]
-            env = delta_array_mj.DeltaArrayRB(config, obj_names)
-        else:
-            obj_name = OBJ_NAMES[np.random.randint(0, len(OBJ_NAMES))]
-            env = delta_array_mj.DeltaArrayRB(config, obj_name)
-
-    def open_loop_rollout(env, sim_len, recorder):
-        env.apply_action(env.actions_grasp[:env.n_idxs])
-        env.update_sim(sim_len, recorder)
-        # env.randomize_state()
-        env.apply_action(execute_actions)
-        env.update_sim(sim_len, recorder)
+        obj_name = OBJ_NAMES[np.random.randint(0, len(OBJ_NAMES))]
+        env = delta_array_mj.DeltaArrayRB(config, obj_name)
 
     run_dict = {}
     nrun = 0
     while nrun < n_runs:
         if env.reset():
-            env.apply_action(env.actions_grasp[:env.n_idxs])
-            env.update_sim(sim_len, recorder)
+            open_loop_rollout(env, sim_len, recorder)
 
             push_states = (env.init_state[:env.n_idxs], env.pos[:env.n_idxs], inference)
             if (config['vis_servo']) or (np.random.rand() < config['vsd']):
                 actions = env.vs_action(random=False)
-                open_loop_rollout(env, sim_len, recorder)
                 open_loop_rollout(env, sim_len, recorder)
             else:
                 actions, a_ks, log_ps, ents = send_request(pipe_conn, MA_GET_ACTION, push_states,
@@ -127,7 +108,7 @@ def run_env(env_id, sim_len, n_runs, return_dict, config, inference, pipe_conn, 
                     active_idxs = np.array(env.active_idxs)
                     inactive_idxs = active_idxs[actions[:, 2] > 0]
                     if len(inactive_idxs) > 0:
-                        env.set_z_positions(active_idxs=list(inactive_idxs), low=False)  # Set to high
+                        env.set_z_positions(active_idxs=list(inactive_idxs), low=False)
                     execute_actions = env.clip_actions_to_ws(actions[:, :2])
                 else:
                     execute_actions = env.clip_actions_to_ws(actions)
@@ -136,7 +117,6 @@ def run_env(env_id, sim_len, n_runs, return_dict, config, inference, pipe_conn, 
                     a_ks = a_ks[:, :env.n_idxs]
                     log_ps = log_ps[:, :env.n_idxs]
                 env.final_state[:env.n_idxs, 4:6] = execute_actions
-                open_loop_rollout(env, sim_len, recorder)
                 open_loop_rollout(env, sim_len, recorder)
                 
             env.set_rl_states(execute_actions, final=True)
@@ -174,7 +154,6 @@ if __name__ == "__main__":
     multiprocessing.set_start_method('spawn', force=True)
     
     from utils.training_helper import TrainingSchedule
-    from utils.video_utils import VideoRecorder
     
     parent_conn, batched_queue, response_dict, child_proc, config, manager = create_server_process()
     if config['gui'] and config['nenv'] > 1:
@@ -182,7 +161,6 @@ if __name__ == "__main__":
 
     manager_lock = manager.Lock()
     
-    current_episode = config['ep_resume']
     current_episode = config['ep_resume']
     n_updates = config['nenv']
     infer_every = config['infer_every']

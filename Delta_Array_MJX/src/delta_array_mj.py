@@ -163,7 +163,7 @@ class DeltaArrayBase(BaseMJEnv):
             
             acts = self.clip_actions_to_ws(self.init_nn_bd_pts - self.raw_rb_pos)
             self.init_state[:self.n_idxs, 4:6] = acts
-            self.actions_grasp[:self.n_idxs] = acts + np.random.normal(loc=0.0, scale=self.r2st, size=acts.shape)
+            self.actions_grasp[:self.n_idxs] = acts # + np.random.normal(loc=0.0, scale=0.001, size=acts.shape)
             
             self.final_state[:self.n_idxs, 2:4] = self.init_state[:self.n_idxs, 2:4].copy()
             
@@ -227,8 +227,6 @@ class DeltaArrayRB(DeltaArrayBase):
         self.rope = False
         self.compensate_for_actions = self.args['compa']
         self.parsimony_bonus = self.args['parsimony_bonus']
-        self.r2st = args['r2sdeltat']
-        self.r2sr = np.deg2rad(args['r2sdeltar'])
         
     def set_body_pose_and_get_bd_pts(self, tx, rot):
         self.data.qpos[self.obj_id:self.obj_id+7] = [*tx, *rot.as_quat(scalar_first=True)]
@@ -248,15 +246,9 @@ class DeltaArrayRB(DeltaArrayBase):
     def get_active_idxs(self):
         idxs, self.init_nn_bd_pts, _ = self.nn_helper.get_nn_robots_objs(self.init_bd_pts, world=True)
         self.active_idxs = list(idxs)
-        if (len(self.init_nn_bd_pts) == 0) or (len(self.active_idxs) == 0):
+        if (len(self.init_nn_bd_pts) == 0) or (len(self.active_idxs) <= 1):
             return False
         return True
-    
-    def randomize_state(self):
-        self.tx = (self.tx[0] + np.random.uniform(-self.r2st, self.r2st), self.tx[1] + np.random.uniform(-self.r2st, self.r2st), 1.002)
-        self.rot = (R.from_euler('xyz', (np.pi/2, 0, self.yaw + np.random.uniform(-self.r2sr, self.r2sr))))
-        self.set_body_pose_and_get_bd_pts(self.tx, self.rot)
-        return 
         
     def set_init_and_goal_pose(self, long_horizon=False):
         self.tx = (np.random.uniform(0.011, 0.24), np.random.uniform(0.007, 0.27), 1.002)
@@ -267,7 +259,10 @@ class DeltaArrayRB(DeltaArrayBase):
         if long_horizon:
             self.tx = (np.random.uniform(0.011, 0.24), np.random.uniform(0.007, 0.27), 1.002)        
         else:
-            self.tx = (self.tx[0] + np.random.uniform(-0.05, 0.05), self.tx[1] + np.random.uniform(-0.05, 0.05), 1.002)
+            self.tx = (self.tx[0] + np.random.uniform(-0.02, 0.02), self.tx[1] + np.random.uniform(-0.02, 0.02), 1.002)
+        # while not((-0.035 < self.tx[0] < 0.282) and (-0.3 < self.tx[1] < 0.356)):
+        #     self.tx = (self.tx[0] + np.random.uniform(-0.05, 0.05), self.tx[1] + np.random.uniform(-0.05, 0.05), 1.002)
+            
         self.rot = (R.from_euler('xyz', (np.pi/2, 0, self.yaw + np.random.uniform(-1.5707, 1.5707))))
         self.init_bd_pts = self.set_body_pose_and_get_bd_pts(self.tx, self.rot)
         self.init_qpos = self.data.qpos[self.obj_id:self.obj_id+7].copy()
@@ -359,141 +354,6 @@ class DeltaArrayRB(DeltaArrayBase):
             self.set_goal_nn_bd_pts()
             self.set_rl_states()
             
-            
-class DeltaArrayMultiObjRB(DeltaArrayBase):
-    def __init__(self, args, obj_names):
-        super().__init__(args, obj_names)
-        self.obj_names = obj_names
-        obj_joint_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, self.obj_name)
-        self.obj_id = self.model.jnt_qposadr[obj_joint_id]
-        self.obj_body_id = self.model.body(self.obj_name).id
-        self.rope = False
-        self.compensate_for_actions = self.args['compa']
-        self.parsimony_bonus = self.args['parsimony_bonus']
-        
-    def set_body_pose_and_get_bd_pts(self, tx, rot):
-        self.data.qpos[self.obj_id:self.obj_id+7] = [*tx, *rot.as_quat(scalar_first=True)]
-        mujoco.mj_step(self.model, self.data)
-        return self.get_bdpts_traditional()
-    
-    def get_current_bd_pts(self):
-        current_bd_pts = self.get_bdpts_traditional()
-        if current_bd_pts is None:
-            return None, None
-        current_nn_bd_pts = geom_helper.transform_boundary_points(self.init_bd_pts.copy(), current_bd_pts, self.init_nn_bd_pts.copy())
-        return current_bd_pts, current_nn_bd_pts
-    
-    def set_goal_nn_bd_pts(self):
-        self.goal_nn_bd_pts = geom_helper.transform_boundary_points(self.init_bd_pts.copy(), self.goal_bd_pts.copy(), self.init_nn_bd_pts.copy())
-        
-    def get_active_idxs(self):
-        idxs, self.init_nn_bd_pts, _ = self.nn_helper.get_nn_robots_objs(self.init_bd_pts, world=True)
-        self.active_idxs = list(idxs)
-        if (len(self.init_nn_bd_pts) == 0) or (len(self.active_idxs) == 0):
-            return False
-        return True
-        
-    def set_init_and_goal_pose(self, long_horizon=False):
-        tx = (np.random.uniform(0.011, 0.24), np.random.uniform(0.007, 0.27), 1.002)
-        yaw = np.random.uniform(-np.pi, np.pi)
-        rot = R.from_euler('xyz', (np.pi/2, 0, yaw))
-        self.goal_bd_pts = self.set_body_pose_and_get_bd_pts(tx, rot)
-        
-        if long_horizon:
-            tx = (np.random.uniform(0.011, 0.24), np.random.uniform(0.007, 0.27), 1.002)        
-        else:
-            tx = (tx[0] + np.random.uniform(-0.02, 0.02), tx[1] + np.random.uniform(-0.02, 0.02), 1.002)
-        rot = (R.from_euler('xyz', (np.pi/2, 0, yaw + np.random.uniform(-1.5707, 1.5707))))
-        self.init_bd_pts = self.set_body_pose_and_get_bd_pts(tx, rot)
-        self.init_qpos = self.data.qpos[self.obj_id:self.obj_id+7].copy()
-        if (self.init_bd_pts is None) or (self.goal_bd_pts is None):
-            return False
-        return True
-    
-    def compute_reward(self, actions, inference):
-        dist = np.mean(np.linalg.norm(self.goal_nn_bd_pts - self.final_nn_bd_pts, axis=1))
-        if self.new_rew:
-            ep_reward = self.new_reward(dist)
-        else:
-            ep_reward = np.clip(self.scaling_factor / (dist**2 + self.epsilon), 0, self.max_reward)*self.args['reward_scale']
-            
-        if not inference:
-            if self.compensate_for_actions and self.parsimony_bonus:
-                ep_reward -= 200*np.sum(abs(actions[actions[:, 2]<0][:, :2])) + 20*(np.sum(actions[:, 2]<0)/self.n_idxs)
-            elif self.compensate_for_actions:
-                ep_reward -= 200*np.sum(abs(actions[actions[:, 2]<0][:, :2]))
-            elif self.parsimony_bonus:
-                ep_reward += 20 * (1 - (np.sum(actions[:, 2]<0)/self.n_idxs))
-        return dist, ep_reward
-    
-    def compute_reward_ppo(self, actions):
-        dist = np.mean(np.linalg.norm(self.goal_nn_bd_pts - self.final_nn_bd_pts, axis=1))
-        if self.new_rew:
-            return dist<0.004, self.new_reward(dist)
-        elif self.long_rew:
-            # TODO: The True is temporary. Change it to actual condition if this expt works. 
-            return True, 1 / (10000 * dist**3 + 0.01)
-        
-        ep_reward = np.clip(self.scaling_factor / (dist**2 + self.epsilon), 0, self.max_reward)
-        if self.args['compa']:
-            ep_reward -= 10000*np.sum(abs(actions[:self.n_idxs] - self.actions_grasp[:self.n_idxs]))
-        return dist<0.004, ep_reward*self.args['reward_scale']
-    
-    def new_reward(self, dist):
-        if self.diff_rew:
-            return -1 + 1 / (1000000 * dist**3 + 1)
-        else:
-            return 1 / (10000 * dist**3 + 0.01)
-            
-    def soft_reset(self, init=None, goal=None):
-        self.set_z_positions(active_idxs=None, low=False)
-        self.data.qpos[:128] = np.zeros(128)
-        self.data.ctrl = np.zeros(128)
-        mujoco.mj_step(self.model, self.data, 1)
-        
-        self.raw_rb_pos = None
-        self.n_idxs = 0
-        self.active_idxs = []
-        self.init_bd_pts = None
-        self.init_nn_bd_pts = None
-        self.actions[:] = np.array((0,0))
-        self.actions_grasp[:] = np.array((0,0))
-        self.init_state = np.zeros((64, 6))
-        self.final_state = np.zeros((64, 6))
-        self.init_grasp_state = np.zeros((64, 4))
-        self.pos = np.zeros(64)
-        
-        if init is not None:
-            # self.curr_pos = init
-            self.init_qpos = [*[*init[:2], 1.002], *R.from_euler('xyz', (np.pi/2, 0, init[2])).as_quat(scalar_first=True)]
-            self.data.qpos[self.obj_id:self.obj_id+7] = self.init_qpos.copy()
-            self.update_sim(1)
-            
-        if goal is not None:
-            self.init_bd_pts = self.get_bdpts_traditional()
-            self.get_active_idxs()
-            self.goal_qpos  = [*[*goal[:2], 1.002], *R.from_euler('xyz', (np.pi/2, 0, goal[2])).as_quat(scalar_first=True)]
-            self.goal_bd_pts = self.set_body_pose_and_get_bd_pts([*goal[:2], 1.002], R.from_euler('xyz', (np.pi/2, 0, goal[2])))
-            
-            if len(self.active_idxs) == 0:
-                self.data.qpos[self.obj_id:self.obj_id+7] = self.init_qpos
-                self.update_sim(1)
-                self.init_bd_pts = self.get_bdpts_traditional()
-                self.get_active_idxs()
-            self.set_goal_nn_bd_pts()
-            self.set_rl_states()
-            
-        if (init is None) and (goal is None):
-            self.init_bd_pts = self.get_bdpts_traditional()
-            self.get_active_idxs()
-            if len(self.active_idxs) == 0:
-                self.data.qpos[self.obj_id:self.obj_id+7] = self.init_qpos
-                self.update_sim(1)
-                self.init_bd_pts = self.get_bdpts_traditional()
-                self.get_active_idxs()
-            self.set_goal_nn_bd_pts()
-            self.set_rl_states()
-    
 ######################################################################################################################################################
 
 class DeltaArrayRope(DeltaArrayBase):

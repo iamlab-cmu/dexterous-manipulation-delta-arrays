@@ -15,12 +15,7 @@ class DeltaArrayEnvCreator:
     def create_fiducial_marker(self, name, pos):
         body = ET.Element('body', name=name, pos=f"{pos[0]} {pos[1]} {pos[2]}")
         ET.SubElement(body, 'freejoint')
-        ET.SubElement(body, 'geom', 
-                     name=name,
-                     size="0.005 0.005 0.001",
-                     type="box",
-                     rgba="1 0 0 1",
-                     mass="100")
+        ET.SubElement(body, 'geom', name=name, size="0.005 0.005 0.001", type="box", rgba="1 0 0 1", mass="100")
         return body
     
     def create_actuator(self, name):

@@ -36,7 +36,6 @@ def parse_args():
     parser.add_argument("-test_traj", "--test_traj", action="store_true", help="Test on trajectories")
     parser.add_argument('-simlen', '--simlen', type=int, default=600, help='Number of steps to run sim')
     parser.add_argument('-obj', "--obj_name", type=str, default="ALL", help="Object to manipulate in sim")
-    parser.add_argument("-mobj", "--multi_obj", action="store_true", help="Use multiple RB objects?")
     parser.add_argument('-traj', "--traj_name", type=str, default="snek", help="Traj to manipulate obj over")
     parser.add_argument('-nrb', '--num_rope_bodies', type=int, default=30, help='Number of cylinders in the rope')
     parser.add_argument("-v", "--vis_servo", action="store_true", help="True for Visual Servoing")
