@@ -1,0 +1,22 @@
+<mujoco model="heart">
+  <default>
+    <default class="visual">
+      <geom group="2" type="mesh" contype="0" conaffinity="0"/>
+    </default>
+    <default class="collision">
+      <geom group="3" type="mesh"/>
+    </default>
+  </default>
+  <asset>
+    <texture type="2d" name="texture" file="texture.png"/>
+    <material name="Material_0.003" texture="texture" specular="0.0" shininess="0.25"/>
+    <mesh file="heart.obj"/>
+  </asset>
+  <worldbody>
+    <body name="heart">
+      <freejoint/>
+      <geom material="Material_0.003" mesh="heart" class="visual"/>
+      <geom mesh="heart" class="collision"/>
+    </body>
+  </worldbody>
+</mujoco>

@@ -1,0 +1,22 @@
+<mujoco model="cross">
+  <default>
+    <default class="visual">
+      <geom group="2" type="mesh" contype="0" conaffinity="0"/>
+    </default>
+    <default class="collision">
+      <geom group="3" type="mesh"/>
+    </default>
+  </default>
+  <asset>
+    <texture type="2d" name="texture" file="texture.png"/>
+    <material name="PlasticRed2.004" texture="texture" specular="0.0" shininess="0.25"/>
+    <mesh file="cross.obj"/>
+  </asset>
+  <worldbody>
+    <body name="cross">
+      <freejoint/>
+      <geom material="PlasticRed2.004" mesh="cross" class="visual"/>
+      <geom mesh="cross" class="collision"/>
+    </body>
+  </worldbody>
+</mujoco>

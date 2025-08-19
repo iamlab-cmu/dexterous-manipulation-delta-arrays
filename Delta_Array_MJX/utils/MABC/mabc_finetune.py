@@ -313,6 +313,6 @@ class MABC_Finetune:
         self.tf.load_state_dict(nn_dicts['model'])
         # self.optimizer_actor.load_state_dict(nn_dicts['actor_optimizer'])
         # self.optimizer_critic.load_state_dict(nn_dicts['critic_optimizer'])
-        # self.optimizer_actor.load_state_dict(nn_dicts['optimizer_actor'])
-        # self.optimizer_critic.load_state_dict(nn_dicts['optimizer_critic'])
+        self.optimizer_actor.load_state_dict(nn_dicts['optimizer_actor'])
+        self.optimizer_critic.load_state_dict(nn_dicts['optimizer_critic'])
         self.tf_target = deepcopy(self.tf)

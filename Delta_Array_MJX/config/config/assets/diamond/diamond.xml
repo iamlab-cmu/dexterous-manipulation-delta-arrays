@@ -1,0 +1,22 @@
+<mujoco model="diamond">
+  <default>
+    <default class="visual">
+      <geom group="2" type="mesh" contype="0" conaffinity="0"/>
+    </default>
+    <default class="collision">
+      <geom group="3" type="mesh"/>
+    </default>
+  </default>
+  <asset>
+    <texture type="2d" name="texture" file="texture.png"/>
+    <material name="Red" texture="texture" specular="0.0" shininess="0.25"/>
+    <mesh file="diamond.obj"/>
+  </asset>
+  <worldbody>
+    <body name="diamond">
+      <freejoint/>
+      <geom material="Red" mesh="diamond" class="visual"/>
+      <geom mesh="diamond" class="collision"/>
+    </body>
+  </worldbody>
+</mujoco>
