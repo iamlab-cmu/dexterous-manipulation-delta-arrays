@@ -1,0 +1,2 @@
+- memorize
+- memorize the whole codebase

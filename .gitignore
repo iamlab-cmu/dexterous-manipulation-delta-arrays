@@ -35,3 +35,5 @@ madptd3_mj*
 mabc_finetune_final.pth
 mabc_RoPE.pt
 mabc_spe.pt
+mabc_lcrope.pt
+mabc_lre.pt

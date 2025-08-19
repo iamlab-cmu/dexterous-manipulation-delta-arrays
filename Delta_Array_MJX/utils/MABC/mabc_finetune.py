@@ -264,24 +264,27 @@ class MABC_Finetune:
         pos = torch.as_tensor(pos, dtype=torch.int32).to(self.device)
         if len(obs.shape) == 2:
             obs = obs.unsqueeze(0)
+        if len(pos.shape) == 2:
             pos = pos.unsqueeze(0)
-            obs = obs.repeat(128, 1, 1)
-            pos = pos.repeat(128, 1)
-            noise = torch.randn_like(obs) * 0.0008
-            obs += noise 
-            
             # obs = obs.unsqueeze(0)
             # pos = pos.unsqueeze(0)
             # obs = obs.repeat(128, 1, 1)
             # pos = pos.repeat(128, 1)
-            # noise_s0 = torch.randn(obs.shape[0], obs.shape[1], 2) * 0.0005  # (128, N, 2)
-            # noise_p = torch.randn(obs.shape[0], obs.shape[1], 2) * 0.001    # (128, N, 2)
-            # obs[:, :, :2] += noise_s0.to(self.device)
-            # obs[:, :, 4:] += noise_p.to(self.device)
+            # noise = torch.randn_like(obs) * 0.0008
+            # obs += noise 
+            
+            # # obs = obs.unsqueeze(0)
+            # # pos = pos.unsqueeze(0)
+            # # obs = obs.repeat(128, 1, 1)
+            # # pos = pos.repeat(128, 1)
+            # # noise_s0 = torch.randn(obs.shape[0], obs.shape[1], 2) * 0.0005  # (128, N, 2)
+            # # noise_p = torch.randn(obs.shape[0], obs.shape[1], 2) * 0.001    # (128, N, 2)
+            # # obs[:, :, :2] += noise_s0.to(self.device)
+            # # obs[:, :, 4:] += noise_p.to(self.device)
             
         
-        actions = self.tf.get_actions(obs, pos, deterministic=deterministic)
-        actions = torch.mean(actions, dim=0).squeeze()
+        actions = self.tf.get_actions(obs, pos, deterministic=deterministic).squeeze()
+        # actions = torch.mean(actions, dim=0).squeeze()
         # print(actions.shape)
         return actions.detach().to(torch.float32).cpu().numpy()
     
