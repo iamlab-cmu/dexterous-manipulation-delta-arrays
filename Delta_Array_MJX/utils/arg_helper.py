@@ -134,11 +134,13 @@ def create_sac_config():
     config['path'] = f"./models/{config['algo']}/{config['env_name']}/{config['name']}"
     os.makedirs(config['path'], exist_ok=True)
         
-    assert config['algo'] in ['Vis Servo', "MATSAC", "MABC_Finetune", "MABC", "MATPPO", "MADP_Finetune", "MABC_Finetune_Bin", "MABC_Finetune_PB", "MABC_Finetune_CA", "MABC_Finetune_PB_CA"]
+    # assert config['algo'] in ['ALL', 'Vis Servo', "MATSAC", "MABC_Finetune", "MABC", "MATPPO", "MADP_Finetune", "MABC_Finetune_Bin", "MABC_Finetune_PB", "MABC_Finetune_CA", "MABC_Finetune_PB_CA"]
     assert config['arch'] in ['MLP', 'TF']
     assert config['attn_mech'] in ['SA', 'CA', 'AdaLN']
     
     if (config['resume'] != "No") and (config['wb_resume'] is None):
         raise ValueError("Need to provide WandB Resume ID")
-    
+    if config['test_traj']:
+        config['algos'] = ["MABC_Finetune_SPE", "MABC_Finetune_RoPE", 'MABC_Finetune_LCRoPE', 
+                           'MABC_Finetune_LRE', 'MABC_Finetune_Learned', 'MABC_Finetune_Bin']
     return config

@@ -261,7 +261,8 @@ class MABC_Finetune:
     @torch.no_grad()
     def get_actions(self, obs, pos, deterministic=False):
         obs = torch.as_tensor(obs, dtype=torch.float32).to(self.device)
-        pos = torch.as_tensor(pos, dtype=torch.int32).to(self.device)
+        pos = torch.as_tensor(pos, dtype=torch.int32).unsqueeze(-1).to(self.device)
+        print(obs.shape, pos.shape)
         if len(obs.shape) == 2:
             obs = obs.unsqueeze(0)
         if len(pos.shape) == 2:
@@ -313,6 +314,6 @@ class MABC_Finetune:
         self.tf.load_state_dict(nn_dicts['model'])
         # self.optimizer_actor.load_state_dict(nn_dicts['actor_optimizer'])
         # self.optimizer_critic.load_state_dict(nn_dicts['critic_optimizer'])
-        self.optimizer_actor.load_state_dict(nn_dicts['optimizer_actor'])
-        self.optimizer_critic.load_state_dict(nn_dicts['optimizer_critic'])
+        # self.optimizer_actor.load_state_dict(nn_dicts['optimizer_actor'])
+        # self.optimizer_critic.load_state_dict(nn_dicts['optimizer_critic'])
         self.tf_target = deepcopy(self.tf)

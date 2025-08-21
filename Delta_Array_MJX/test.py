@@ -150,7 +150,7 @@ def run_test_traj_rb(env_id, sim_len, experiment_data, algo, VideoRecorder, conf
                     env.update_sim(sim_len, recorder)
                     env.set_rl_states(execute_actions, final=True, test_traj=True)
                     dist, reward = env.compute_reward(actions, inference)
-                    print(f"Algo: {algo}, Obj: {obj_name}, Traj: {traj_name}, Run: {run_id}, Attempt: {try_id}, Reward: {reward}")
+                    # print(f"Algo: {algo}, Obj: {obj_name}, Traj: {traj_name}, Run: {run_id}, Attempt: {try_id}, Reward: {reward}")
                     
                     step_data = {
                             'try_id'        : try_id,
@@ -242,7 +242,6 @@ def run_test_traj_rope(env_id, sim_len, experiment_data, algo, VideoRecorder, co
 ###################################################
 if __name__ == "__main__":
     multiprocessing.set_start_method('spawn', force=True)
-    from utils.training_helper import TrainingSchedule
     from utils.video_utils import VideoRecorder
     
     parent_conn, batched_queue, response_dict, child_proc, config, manager = create_server_process()
@@ -270,7 +269,7 @@ if __name__ == "__main__":
         else:
             # algos = ["Random", "Vis Servo", "MATSAC", "MABC_Finetune", 'MABC']
             # algos = ["Random", "Vis Servo", "MATSAC", "MABC_Finetune", 'MABC', "MABC_Finetune_Bin","MABC_Finetune_PB","MABC_Finetune_CA","MABC_Finetune_PB_CA"]
-            algos = ["MABC_Finetune_PB"]
+            algos = config['algos']
         
         experiment_data = manager.dict()
         processes = []
@@ -287,9 +286,10 @@ if __name__ == "__main__":
         #     run_test_traj_rb(0, config['simlen'], {}, config, True, parent_conn, lock)
             
         final_expt_data = dict(experiment_data)
-        # save_path = f"./data/test_traj/test_traj_data_sel_acts.pkl"
-        # pkl.dump(final_expt_data, open(save_path, "wb"))
-        # print(f"Saved Test Trajectory Data at {save_path}")
+        # save_path = "./data/test_traj/test_traj_data_sel_acts.pkl"
+        save_path = "./data/test_traj/test_traj_data_pos_embeds.pkl"
+        pkl.dump(final_expt_data, open(save_path, "wb"))
+        print(f"Saved Test Trajectory Data at {save_path}")
     else:
         print("Why are you running test.py?")
         

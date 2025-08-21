@@ -115,39 +115,51 @@ class DeltaArrayServer():
 
         # self.grasping_agent = sac.SAC(single_agent_env_dict, self.hp_dict, ma=False, train_or_test="test")
         # self.grasping_agent.load_saved_policy('./models/trained_models/SAC_1_agent_stochastic/pyt_save/model.pt')
-
+        ca_hp_dict = self.hp_dict.copy()
+        ca_hp_dict['attn_mech'] = 'CA'
         if self.hp_dict['test_traj']:
             self.pushing_agents = {
                 "Random" : None,
                 "Vis Servo" : None,
-                "MATSAC" : matsac.MATSAC(ma_env_dict, self.hp_dict, train_or_test="test"),
-                "MABC" : mabc.MABC(self.hp_dict),
-                "MABC_Finetune" : mabc_finetune.MABC_Finetune(hp_dict_old, self.logger),
-                "MABC_Finetune_Bin" : mabc_finetune.MABC_Finetune(self.hp_dict, self.logger),
-                "MABC_Finetune_PB" : mabc_finetune.MABC_Finetune(self.hp_dict, self.logger),
-                "MABC_Finetune_CA" : mabc_finetune.MABC_Finetune(self.hp_dict, self.logger),
-                "MABC_Finetune_PB_CA" : mabc_finetune.MABC_Finetune(self.hp_dict, self.logger),
+                "MATSAC"                :[matsac.MATSAC,"./models/trained_models/matsac.pt", None],
+                "MABC"                  :[mabc.MABC,"./models/trained_models/mabc.pt", None],
+                "MABC_Finetune"         :[mabc_finetune.MABC_Finetune, "./models/trained_models/mabc_finetuned.pt", None],
+                "MABC_Finetune_Bin"     :[mabc_finetune.MABC_Finetune, "./models/trained_models/mabc_ft_sel_acts_bin_new.pt", None],
+                "MABC_Finetune_PB"      :[mabc_finetune.MABC_Finetune, "./models/trained_models/mabc_ft_sel_acts_pb_new.pt", None],
+                "MABC_Finetune_CA"      :[mabc_finetune.MABC_Finetune, "./models/trained_models/mabc_ft_sel_acts_compa_new.pt", None],
+                "MABC_Finetune_PB_CA"   :[mabc_finetune.MABC_Finetune, "./models/trained_models/mabc_ft_sel_acts_pb_compa.pt", None],
+                "MABC_Finetune_LCRoPE"  :[mabc_finetune.MABC_Finetune, "./models/trained_models/mabc_ft_sel_acts_lcrope.pt", None],
+                "MABC_Finetune_LRE"     :[mabc_finetune.MABC_Finetune, "./models/trained_models/mabc_ft_sel_acts_lre.pt", None],
+                "MABC_Finetune_Learned" :[mabc_finetune.MABC_Finetune, "./models/trained_models/mabc_ft_sel_acts_learned.pt", None],
+                "MABC_Finetune_SPE"     :[mabc_finetune.MABC_Finetune, "./models/trained_models/mabc_ft_sel_acts_spe.pt", None],
+                "MABC_Finetune_RoPE"    :[mabc_finetune.MABC_Finetune, "./models/trained_models/mabc_ft_sel_acts_rope.pt", None],
             }
-            # if not self.hp_dict['real']:
-            if not self.hp_dict['rope']:
-                self.pushing_agents["MATSAC"].load_saved_policy("./models/trained_models/matsac.pt")
-                self.pushing_agents["MABC"].load_saved_policy("./models/trained_models/mabc.pt")
-                self.pushing_agents["MABC_Finetune"].load_saved_policy("./models/trained_models/mabc_finetuned.pt")
-                self.pushing_agents["MABC_Finetune_Bin"].load_saved_policy("./models/trained_models/mabc_ft_sel_acts_bin_new.pt")
-                self.pushing_agents["MABC_Finetune_PB"].load_saved_policy("./models/trained_models/mabc_ft_sel_acts_pb_new.pt")
-                self.pushing_agents["MABC_Finetune_CA"].load_saved_policy("./models/trained_models/mabc_ft_sel_acts_compa_new.pt")
-                self.pushing_agents["MABC_Finetune_PB_CA"].load_saved_policy("./models/trained_models/mabc_ft_sel_acts_pb_compa.pt")
-            else:
-                self.pushing_agents["MATSAC"].load_saved_policy("./models/trained_models/matsac.pt")
-                self.pushing_agents["MABC"].load_saved_policy("./models/trained_models/mabc.pt")
-                self.pushing_agents["MABC_Finetune"].load_saved_policy("./models/trained_models/mabc_finetuned.pt")
-                self.pushing_agents["MABC_Finetune_Bin"].load_saved_policy("./models/trained_models/mabc_ft_sel_acts_bin_new.pt")
-                self.pushing_agents["MABC_Finetune_PB"].load_saved_policy("./models/trained_models/mabc_ft_sel_acts_pb_new.pt")
-                self.pushing_agents["MABC_Finetune_CA"].load_saved_policy("./models/trained_models/mabc_ft_sel_acts_compa_new.pt")
-                self.pushing_agents["MABC_Finetune_PB_CA"].load_saved_policy("./models/trained_models/mabc_ft_sel_acts_pb_compa.pt")
-                # self.pushing_agents["MATSAC"].load_saved_policy("./models/trained_models/matsac_rope.pt")
-                # self.pushing_agents["MABC"].load_saved_policy("./models/trained_models/mabc_rope.pt")
-                # self.pushing_agents["MABC_Finetune"].load_saved_policy(f"./models/trained_models/mabc_finetuned_rope.pt")
+            
+            for algo in config['algos']:
+                pos_variation_hp_dict = self.hp_dict.copy()
+                if algo=='mabc':
+                    self.pushing_agents[algo][2] = self.pushing_agents[algo][0](self.hp_dict)
+                    self.pushing_agents[algo][2].load_saved_policy(self.pushing_agents[algo][1])
+                elif algo=="MATSAC":
+                    self.pushing_agents[algo][2] = self.pushing_agents[algo][0](ma_env_dict, self.hp_dict, train_or_test="test")
+                    self.pushing_agents[algo][2].load_saved_policy(self.pushing_agents[algo][1])
+                elif algo == "MABC_Finetune":
+                    self.pushing_agents[algo][2] = self.pushing_agents[algo][0](hp_dict_old, self.logger)
+                    self.pushing_agents[algo][2].load_saved_policy(self.pushing_agents[algo][1])
+                elif algo in ['MABC_Finetune_SPE', 'MABC_Finetune_RoPE']:
+                    ca_hp_dict['pos_embed'] = algo.split('_')[-1]
+                    self.pushing_agents[algo][2] = self.pushing_agents[algo][0](ca_hp_dict, self.logger)
+                    self.pushing_agents[algo][2].load_saved_policy(self.pushing_agents[algo][1])
+                else:
+                    if algo == 'MABC_Finetune_LCRoPE':
+                        pos_variation_hp_dict['pos_embed'] = "LCRoPE"
+                    elif algo == 'MABC_Finetune_LRE':
+                        pos_variation_hp_dict['pos_embed'] = "LRE"
+                    elif algo == 'MABC_Finetune_Learned':
+                        pos_variation_hp_dict['pos_embed'] = "Learned"
+                    self.pushing_agents[algo][2] = self.pushing_agents[algo][0](pos_variation_hp_dict, self.logger)
+                    self.pushing_agents[algo][2].load_saved_policy(self.pushing_agents[algo][1])
+
         else:
             if config['algo']=="MATSAC":
                 self.pushing_agent = matsac.MATSAC(ma_env_dict, self.hp_dict, train_or_test="train")
@@ -238,7 +250,7 @@ def server_process_main(pipe_conn, batched_queue, response_dict, config):
 
     collecting_batch = False
     batch_start_time = None
-    max_batch_wait = 0.1
+    max_batch_wait = 0.001
     while True:
         if pipe_conn.poll(0.00005):
             try:
@@ -260,7 +272,7 @@ def server_process_main(pipe_conn, batched_queue, response_dict, config):
             elif endpoint == TT_GET_ACTION:
                 algo, data = data[0], data[1:]
                 with update_lock:
-                    action = server.pushing_agents[algo].get_actions(*data)
+                    action = server.pushing_agents[algo][2].get_actions(*data)
                 response = action
 
             elif endpoint == MA_UPDATE_POLICY:

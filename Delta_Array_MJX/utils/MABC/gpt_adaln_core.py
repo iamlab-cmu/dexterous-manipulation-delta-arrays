@@ -1,6 +1,5 @@
 import numpy as np
 import math
-import math
 
 import torch
 import torch.nn as nn
@@ -9,11 +8,11 @@ import torch.nn.functional as F
 LOG_STD_MAX = 2
 LOG_STD_MIN = -20
 
-def wt_init_(l, activation = "relu"):
-    nn.init.orthogonal_(l.weight, gain=nn.init.calculate_gain(activation))
-    if l.bias is not None:
-        nn.init.constant_(l.bias, 0)
-    return l
+def wt_init_(layer, activation = "relu"):
+    nn.init.orthogonal_(layer.weight, gain=nn.init.calculate_gain(activation))
+    if layer.bias is not None:
+        nn.init.constant_(layer.bias, 0)
+    return layer
 
 def count_vars(module):
     return sum([np.prod(p.shape) for p in module.parameters()])
@@ -104,93 +103,9 @@ class MultiHeadAttentionRoPE(nn.Module):
         output = self.W_O(self.combine_heads(attn, bs, n_agents))
         return output
 
-
-def build_rotary_pos_emb(seq_len, dim, base=10000.0):
-    half_dim = dim // 2
-    freq_seq = torch.arange(0, half_dim, dtype=torch.float32)  
-    inv_freq = 1.0 / (base ** (freq_seq / half_dim))  # (half_dim,)
-
-    t = torch.arange(seq_len, dtype=torch.float32).unsqueeze(1)
-    angles = t * inv_freq.unsqueeze(0)
-    return torch.cos(angles), torch.sin(angles)
-
-def apply_rotary_pos_emb(q, k, cos, sin, offset=0):
-    bs, n_heads, seq_len, dim = q.shape
-    half_dim = dim // 2
-    
-    cos = cos[offset: offset + seq_len, :].to(q.device)
-    sin = sin[offset: offset + seq_len, :].to(q.device)
-
-    q1, q2 = q[..., :half_dim], q[..., half_dim:]
-    k1, k2 = k[..., :half_dim], k[..., half_dim:]
-    cos_ = cos.unsqueeze(0).unsqueeze(0)  
-    sin_ = sin.unsqueeze(0).unsqueeze(0)
-    
-    q_rotated = torch.cat([q1 * cos_ - q2 * sin_, q1 * sin_ + q2 * cos_], dim=-1)
-    k_rotated = torch.cat([k1 * cos_ - k2 * sin_, k1 * sin_ + k2 * cos_], dim=-1)
-    return q_rotated, k_rotated
-
-class MultiHeadAttentionRoPE(nn.Module):
-    def __init__(self, model_dim, num_heads, max_agents, masked):
-        super(MultiHeadAttentionRoPE, self).__init__()
-        assert model_dim % num_heads == 0
-
-        self.num_heads = num_heads
-        self.model_dim = model_dim
-        self.split_head_dim = model_dim // num_heads
-        self.masked = masked
-        self.max_agents = max_agents
-
-        self.W_Q = wt_init_(nn.Linear(model_dim, model_dim), activation="linear")
-        self.W_K = wt_init_(nn.Linear(model_dim, model_dim), activation="linear")
-        self.W_V = wt_init_(nn.Linear(model_dim, model_dim), activation="linear")
-        self.W_O = wt_init_(nn.Linear(model_dim, model_dim), activation="linear")
-
-        if self.masked:
-            self.register_buffer('tril', torch.tril(torch.ones(max_agents, max_agents)))
-
-        # --- RoPE additions ---
-        # We'll build cos and sin up to max_agents length
-        cos, sin = build_rotary_pos_emb(seq_len=max_agents, dim=self.split_head_dim)
-        self.register_buffer("rope_cos", cos)  # shape => (max_agents, split_head_dim//2)
-        self.register_buffer("rope_sin", sin)  # shape => (max_agents, split_head_dim//2)
-
-    def scaled_dot_product_attention(self, Q, K, V, n_agents):
-        attention_scores = torch.matmul(Q, K.transpose(-1, -2)) / math.sqrt(self.split_head_dim)
-        if self.masked:
-            attention_scores = attention_scores.masked_fill(
-                self.tril[:n_agents, :n_agents] == 0, float('-inf')
-            )
-        attention_probs = torch.softmax(attention_scores, dim=-1)
-        output = torch.matmul(attention_probs, V)
-        return output
-
-    def split_heads(self, x, bs, n_agents):
-        # from (bs, n_agents, model_dim) -> (bs, num_heads, n_agents, split_head_dim)
-        return x.view(bs, n_agents, self.num_heads, self.split_head_dim).transpose(1, 2)
-
-    def combine_heads(self, x, bs, n_agents):
-        # from (bs, num_heads, n_agents, split_head_dim) -> (bs, n_agents, model_dim)
-        return x.transpose(1, 2).contiguous().view(bs, n_agents, self.model_dim)
-
-    def forward(self, Q, K, V):
-        bs, n_agents, _ = Q.size()
-        Q = self.split_heads(self.W_Q(Q), bs, n_agents)
-        K = self.split_heads(self.W_K(K), bs, n_agents)
-        V = self.split_heads(self.W_V(V), bs, n_agents)
-
-        # --------------- RoPE step ---------------
-        # Q, K: (bs, num_heads, n_agents, split_head_dim)
-        Q, K = apply_rotary_pos_emb(Q, K, self.rope_cos, self.rope_sin, offset=0)
-        # -----------------------------------------
-
-        attn = self.scaled_dot_product_attention(Q, K, V, n_agents)
-        output = self.W_O(self.combine_heads(attn, bs, n_agents))
-        return output
-
 # New class for Locally-Constrained RoPE
 class MultiHeadAttentionLC_RoPE(MultiHeadAttentionRoPE):
-    def __init__(self, model_dim, num_heads, max_agents, masked, r_local=0.6, delta_array_size=(8, 8)):
+    def __init__(self, model_dim, num_heads, max_agents, masked, r_local=1.5, delta_array_size=(8, 8)):
         super(MultiHeadAttentionLC_RoPE, self).__init__(model_dim, num_heads, max_agents, masked)
 
         # Create a locality mask
@@ -207,18 +122,13 @@ class MultiHeadAttentionLC_RoPE(MultiHeadAttentionRoPE):
             col = i % self.delta_array_size[1]
             coords[i, 0] = col
             coords[i, 1] = row
-            
-        # Calculate pairwise distances
-        dist_matrix = torch.cdist(coords, coords)
         
-        # Create the mask
+        dist_matrix = torch.cdist(coords, coords)
         mask = (dist_matrix <= self.r_local).float()
         return mask
 
     def scaled_dot_product_attention(self, Q, K, V, n_agents):
         attention_scores = torch.matmul(Q, K.transpose(-1, -2)) / math.sqrt(self.split_head_dim)
-        
-        # Apply the locality mask
         attention_scores = attention_scores.masked_fill(self.locality_mask_buffer[:n_agents, :n_agents] == 0, float('-inf'))
         
         if self.masked:
@@ -254,16 +164,43 @@ class MultiHeadAttentionLRE(nn.Module):
         self.angle_lookup = nn.Embedding(k_classes, self.split_head_dim // 2)
 
     def map_to_class(self, i, j):
-        # Simplified mapping logic for a grid
+        """Map relative position to one of 13 hexagonal neighborhood classes"""
         row_i, col_i = i // self.delta_array_size[1], i % self.delta_array_size[1]
         row_j, col_j = j // self.delta_array_size[1], j % self.delta_array_size[1]
         
-        diff_row, diff_col = abs(row_i - row_j), abs(col_i - col_j)
+        diff_row = row_j - row_i
+        diff_col = col_j - col_i
         
-        # This is a simplified example; you might need a more sophisticated mapping for a hexagonal grid
-        if diff_row == 0 and diff_col == 0: return 0  # Same robot
-        if diff_row <= 1 and diff_col <= 1: return 1  # Immediate neighbors
-        return 2  # Further neighbors (simplified to 3 classes for this example)
+        # Self
+        if diff_row == 0 and diff_col == 0:
+            return 0
+        
+        HEX_DIRS_ODD = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1)]
+        HEX_DIRS_EVEN = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, 1), (1, 1)]
+        
+        if row_i % 2 == 0:  # Even row
+            hex_dirs = HEX_DIRS_EVEN
+        else:  # Odd row
+            hex_dirs = HEX_DIRS_ODD
+        
+        for idx, (dr, dc) in enumerate(hex_dirs):
+            if diff_row == dr and diff_col == dc:
+                return idx + 1  # Classes 1-6
+        
+        if row_i % 2 == 0:  # Even row second ring
+            second_ring_dirs = [
+                (-2, 0), (-2, 1), (-1, 2), (1, 2), (2, 1), (2, 0)
+            ]
+        else:  # Odd row second ring
+            second_ring_dirs = [
+                (-2, 0), (-2, -1), (-1, -2), (1, -2), (2, -1), (2, 0)
+            ]
+        
+        for idx, (dr, dc) in enumerate(second_ring_dirs):
+            if diff_row == dr and diff_col == dc:
+                return idx + 7  # Classes 7-12
+        
+        return 12
 
     def scaled_dot_product_attention(self, Q, K, V, n_agents):
         # Create rotation matrices for all pairs
@@ -278,8 +215,6 @@ class MultiHeadAttentionLRE(nn.Module):
         
         k1, k2 = K[..., :half_dim], K[..., half_dim:]
         
-        # The rotation needs to be applied carefully based on relative positions
-        # This is a simplified implementation
         K_rotated = torch.cat([k1.unsqueeze(2) * cos - k2.unsqueeze(2) * sin, 
                                k1.unsqueeze(2) * sin + k2.unsqueeze(2) * cos], dim=-1).sum(dim=3)
         
@@ -370,26 +305,6 @@ class SinusoidalPosEmbedding(nn.Module):
         pe_out = pe_out.unsqueeze(2)
         return pe_out
 
-class SinusoidalPosEmbedding(nn.Module):
-    def __init__(self, d_model, max_len):
-        super(SinusoidalPosEmbedding, self).__init__()
-        self.d_model = d_model
-        self.max_len = max_len
-        
-        pe = torch.zeros(max_len, d_model)
-        position = torch.arange(0, max_len).unsqueeze(1).float()
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-np.log(10000.0) / d_model))
-        
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        self.register_buffer('pe', pe)  # shape: [max_len, d_model]
-
-    def forward(self, pos):
-        pos = pos.squeeze(-1)
-        pe_out = self.pe[pos, :]
-        pe_out = pe_out.unsqueeze(2)
-        return pe_out
-
 class IntegerEmbeddingModel(nn.Module):
     def __init__(self, num_embeddings, embedding_dim):
         super(IntegerEmbeddingModel, self).__init__()
@@ -418,11 +333,6 @@ class GPTLayer_CA(nn.Module):
         super(GPTLayer_CA, self).__init__()
         self.self_attention = mha(model_dim, num_heads, max_agents, masked=masked)
         self.cross_attention = mha(model_dim, num_heads, max_agents, masked=masked)
-class GPTLayer_CA(nn.Module):
-    def __init__(self, model_dim, num_heads, max_agents, dim_ff, dropout, masked, mha):
-        super(GPTLayer_CA, self).__init__()
-        self.self_attention = mha(model_dim, num_heads, max_agents, masked=masked)
-        self.cross_attention = mha(model_dim, num_heads, max_agents, masked=masked)
         self.feed_forward = FF_MLP(model_dim, dim_ff)
         self.dropout = nn.Dropout(dropout)
         self.layer_norm1 = nn.LayerNorm(model_dim)
@@ -437,26 +347,6 @@ class GPTLayer_CA(nn.Module):
         x = self.layer_norm3(x + self.dropout(attn))
         ff_embed = self.feed_forward(x)
         x = x + self.dropout(ff_embed)
-        return x
-    
-class GPTLayer_SA(nn.Module):
-    def __init__(self, model_dim, num_heads, max_agents, dim_ff, dropout, masked, mha):
-        super(GPTLayer_SA, self).__init__()
-        self.self_attention = mha(2*model_dim, num_heads, max_agents, masked=masked)
-        self.feed_forward = FF_MLP(2*model_dim, dim_ff)
-        self.dropout = nn.Dropout(dropout)
-        self.layer_norm1 = nn.LayerNorm(2*model_dim)
-        self.layer_norm2 = nn.LayerNorm(2*model_dim)
-        self.fc = wt_init_(nn.Linear(2*model_dim, model_dim))
-
-    def forward(self, act_enc, conditional_enc):
-        x = torch.cat([act_enc, conditional_enc], dim=-1)
-        x = self.layer_norm1(x)
-        attn = self.self_attention(x, x, x)
-        x = self.layer_norm2(x + self.dropout(attn))
-        ff_embed = self.feed_forward(x)
-        x = x + self.dropout(ff_embed)
-        x = self.fc(x)
         return x
     
 class GPTLayer_SA(nn.Module):
@@ -528,11 +418,6 @@ class GPT(nn.Module):
 
     def forward(self, state, actions, pos, idx=None):
         return self.fwd_fn(state, actions, pos, idx)
-    
-    
-    def forward_normal(self, state, actions, pos, idx=None):
-        return self.fwd_fn(state, actions, pos, idx)
-    
     
     def forward_normal(self, state, actions, pos, idx=None):
         state_enc = self.state_enc(state)
@@ -650,9 +535,6 @@ class GPT_AdaLN(nn.Module):
         return self.fwd_fn(state, actions, pos, idx)
 
     def forward_normal(self, state, actions, pos, idx=None):
-        return self.fwd_fn(state, actions, pos, idx)
-
-    def forward_normal(self, state, actions, pos, idx=None):
         """
         Input: state (bs, n_agents, state_dim)
                actions (bs, n_agents, action_dim)
@@ -726,7 +608,7 @@ class Transformer(nn.Module):
         elif hp_dict['pos_embed'] == "SCE":
             self.pos_embedding = IntegerEmbeddingModel(self.max_agents, embedding_dim=256)
             self.pos_embedding.load_state_dict(
-                torch.load("./idx_embedding_new.pth", map_location=self.device, weights_only=True))
+                torch.load("./utils/MABC/idx_embedding_new.pth", map_location=self.device, weights_only=True))
             for param in self.pos_embedding.parameters():
                 param.requires_grad = False
             mha = MultiHeadAttention

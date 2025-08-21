@@ -114,7 +114,7 @@ if __name__ == "__main__":
 
     delta_array.reset()
     # Specify which robot to move (0-63)
-    robot_idx = 51  # Change this to whatever robot you want to move
+    robot_idx = 47  # Change this to whatever robot you want to move
 
     # Create actions array with desired x,y coordinates (0,0)
     # Note that actions should be in the format [x, y]
