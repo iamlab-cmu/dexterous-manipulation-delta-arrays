@@ -250,7 +250,7 @@ def server_process_main(pipe_conn, batched_queue, response_dict, config):
 
     collecting_batch = False
     batch_start_time = None
-    max_batch_wait = 0.001
+    max_batch_wait = 0.1
     while True:
         if pipe_conn.poll(0.00005):
             try:
@@ -355,6 +355,7 @@ def server_process_main(pipe_conn, batched_queue, response_dict, config):
                         a_kNone = True
                         actions, a_ks, log_ps, ents = outputs, None, None, None
                     
+                # print(actions.shape, states.shape, poses.shape)
                 # Send each individual action back via its corresponding response Queue.
                 for i, req_id in enumerate(req_ids):
                     if a_kNone:

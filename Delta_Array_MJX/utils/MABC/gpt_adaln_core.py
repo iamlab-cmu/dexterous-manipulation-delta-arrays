@@ -371,9 +371,6 @@ class GPT(nn.Module):
     def __init__(self, state_dim, model_dim, action_dim, num_heads, max_agents, dim_ff, pos_embedding, dropout, n_layers, mha, critic=False, masked=True, gauss=False, SA=False):
         super(GPT, self).__init__()
         self.SA = SA
-        print(model_dim)
-        self.SA = SA
-        print(model_dim)
         self.state_enc = nn.Linear(state_dim, model_dim)
         self.action_embedding = wt_init_(nn.Linear(action_dim, model_dim))
         self.pos_embedding = pos_embedding
@@ -550,7 +547,9 @@ class GPT_AdaLN(nn.Module):
         
         if pos.dim() == 1:
             pos = pos.unsqueeze(0).expand(bs, -1)
-        
+        elif pos.dim() == 3:
+            pos = pos.squeeze(-1).expand(bs, -1)
+        assert pos.shape == torch.Size((bs, N))
         sparse_states = torch.zeros(bs, 64, state_dim, device=state.device, dtype=state.dtype)
         sparse_actions = torch.zeros(bs, 64, action_dim, device=actions.device, dtype=actions.dtype)
         
@@ -724,7 +723,6 @@ class Transformer(nn.Module):
         bs, n_agents, _ = state.size()
         actions = torch.zeros((bs, n_agents, self.action_dim)).to(self.device)
         mus, stds = self.decoder_actor.forward_visualization(state, actions, pos)
-        print(len(mus))
         actions = []
         for mu, std in zip(mus, stds):
             if deterministic:

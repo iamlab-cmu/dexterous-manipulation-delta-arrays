@@ -261,8 +261,8 @@ class MABC_Finetune:
     @torch.no_grad()
     def get_actions(self, obs, pos, deterministic=False):
         obs = torch.as_tensor(obs, dtype=torch.float32).to(self.device)
-        pos = torch.as_tensor(pos, dtype=torch.int32).unsqueeze(-1).to(self.device)
-        print(obs.shape, pos.shape)
+        pos = torch.as_tensor(pos, dtype=torch.int32).to(self.device)
+        # print(obs.shape, pos.shape)
         if len(obs.shape) == 2:
             obs = obs.unsqueeze(0)
         if len(pos.shape) == 2:
@@ -284,7 +284,7 @@ class MABC_Finetune:
             # # obs[:, :, 4:] += noise_p.to(self.device)
             
         
-        actions = self.tf.get_actions(obs, pos, deterministic=deterministic).squeeze()
+        actions = self.tf.get_actions(obs, pos, deterministic=deterministic)
         # actions = torch.mean(actions, dim=0).squeeze()
         # print(actions.shape)
         return actions.detach().to(torch.float32).cpu().numpy()
