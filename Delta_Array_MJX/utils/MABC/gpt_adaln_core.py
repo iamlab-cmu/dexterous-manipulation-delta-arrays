@@ -7,6 +7,8 @@ import torch.nn.functional as F
 
 LOG_STD_MAX = 2
 LOG_STD_MIN = -20
+HEX_DIRS_ODD = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1)]
+HEX_DIRS_EVEN = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, 1), (1, 1)]
 
 def wt_init_(layer, activation = "relu"):
     nn.init.orthogonal_(layer.weight, gain=nn.init.calculate_gain(activation))
@@ -171,27 +173,23 @@ class MultiHeadAttentionLRE(nn.Module):
         diff_row = row_j - row_i
         diff_col = col_j - col_i
         
-        # Self
         if diff_row == 0 and diff_col == 0:
             return 0
         
-        HEX_DIRS_ODD = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1)]
-        HEX_DIRS_EVEN = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, 1), (1, 1)]
-        
-        if row_i % 2 == 0:  # Even row
+        if row_i % 2 == 0:
             hex_dirs = HEX_DIRS_EVEN
-        else:  # Odd row
+        else:
             hex_dirs = HEX_DIRS_ODD
         
         for idx, (dr, dc) in enumerate(hex_dirs):
             if diff_row == dr and diff_col == dc:
-                return idx + 1  # Classes 1-6
+                return idx + 1
         
-        if row_i % 2 == 0:  # Even row second ring
+        if row_i % 2 == 0:
             second_ring_dirs = [
                 (-2, 0), (-2, 1), (-1, 2), (1, 2), (2, 1), (2, 0)
             ]
-        else:  # Odd row second ring
+        else:
             second_ring_dirs = [
                 (-2, 0), (-2, -1), (-1, -2), (1, -2), (2, -1), (2, 0)
             ]
@@ -382,11 +380,7 @@ class GPT(nn.Module):
         if pos_embedding is not None:
             self.fwd_fn = self.forward_normal
         else:
-            self.fwd_fn = self.forward_rotpe
-        if pos_embedding is not None:
-            self.fwd_fn = self.forward_normal
-        else:
-            self.fwd_fn = self.forward_rotpe
+            self.fwd_fn = self.forward_rotpe_efficient
         self.dropout = nn.Dropout(dropout)
 
         if self.SA:
@@ -509,11 +503,7 @@ class GPT_AdaLN(nn.Module):
         if pos_embedding is not None:
             self.fwd_fn = self.forward_normal
         else:
-            self.fwd_fn = self.forward_rotpe
-        if pos_embedding is not None:
-            self.fwd_fn = self.forward_normal
-        else:
-            self.fwd_fn = self.forward_rotpe
+            self.fwd_fn = self.forward_rotpe_efficient
         self.dropout = nn.Dropout(dropout)
 
         self.decoder_layers = nn.ModuleList([AdaLNLayer(model_dim, num_heads, max_agents, dim_ff, dropout, masked, mha) for _ in range(n_layers)])
@@ -535,11 +525,6 @@ class GPT_AdaLN(nn.Module):
         return self.fwd_fn(state, actions, pos, idx)
 
     def forward_normal(self, state, actions, pos, idx=None):
-        """
-        Input: state (bs, n_agents, state_dim)
-               actions (bs, n_agents, action_dim)
-        Output: decoder_output (bs, n_agents, model_dim)
-        """
         # act_enc = self.dropout(self.positional_encoding(F.ReLU(self.action_embedding(actions))))
         state_enc = self.state_enc(state)
         pos_embed = self.pos_embedding(pos)
@@ -558,6 +543,41 @@ class GPT_AdaLN(nn.Module):
         else:
             act_mean = self.final_layer(act_enc, conditional_enc)
         return act_mean
+
+    def forward_rotpe_efficient(self, state, actions, pos, idx=None):
+        bs, N, state_dim = state.shape
+        _, _, action_dim = actions.shape
+        
+        if pos.dim() == 1:
+            pos = pos.unsqueeze(0).expand(bs, -1)
+        
+        sparse_states = torch.zeros(bs, 64, state_dim, device=state.device, dtype=state.dtype)
+        sparse_actions = torch.zeros(bs, 64, action_dim, device=actions.device, dtype=actions.dtype)
+        
+        batch_idx = torch.arange(bs, device=pos.device).unsqueeze(1).expand(-1, N)
+        sparse_states[batch_idx, pos] = state
+        sparse_actions[batch_idx, pos] = actions
+        
+        state_enc = self.state_enc(sparse_states)
+        act_enc = self.activation(self.action_embedding(sparse_actions))
+        
+        for layer in self.decoder_layers:
+            act_enc = layer(act_enc, state_enc)
+            act_enc = layer(act_enc, state_enc)
+        
+        if self.gauss:
+            act_mean_full = self.mu(act_enc, state_enc)
+            act_std_full = self.log_std(act_enc, state_enc)
+            act_std_full = torch.clamp(act_std_full, LOG_STD_MIN, LOG_STD_MAX)
+            std_full = torch.exp(act_std_full)
+            
+            act_mean = act_mean_full[batch_idx, pos]
+            std = std_full[batch_idx, pos]
+            return act_mean, std
+        else:
+            act_mean_full = self.final_layer(act_enc, state_enc)
+            act_mean = act_mean_full[batch_idx, pos]
+            return act_mean
 
     def forward_rotpe(self, state, actions, pos, idx=None):
         state_enc = self.state_enc(state)
